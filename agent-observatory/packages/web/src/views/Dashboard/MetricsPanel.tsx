@@ -1,4 +1,3 @@
-import React from 'react';
 import { useMetricsStore } from '../../stores/metricsStore';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 import { CATEGORY_COLORS, SOURCE_COLORS } from '../../utils/colors';

@@ -1,4 +1,4 @@
-import { AgentLiveState, UAEPEvent } from './types/agent';
+import type { AgentLiveState } from './types/agent';
 import { MetricsSnapshot } from './types/metrics';
 
 // Simple mock data generator to run independently without a real backend

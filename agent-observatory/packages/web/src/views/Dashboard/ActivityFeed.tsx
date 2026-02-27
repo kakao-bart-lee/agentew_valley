@@ -1,4 +1,3 @@
-import React from 'react';
 import { useActivityFeed } from '../../hooks/useActivityFeed';
 import { ActivityFeedItem } from './ActivityFeedItem';
 import { ScrollArea } from '../../components/ui/scroll-area';

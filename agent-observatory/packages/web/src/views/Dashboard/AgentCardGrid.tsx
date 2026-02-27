@@ -1,8 +1,7 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { AgentCard } from './AgentCard';
-import { AgentLiveState } from '../../types/agent';
-import { sortAgents, SortMode } from '../../utils/sorting';
+import { sortAgents } from '../../utils/sorting';
 import { AgentCardFilters } from './AgentCardFilters';
 
 export function AgentCardGrid() {

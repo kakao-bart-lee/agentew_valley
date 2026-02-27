@@ -24,7 +24,7 @@ export function ActivityFeedItem({ event }: { event: UAEPEvent }) {
                 return (
                     <div className="flex flex-col">
                         <div><span className="text-slate-400">→</span> {String(data?.tool_name)} <span className="text-xs text-slate-500">({String(data?.tool_category)})</span></div>
-                        {data?.tool_input_summary && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data.tool_input_summary)}</div>}
+                        {Boolean(data?.tool_input_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data!.tool_input_summary)}</div>}
                     </div>
                 );
             case 'tool.end':
@@ -35,7 +35,7 @@ export function ActivityFeedItem({ event }: { event: UAEPEvent }) {
                             {String(data?.tool_name)}
                             <span className="text-xs text-slate-500 ml-1">{String(data?.duration_ms)}ms</span>
                         </div>
-                        {data?.output_summary && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data.output_summary)}</div>}
+                        {Boolean(data?.output_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data!.output_summary)}</div>}
                     </div>
                 );
             case 'tool.error':

@@ -9,19 +9,23 @@ import { TooltipProvider } from '../../components/ui/tooltip';
 
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
-import { generateMockAgents, generateMockMetrics } from '../../mock';
+
+const USE_MOCK = import.meta.env?.VITE_MOCK === 'true';
 
 export function DashboardView() {
     useSocket(); // Initialize WebSocket connection
 
-    // Temporary mock data injection for viewing UI
     const { initSession, setConnectionStatus } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
 
+    // Mock 모드일 때만 가상 데이터 주입 (VITE_MOCK=true)
     React.useEffect(() => {
-        setConnectionStatus(true);
-        initSession(generateMockAgents());
-        setSnapshot(generateMockMetrics());
+        if (!USE_MOCK) return;
+        import('../../mock').then(({ generateMockAgents, generateMockMetrics }) => {
+            setConnectionStatus(true);
+            initSession(generateMockAgents());
+            setSnapshot(generateMockMetrics());
+        });
     }, [initSession, setConnectionStatus, setSnapshot]);
 
     return (

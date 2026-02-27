@@ -1,11 +1,11 @@
-import React from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { Button } from '../../components/ui/button';
+import type { AgentSourceType, AgentStatus } from '../../types/agent';
 
 export function AgentCardFilters() {
-    const { sourceFilter, statusFilter, teamFilter, setFilters } = useAgentStore();
+    const { sourceFilter, statusFilter, setFilters } = useAgentStore();
 
-    const toggleSource = (source: any) => {
+    const toggleSource = (source: AgentSourceType) => {
         if (sourceFilter.includes(source)) setFilters({ sourceFilter: sourceFilter.filter(s => s !== source) });
         else setFilters({ sourceFilter: [...sourceFilter, source] });
     };

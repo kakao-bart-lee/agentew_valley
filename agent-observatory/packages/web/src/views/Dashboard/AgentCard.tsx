@@ -1,5 +1,4 @@
-import React from 'react';
-import { AgentLiveState } from '../../types/agent';
+import type { AgentLiveState } from '../../types/agent';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';

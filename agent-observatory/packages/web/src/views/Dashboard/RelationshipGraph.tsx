@@ -1,6 +1,5 @@
-import React from 'react';
 import { useAgentStore } from '../../stores/agentStore';
-import { AgentLiveState } from '../../types/agent';
+import type { AgentLiveState } from '../../types/agent';
 
 export function RelationshipGraph() {
     const { agents } = useAgentStore();
