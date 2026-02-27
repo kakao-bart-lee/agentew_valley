@@ -43,7 +43,7 @@ export interface ConnectedCollector {
 /** Collector → Server WebSocket 이벤트 */
 export interface CollectorToServerEvents {
   'collector:register': (reg: CollectorRegistration) => void;
-  'collector:events': (events: UAEPEvent[], ack: (count: number) => void) => void;
+  'collector:events': (events: UAEPEvent[], ack?: (count: number) => void) => void;
   'collector:heartbeat': () => void;
 }
 

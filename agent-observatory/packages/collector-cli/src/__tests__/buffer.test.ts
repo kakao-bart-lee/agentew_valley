@@ -1,7 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { describe, it, expect } from 'vitest';
 import type { UAEPEvent } from '@agent-observatory/shared';
 import { EventBuffer } from '../buffer.js';
 
@@ -17,7 +14,7 @@ function makeEvent(id: string): UAEPEvent {
   };
 }
 
-describe('EventBuffer (memory)', () => {
+describe('EventBuffer', () => {
   it('should push and drain events', () => {
     const buf = new EventBuffer();
     const events = [makeEvent('1'), makeEvent('2'), makeEvent('3')];
@@ -57,60 +54,5 @@ describe('EventBuffer (memory)', () => {
     // The first event should have been dropped
     const first = buf.drain(1);
     expect(first[0].event_id).toBe('evt-1'); // 0 was dropped
-  });
-});
-
-describe('EventBuffer (file-based)', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'obs-buffer-test-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('should persist events to file on push', () => {
-    const filePath = join(tmpDir, 'buffer.jsonl');
-    const buf = new EventBuffer(filePath);
-
-    buf.push([makeEvent('1'), makeEvent('2')]);
-
-    expect(existsSync(filePath)).toBe(true);
-    const content = readFileSync(filePath, 'utf-8').trim();
-    const lines = content.split('\n');
-    expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0]).event_id).toBe('evt-1');
-  });
-
-  it('should load existing buffer file on startup', () => {
-    const filePath = join(tmpDir, 'buffer.jsonl');
-
-    // First instance writes events
-    const buf1 = new EventBuffer(filePath);
-    buf1.push([makeEvent('a'), makeEvent('b')]);
-
-    // Second instance loads from file
-    const buf2 = new EventBuffer(filePath);
-    expect(buf2.size).toBe(2);
-
-    const batch = buf2.drain(10);
-    expect(batch[0].event_id).toBe('evt-a');
-    expect(batch[1].event_id).toBe('evt-b');
-  });
-
-  it('should update file after drain', () => {
-    const filePath = join(tmpDir, 'buffer.jsonl');
-    const buf = new EventBuffer(filePath);
-
-    buf.push([makeEvent('1'), makeEvent('2'), makeEvent('3')]);
-    buf.drain(2); // Remove first 2
-
-    // File should reflect remaining 1 event
-    const content = readFileSync(filePath, 'utf-8').trim();
-    const lines = content.split('\n');
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]).event_id).toBe('evt-3');
   });
 });

@@ -65,16 +65,25 @@ export function createApp(config?: AppConfig): AppInstance {
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
   };
-  // Note: collectorGateway passed later after creation; use a getter pattern
-  let collectorGatewayRef: CollectorGateway | undefined;
-  app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig, {
-    getConnectedCollectors: () => collectorGatewayRef?.getConnectedCollectors() ?? [],
-    close: () => collectorGatewayRef?.close(),
-  }));
+  app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
   app.use(createAnalyticsRouter(historyStore));
   app.use(createOpenApiRouter());
 
-  // Error handler
+  // 4. HTTP + WebSocket
+  const server = createServer(app);
+  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator);
+
+  // 5. Collector WebSocket Gateway (/collectors namespace)
+  const collectorApiKeys = config?.collectorApiKeys ?? [];
+  const collectorGateway = createCollectorGateway(io, eventBus, collectorApiKeys);
+
+  // 6. Collector REST endpoint — registered after gateway creation
+  app.get('/api/v1/collectors', (_req, res) => {
+    const collectors = collectorGateway.getConnectedCollectors();
+    res.json({ collectors, total: collectors.length });
+  });
+
+  // Error handler — must be last
   app.use(
     (
       err: Error,
@@ -87,16 +96,7 @@ export function createApp(config?: AppConfig): AppInstance {
     },
   );
 
-  // 4. HTTP + WebSocket
-  const server = createServer(app);
-  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator);
-
-  // 5. Collector WebSocket Gateway (/collectors namespace)
-  const collectorApiKeys = config?.collectorApiKeys ?? [];
-  const collectorGateway = createCollectorGateway(io, eventBus, collectorApiKeys);
-  collectorGatewayRef = collectorGateway;
-
-  // 6. Graceful close
+  // 7. Graceful close
   const close = () => {
     collectorGateway.close();
     historyStore.close();

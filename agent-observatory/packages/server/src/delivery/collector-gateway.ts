@@ -21,6 +21,21 @@ export interface CollectorGateway {
   close(): void;
 }
 
+function isValidRegistration(reg: unknown): reg is CollectorRegistration {
+  if (!reg || typeof reg !== 'object') return false;
+  const r = reg as Record<string, unknown>;
+  return (
+    typeof r.collector_id === 'string' &&
+    r.collector_id.length > 0 &&
+    typeof r.name === 'string' &&
+    r.name.length > 0 &&
+    typeof r.source_type === 'string' &&
+    typeof r.machine_id === 'string' &&
+    Array.isArray(r.watch_paths) &&
+    typeof r.version === 'string'
+  );
+}
+
 export function createCollectorGateway(
   io: SocketIOServer,
   eventBus: EventBus,
@@ -46,8 +61,13 @@ export function createCollectorGateway(
   ns.on('connection', (socket) => {
     console.log(`[collector-gateway] Socket connected: ${socket.id}`);
 
-    // collector:register — save registration info
-    socket.on('collector:register', (reg: CollectorRegistration) => {
+    // collector:register — validate and save registration info
+    socket.on('collector:register', (reg: unknown) => {
+      if (!isValidRegistration(reg)) {
+        socket.emit('collector:error', { code: 'INVALID_REGISTRATION', message: 'Missing required registration fields' });
+        return;
+      }
+
       const now = new Date().toISOString();
       const entry: ConnectedCollector = {
         collector_id: reg.collector_id,
@@ -76,10 +96,12 @@ export function createCollectorGateway(
         if (isValidUAEPEvent(event)) {
           eventBus.publish(event);
           accepted++;
+        } else {
+          console.warn(`[collector-gateway] Dropping invalid event from ${collectorId ?? socket.id}`);
         }
       }
 
-      // Update events_received counter
+      // Update events_received counter (only valid events)
       if (collectorId) {
         const entry = connected.get(collectorId);
         if (entry) {
@@ -88,8 +110,9 @@ export function createCollectorGateway(
         }
       }
 
+      // Always ACK the full batch length so the client doesn't re-buffer
       if (typeof ack === 'function') {
-        ack(accepted);
+        ack(events.length);
       }
     });
 
@@ -117,7 +140,8 @@ export function createCollectorGateway(
 
   return {
     getConnectedCollectors(): ConnectedCollector[] {
-      return Array.from(connected.values());
+      // Return shallow copies to prevent external mutation of tracked state
+      return Array.from(connected.values()).map((c) => ({ ...c }));
     },
     close(): void {
       ns.disconnectSockets(true);
