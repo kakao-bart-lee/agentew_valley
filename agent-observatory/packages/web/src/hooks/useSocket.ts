@@ -46,7 +46,7 @@ export function useSocket(): UseSocketReturn {
         if (refCount === 1) {
             socket.on('connect', () => {
                 setConnectionStatus(true, false);
-                socket.emit('set_view', 'dashboard');
+                socket.emit('set_view', useAgentStore.getState().activeView);
             });
 
             socket.on('disconnect', () => {

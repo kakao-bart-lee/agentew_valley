@@ -14,7 +14,7 @@ export function CostChart({ data }: CostChartProps) {
                     <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} tickFormatter={(value) => `$${value.toFixed(2)}`} />
                     <Tooltip
                         contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
-                        formatter={(value: number) => [`$${value.toFixed(4)}`, 'Cost/hr']}
+                        formatter={(value: any) => [`$${(value || 0).toFixed(4)}`, 'Cost/hr']}
                     />
                     <Line type="monotone" dataKey="cost" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>

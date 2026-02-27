@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Badge } from '../../components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
-import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS } from '../../utils/colors';
+import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle, Users } from 'lucide-react';
 
 export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
@@ -15,7 +15,7 @@ export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveStat
 
     return (
         <Card
-            className={`relative bg-slate-800 transition-colors cursor-pointer group ${isSelected
+            className={`relative bg-slate-800 transition-all duration-300 cursor-pointer group animate-in fade-in slide-in-from-bottom-2 ${isSelected
                 ? 'border-indigo-500 ring-1 ring-indigo-500 bg-slate-800/80 shadow-lg shadow-indigo-500/10'
                 : 'border-slate-700 hover:border-slate-500'
                 }`}
@@ -98,6 +98,44 @@ export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveStat
                         </div>
                     )}
                 </div>
+
+                {/* Tool distribution mini bar */}
+                {(() => {
+                    const entries = Object.entries(agent.tool_distribution ?? {}).filter(([, v]) => v > 0);
+                    const total = entries.reduce((sum, [, v]) => sum + v, 0);
+                    if (total === 0) return null;
+                    return (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex h-1.5 w-full rounded-full overflow-hidden gap-px cursor-default mt-1 mb-1">
+                                    {entries.sort(([, a], [, b]) => b - a).map(([cat, count]) => (
+                                        <div
+                                            key={cat}
+                                            style={{
+                                                width: `${(count / total) * 100}%`,
+                                                backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af',
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">
+                                <div className="flex flex-col gap-1">
+                                    {entries.sort(([, a], [, b]) => b - a).map(([cat, count]) => (
+                                        <div key={cat} className="flex items-center gap-2">
+                                            <span
+                                                className="w-2 h-2 rounded-full shrink-0"
+                                                style={{ backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af' }}
+                                            />
+                                            <span className="text-slate-300 capitalize">{cat.replace('_', ' ')}</span>
+                                            <span className="text-slate-500 ml-auto">{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </TooltipContent>
+                        </Tooltip>
+                    );
+                })()}
 
                 <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-700/50 pt-3">
                     <div className="flex items-center gap-1">
