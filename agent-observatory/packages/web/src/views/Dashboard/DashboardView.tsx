@@ -1,5 +1,4 @@
-import React from 'react';
-import { StatusBar } from './StatusBar';
+import { useState, useEffect } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { AgentCardGrid } from './AgentCardGrid';
 import { RelationshipGraph } from './RelationshipGraph';
@@ -7,7 +6,6 @@ import { MetricsPanel } from './MetricsPanel';
 import { ActivityFeed } from './ActivityFeed';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { AgentDetailPanel } from './AgentDetailPanel';
-import { useState } from 'react';
 
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
@@ -23,7 +21,7 @@ export function DashboardView() {
     const { setSnapshot } = useMetricsStore();
 
     // 임시: 서버 연동 전 UI 확인을 위해 기본적으로 Mock 데이터를 주입합니다. (VITE_MOCK=false일 때만 비활성화)
-    React.useEffect(() => {
+    useEffect(() => {
         if (!USE_MOCK) return;
         import('../../mock').then(({ generateMockAgents, generateMockMetrics }) => {
             setConnectionStatus(true);
@@ -56,10 +54,7 @@ export function DashboardView() {
                     </div>
                 )}
 
-                {/* 1. Global Summarization Bar */}
-                <div className="sticky top-0 z-10">
-                    <StatusBar />
-                </div>
+                {/* 1. Global Summarization Bar was moved to App.tsx */}
 
                 {/* 2. Main Content Grid */}
                 <div className="flex-1 p-4 md:p-6 mx-auto w-full max-w-[1500px]">

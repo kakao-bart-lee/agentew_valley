@@ -3,9 +3,11 @@ import { ActivityFeedItem } from './ActivityFeedItem';
 import { ActivityFeedFilters } from './ActivityFeedFilters';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { Button } from '../../components/ui/button';
+import { ActivityFeedSkeleton } from '../../components/ui/skeleton';
 import { Pause, Play, Trash2, Filter } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
+import { useAgentStore } from '../../stores/agentStore';
 
 export function ActivityFeed() {
     const {
@@ -18,6 +20,7 @@ export function ActivityFeed() {
         typeFilters,
         setTypeFilters
     } = useActivityFeed();
+    const { connected } = useAgentStore();
 
     const [filtersOpen, setFiltersOpen] = useState(false);
     const activeFilterCount = (agentFilter ? 1 : 0) + (typeFilters.length > 0 ? 1 : 0);
@@ -72,7 +75,9 @@ export function ActivityFeed() {
 
             <ScrollArea className="flex-1 bg-slate-900/50 rounded-md border border-slate-700/50 relative">
                 <div className="flex flex-col">
-                    {events.length === 0 ? (
+                    {!connected && events.length === 0 ? (
+                        <ActivityFeedSkeleton />
+                    ) : events.length === 0 ? (
                         <div className="text-slate-500 text-center py-8 text-sm">
                             No recent activity.
                         </div>

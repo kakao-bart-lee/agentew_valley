@@ -3,6 +3,7 @@ import { useAgentStore } from '../../stores/agentStore';
 import { AgentCard } from './AgentCard';
 import { sortAgents } from '../../utils/sorting';
 import { AgentCardFilters } from './AgentCardFilters';
+import { AgentCardSkeleton } from '../../components/ui/skeleton';
 import { AgentLiveState } from '../../types/agent';
 
 interface AgentCardGridProps {
@@ -11,8 +12,13 @@ interface AgentCardGridProps {
 }
 
 export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridProps) {
-    const { agents, sourceFilter, statusFilter, teamFilter } = useAgentStore();
+    const { agents, sourceFilter, statusFilter, teamFilter, connected } = useAgentStore();
     const [groupByTeam, setGroupByTeam] = useState(false);
+    // Show skeleton while waiting for initial connection + data
+    const [hasReceivedData, setHasReceivedData] = useState(agents.size > 0);
+    useEffect(() => {
+        if (agents.size > 0) setHasReceivedData(true);
+    }, [agents.size]);
     const [sortMode, setSortMode] = useState<'status' | 'name' | 'activity' | 'cost'>('status');
 
     // Store server-side team classifications
@@ -47,6 +53,15 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
 
         return sortAgents(list, sortMode);
     }, [agents, sourceFilter, statusFilter, teamFilter, sortMode]);
+
+    // Skeleton: connected but no data yet
+    if (connected && !hasReceivedData) {
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => <AgentCardSkeleton key={i} />)}
+            </div>
+        );
+    }
 
     if (agents.size === 0) {
         return (

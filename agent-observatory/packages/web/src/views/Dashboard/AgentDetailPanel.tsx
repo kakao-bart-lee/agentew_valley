@@ -146,17 +146,17 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
                         ) : (
                             <div className="flex flex-col gap-2 relative border-l border-slate-700 ml-2 pl-4 py-2">
                                 {events.map((ev, i) => (
-                                    <div key={ev.metadata.event_id || i} className="text-xs p-2.5 rounded bg-slate-800/80 border border-slate-700 relative group">
+                                    <div key={ev.event_id || i} className="text-xs p-2.5 rounded bg-slate-800/80 border border-slate-700 relative group">
                                         <div className="absolute w-2 h-2 rounded-full bg-slate-600 border-2 border-slate-900 -left-[21px] top-[14px] group-hover:bg-indigo-400"></div>
                                         <div className="flex justify-between items-start mb-1">
-                                            <span className="text-slate-300 font-medium">{ev.event_type}</span>
-                                            <span className="text-slate-500">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                                            <span className="text-slate-300 font-medium">{ev.type}</span>
+                                            <span className="text-slate-500">{new Date(ev.ts).toLocaleTimeString()}</span>
                                         </div>
 
-                                        {/* Optional payload details preview */}
-                                        {ev.event_type.startsWith('tool.') && ev.payload?.tool_name && (
+                                        {/* Optional data details preview */}
+                                        {ev.type.startsWith('tool.') && Boolean(ev.data?.tool_name) && (
                                             <div className="mt-1 text-[10px] bg-slate-900/50 p-1.5 rounded text-slate-400 font-mono truncate">
-                                                {ev.payload.tool_name}
+                                                {String(ev.data?.tool_name)}
                                             </div>
                                         )}
                                     </div>
