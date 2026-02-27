@@ -1,36 +1,33 @@
-# FE 에이전트 팀 핸드오프 — 2026-02-27 (v3)
+# FE 에이전트 팀 핸드오프 — 2026-02-27 (v5)
 
 > 백엔드 팀(본체)에서 FE 에이전트 팀에 전달하는 작업 현황 및 다음 단계 가이드.
 >
-> **v3 업데이트**: Phase 2 백엔드 구현 완료 반영 — SQLite 영속화, 계층/팀/검색 API 추가, Agent SDK Hook Collector, HTTP Collector, 테스트 216개 통과.
+> **v5 업데이트**: 규약 검증 완료 — 6건의 CRITICAL 불일치 수정 (WebSocket payload 형식, Sessions API 데이터소스, metrics 주기).
 
 ---
 
-## 1. 방금 완료된 작업: 구조 정합성 수정
+## 1. Phase 3 완료 — 세션 재생 · 비용 분석 · OpenAPI 문서
 
-백엔드 팀이 `feat/dashboard` 브랜치를 main에 병합한 뒤, 코드 리뷰를 통해 아래 구조적 문제를 발견하고 수정했습니다.
+### v4에서 추가된 백엔드 기능
 
-### 수정 완료 항목
+| 기능 | 설명 | FE 영향 |
+|------|------|---------|
+| **세션 재생 API** | `GET /sessions/:id/replay` — gap_ms/offset_ms 포함 이벤트 시퀀스 반환 | 세션 재생(Playback) UI 구현 가능 |
+| **비용 분석 API** | `/analytics/cost`, `/cost/by-agent`, `/cost/by-team`, `/cost/by-tool` — 비용 요약·시계열·그룹별 분석 | 비용 대시보드·차트 구현 가능 |
+| **토큰 분석 API** | `/analytics/tokens` — 토큰 시계열 + 에이전트별 분석 | 토큰 사용량 차트 구현 가능 |
+| **OpenAPI 문서** | `GET /api-docs/` → Swagger UI, `GET /api-docs/openapi.json` → 스펙 JSON | API 탐색·테스트 도구로 활용 |
 
-| 우선순위 | 문제 | 수정 내용 |
-|---------|------|----------|
-| **P0** | 패키지명이 `"web"`으로 설정됨 | `"@agent-observatory/web"` + version `"0.1.0"` 으로 변경 |
-| **P0** | `types/agent.ts` 등에서 타입을 직접 재정의 (51줄+) | `@agent-observatory/shared`로부터 re-export 방식으로 전환 |
-| **P0** | `package.json`에 shared 의존성 미선언 | `"@agent-observatory/shared": "workspace:*"` 추가 |
-| **P1** | `package-lock.json` (npm) 존재 | 삭제. 프로젝트는 pnpm workspace 사용 |
-| **P1** | `useSocket` 훅이 호출마다 새 Socket.IO 인스턴스 생성 | 모듈 레벨 싱글턴 + refCount 패턴으로 재작성 |
-| **P2** | Mock 데이터가 무조건 로드됨 | `VITE_MOCK=true` 환경변수 조건부 동적 import로 변경 |
+### 이전 핸드오프 (v1~v3) 요약
 
-### 타입 re-export 구조 (변경 후)
+| 버전 | 내용 |
+|------|------|
+| v1 | 패키지 구조 정합성 수정 (타입 re-export, useSocket 싱글턴, Mock 조건부 로드) |
+| v2 | dashboard 뷰 클라이언트에게 모든 이벤트 broadcast 적용 |
+| v3 | Phase 2 — SQLite 영속화, 계층/팀/검색 API, Agent SDK/HTTP Collector |
+| v4 | Phase 3 — 세션 재생 API, 비용/토큰 분석 API, OpenAPI 문서 |
+| v5 | 규약 검증 — WebSocket payload 형식 정정, Sessions API를 SQLite 기반으로 변경, metrics 주기 정정 |
 
-```
-packages/web/src/types/
-├── agent.ts    → export type { AgentStatus, ToolCategory, AgentSourceType, AgentLiveState } from '@agent-observatory/shared'
-├── metrics.ts  → export type { MetricsSnapshot, MetricsTimeseries } from '@agent-observatory/shared'
-└── uaep.ts     → export type { UAEPEventType, UAEPEvent } from '@agent-observatory/shared'
-```
-
-> **규칙**: web 패키지에서 타입을 직접 정의하지 마세요. 모든 도메인 타입은 `@agent-observatory/shared`에서 가져옵니다. 만약 FE 전용 UI 타입이 필요하면 `types/ui.ts` 같은 별도 파일에 작성하되, UAEP/Agent/Metrics 타입은 반드시 shared에서 가져와야 합니다.
+> **타입 규칙**: web 패키지에서 타입을 직접 정의하지 마세요. 모든 도메인 타입은 `@agent-observatory/shared`에서 가져옵니다.
 
 ---
 
@@ -208,6 +205,19 @@ JSONL 파일 변경 감지 (chokidar)
 | `event` | 이벤트 발생 시 | `UAEPEvent` | **dashboard 뷰: 모든 이벤트 (1초 배치)**, 비-dashboard: subscribe한 에이전트만 즉시 |
 
 > **v2 변경**: dashboard 뷰 클라이언트는 별도 subscribe 없이 **모든 이벤트**를 1초 배치로 수신합니다. `useActivityFeed`의 `socket.on('event')` 리스너가 그대로 동작합니다. 비-dashboard 뷰(timeline 등)에서 특정 에이전트 이벤트를 받으려면 `socket.emit('subscribe', agentId)`가 필요합니다.
+>
+> **v5 중요**: `subscribe`/`unsubscribe`/`set_view`는 모두 **raw string** 인자입니다. 객체가 아닙니다.
+> ```typescript
+> // ✅ 올바른 사용법
+> socket.emit('subscribe', 'agent-123');
+> socket.emit('unsubscribe', 'agent-123');
+> socket.emit('set_view', 'dashboard');
+>
+> // ❌ 잘못된 사용법 (서버가 무시함)
+> socket.emit('subscribe', { agent_id: 'agent-123' });
+> socket.emit('set_view', { view: 'dashboard' });
+> ```
+> 정확한 타입은 `ClientToServerEvents` (`@agent-observatory/shared`)를 참조하세요.
 
 ### 4-4. REST API (구현 완료)
 
@@ -220,8 +230,13 @@ GET  /api/v1/agents/:id/events   → { events: UAEPEvent[], total, offset, limit
                                     ?limit=50&offset=0&type=tool.start
 GET  /api/v1/agents/hierarchy    → { hierarchy: AgentHierarchyNode[] }           ← v3 추가
 GET  /api/v1/agents/by-team      → { teams: [{ team_id, agents: AgentLiveState[] }] }  ← v3 추가
-GET  /api/v1/sessions            → { sessions: [...], total }
-GET  /api/v1/sessions/:id        → { session_id, events, total }
+GET  /api/v1/sessions            → { sessions: SessionSummary[], total }         ← v5 변경: SQLite 기반, 종료된 세션 포함
+                                    SessionSummary에 team_id?, end_time? 추가
+GET  /api/v1/sessions/:id        → { session_id, events, total }                ← v5 변경: sessions 테이블 기반 404 판정
+GET  /api/v1/sessions/:id/replay → SessionReplayResponse                        ← v4 추가
+                                    ?from=<ISO-8601>&to=<ISO-8601>  — 시간 범위 필터
+                                    ?types=tool.start,tool.end       — 이벤트 타입 필터
+                                    ?limit=100&offset=0              — 페이지네이션
 GET  /api/v1/metrics/summary     → { metrics: MetricsSnapshot }
 GET  /api/v1/metrics/timeseries  → { metric, from, data: [{ts,value},...] }
                                     ?metric=tokens_per_minute&from=30
@@ -234,6 +249,32 @@ PUT  /api/v1/config              → 런타임 설정 변경
                                     Body: { watch_paths?: string[], metrics_interval_ms?: number, timeseries_retention_minutes?: number }
 POST /api/v1/events              → 외부 이벤트 수신
 POST /api/v1/events/batch        → 배치 수신
+```
+
+#### 비용/토큰 분석 API (v4 추가)
+
+```
+GET  /api/v1/analytics/cost          → CostAnalyticsResponse
+                                        { time_range, total_cost_usd, total_tokens, total_sessions, cost_timeseries }
+GET  /api/v1/analytics/cost/by-agent → CostByAgentResponse
+                                        { time_range, agents: [{ agent_id, agent_name, source, total_cost_usd, total_tokens, session_count, cost_percentage }], total_cost_usd, total_tokens }
+GET  /api/v1/analytics/cost/by-team  → CostByTeamResponse
+                                        { time_range, teams: [{ team_id, total_cost_usd, total_tokens, agent_count, session_count, cost_percentage }], total_cost_usd, total_tokens }
+GET  /api/v1/analytics/cost/by-tool  → CostByToolResponse
+                                        { time_range, tools: [{ tool_category, call_count, estimated_cost_usd, cost_percentage }], total_cost_usd }
+                                        ※ estimated_cost_usd는 비례 배분 (category_calls / total_calls * total_cost)
+GET  /api/v1/analytics/tokens        → TokenAnalyticsResponse
+                                        { time_range, total_tokens, tokens_timeseries, by_agent }
+
+모든 analytics 엔드포인트 공통 쿼리:
+  ?from=<ISO-8601>&to=<ISO-8601>  — 시간 범위 필터. 미지정 시 전체 기간.
+```
+
+#### OpenAPI 문서 (v4 추가)
+
+```
+GET  /api-docs/               → Swagger UI (브라우저에서 API 탐색/테스트)
+GET  /api-docs/openapi.json   → OpenAPI 3.0.3 스펙 JSON
 ```
 
 #### Agent SDK Hook Collector (v3 추가)
@@ -274,6 +315,125 @@ export interface AgentHierarchyNode {
 // hierarchy[0].children[0].agent.agent_id → 자식 에이전트
 ```
 
+#### v4 신규 타입 (Session Replay + Analytics)
+
+```typescript
+// packages/shared/src/types/api.ts — 모든 타입 @agent-observatory/shared에서 import 가능
+
+// ─── Session Replay ───
+export interface ReplayEvent {
+  event: UAEPEvent;
+  gap_ms: number;       // 이전 이벤트와의 간격 (ms)
+  offset_ms: number;    // 세션 시작으로부터 경과 (ms)
+}
+
+export interface SessionReplaySummary {
+  agent_id: string;
+  agent_name: string;
+  source: string;
+  team_id?: string;
+  start_time: string;
+  end_time?: string;
+  duration_ms: number;
+  total_events: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  total_tool_calls: number;
+  event_type_counts: Record<string, number>;
+}
+
+export interface SessionReplayResponse {
+  session_id: string;
+  summary: SessionReplaySummary;
+  events: ReplayEvent[];
+  total_events: number;
+  time_range?: { from: string; to: string };  // from/to 쿼리 사용 시에만 존재
+}
+
+// ─── Cost/Token Analytics ───
+export interface CostAnalyticsResponse {
+  time_range: { from: string; to: string };
+  total_cost_usd: number;
+  total_tokens: number;
+  total_sessions: number;
+  cost_timeseries: { ts: string; cost: number; tokens: number }[];
+}
+
+export interface AgentCostEntry {
+  agent_id: string;
+  agent_name: string;
+  source: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  session_count: number;
+  cost_percentage: number;  // 전체 비용 대비 %, 합계 ~100
+}
+
+export interface CostByAgentResponse {
+  time_range: { from: string; to: string };
+  agents: AgentCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+export interface TeamCostEntry {
+  team_id: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  agent_count: number;
+  session_count: number;
+  cost_percentage: number;
+}
+
+export interface CostByTeamResponse {
+  time_range: { from: string; to: string };
+  teams: TeamCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+export interface ToolCostEntry {
+  tool_category: string;       // 'file_read', 'command' 등
+  call_count: number;
+  estimated_cost_usd: number;  // 비례 배분 추정치
+  cost_percentage: number;
+}
+
+export interface CostByToolResponse {
+  time_range: { from: string; to: string };
+  tools: ToolCostEntry[];
+  total_cost_usd: number;
+}
+
+export interface TokenAnalyticsResponse {
+  time_range: { from: string; to: string };
+  total_tokens: number;
+  tokens_timeseries: { ts: string; tokens: number }[];
+  by_agent: { agent_id: string; agent_name: string; total_tokens: number }[];
+}
+```
+
+**FE에서 사용 예시:**
+
+```typescript
+// 세션 재생 (Playback 컨트롤러)
+const { summary, events } = await fetch('/api/v1/sessions/sess-1/replay').then(r => r.json());
+// events[0].gap_ms → 0 (첫 번째 이벤트)
+// events[1].gap_ms → 1000 (1초 후)
+// events[1].offset_ms → 1000 (세션 시작 기준)
+// summary.duration_ms → 전체 세션 길이
+// summary.event_type_counts → { 'tool.start': 5, 'tool.end': 4, ... }
+
+// 비용 대시보드 차트
+const costData = await fetch('/api/v1/analytics/cost').then(r => r.json());
+// costData.cost_timeseries → [{ ts: '...', cost: 0.05, tokens: 100 }, ...]
+// costData.total_cost_usd → 전체 누적 비용
+
+// 에이전트별 비용 파이차트
+const byAgent = await fetch('/api/v1/analytics/cost/by-agent').then(r => r.json());
+// byAgent.agents[0].cost_percentage → 45.2 (%)
+```
+
 ### 4-5. Mock 모드에서 실서버 전환
 
 ```bash
@@ -303,38 +463,77 @@ pnpm --filter @agent-observatory/web dev
 7. **카드에 팀/서브에이전트 표시** — team_id 뱃지, 자식 에이전트 칩
 8. **RelationshipGraph 팀 그룹핑** — `GET /api/v1/agents/hierarchy`로 트리 구조 직접 조회 (v3). CSS 트리 대신 API 트리 데이터 활용
 
-### Phase C: 차트 분리 + 추가
+### Phase C: 차트 분리 + 비용 분석 (v4 API 활용)
 
 9. MetricsPanel 내 차트를 `charts/` 서브디렉토리로 분리
-10. **CostChart** 추가 (Cost/hr 라인차트)
-11. **ActiveAgentsChart** 추가 (활성 에이전트 에어리어 차트)
-12. **ActivityFeedFilters** 추가 (에이전트별/타입별 필터 UI)
+10. **CostChart** 추가 — `GET /api/v1/analytics/cost`의 `cost_timeseries` 데이터로 라인차트
+11. **CostByAgentChart** 추가 — `GET /api/v1/analytics/cost/by-agent`로 에이전트별 비용 파이/바 차트
+12. **CostByTeamChart** 추가 — `GET /api/v1/analytics/cost/by-team`으로 팀별 비용 비교
+13. **CostByToolChart** 추가 — `GET /api/v1/analytics/cost/by-tool`로 도구 카테고리별 추정 비용
+14. **TokensAnalyticsChart** 추가 — `GET /api/v1/analytics/tokens`의 시계열 + 에이전트별 분석
+15. **ActiveAgentsChart** 추가 (활성 에이전트 에어리어 차트)
+16. **ActivityFeedFilters** 추가 (에이전트별/타입별 필터 UI)
 
-### Phase D: 상세 패널 + 인터랙션 (v3 API 활용)
+### Phase D: 세션 재생 + 상세 패널 (v4 API 활용)
 
-13. **AgentDetailPanel** 사이드패널 구현 (에이전트 상세 + 이벤트 히스토리)
-14. REST API 연동: `GET /api/v1/agents/:id/events` + `GET /api/v1/events/search?q=...` (v3 검색 API)
-15. 카드 클릭 → 패널 열기/닫기 인터랙션
-16. 관계 그래프 노드 클릭 → 카드 하이라이트 연동
+17. **SessionListView** — `GET /api/v1/sessions`로 세션 히스토리 목록 UI
+18. **SessionReplayView** — `GET /api/v1/sessions/:id/replay`로 세션 재생 UI
+    - Playback 컨트롤 (재생/일시정지/속도 조절)
+    - `gap_ms`를 활용한 실시간 타이밍 재현
+    - `offset_ms`로 타임라인 시크바 구현
+    - `summary.event_type_counts`로 이벤트 분포 미니맵
+    - `from`/`to`/`types` 필터로 특정 구간/타입만 재생
+19. **AgentDetailPanel** 사이드패널 구현 (에이전트 상세 + 이벤트 히스토리)
+20. REST API 연동: `GET /api/v1/agents/:id/events` + `GET /api/v1/events/search?q=...` (v3 검색 API)
+21. 카드 클릭 → 패널 열기/닫기 인터랙션
+22. 관계 그래프 노드 클릭 → 카드 하이라이트 연동
 
 ### Phase E: 마무리
 
-17. 카드/피드 등장/소멸 애니메이션
-18. 스켈레톤 로더
-19. 카드 정렬 모드 UI
-20. Vitest + RTL 단위 테스트 작성
+23. 카드/피드 등장/소멸 애니메이션
+24. 스켈레톤 로더
+25. 카드 정렬 모드 UI
+26. Vitest + RTL 단위 테스트 작성
 
 ---
 
-## 6. 참고: Phase 2 (v3) 변경 파일 목록
+## 6. 참고: 백엔드 변경 파일 목록
 
-### 백엔드 변경 (FE 직접 영향 없음, 참고용)
+### Phase 3 (v4) 변경
 
 ```
 # shared 패키지 — FE에서 import 가능한 신규 타입
+packages/shared/src/types/api.ts              — 12개 신규 타입 추가 (ReplayEvent, SessionReplaySummary,
+                                                SessionReplayResponse, CostAnalyticsResponse, AgentCostEntry,
+                                                CostByAgentResponse, TeamCostEntry, CostByTeamResponse,
+                                                ToolCostEntry, CostByToolResponse, TokenAnalyticsResponse 등)
+packages/shared/src/types/index.ts            — 신규 타입 re-export
+
+# server 패키지
+packages/server/src/core/history-store.ts     — 8개 쿼리 메서드 추가 (getSession, getSessionReplay,
+                                                getCostSummary, getCostByAgent, getCostByTeam,
+                                                getCostTimeseries, getToolCallDistribution, getTokensByAgent)
+packages/server/src/delivery/api.ts           — GET /sessions/:id/replay 엔드포인트 추가
+packages/server/src/delivery/api-analytics.ts — [신규] 5개 analytics 엔드포인트 (cost, cost/by-agent,
+                                                cost/by-team, cost/by-tool, tokens)
+packages/server/src/delivery/openapi.ts       — [신규] OpenAPI 3.0.3 스펙 생성 + Swagger UI 서빙
+packages/server/src/delivery/openapi-schemas.ts — [신규] JSON Schema 정의
+packages/server/src/app.ts                    — analytics + openapi 라우터 마운트
+packages/server/package.json                  — swagger-jsdoc, swagger-ui-dist 의존성 추가
+
+# 테스트
+packages/server/src/__tests__/history-store-phase3.test.ts — [신규] HistoryStore 쿼리 메서드 15 tests
+packages/server/src/__tests__/replay.test.ts               — [신규] 세션 재생 API 6 tests
+packages/server/src/__tests__/api-analytics.test.ts        — [신규] 분석 API 12 tests
+packages/server/src/__tests__/openapi.test.ts              — [신규] OpenAPI 문서 6 tests
+```
+
+### Phase 2 (v3) 변경
+
+```
+# shared 패키지
 packages/shared/src/types/agent.ts            — AgentHierarchyNode 타입 추가
 packages/shared/src/types/api.ts              — AgentHierarchyResponse, AgentsByTeamResponse, EventSearchResponse 추가
-packages/shared/src/types/index.ts            — 신규 타입 export
 
 # server 패키지
 packages/server/src/core/history-store.ts     — SQLite 전면 재작성 (better-sqlite3)
@@ -349,17 +548,6 @@ packages/collectors/src/agent-sdk/index.ts    — Agent SDK Hook Collector 구�
 packages/collectors/src/http/index.ts         — HTTP Collector 구현 (API key 인증)
 ```
 
-### v1/v2 변경 (이전 핸드오프 참고)
-
-```
-# 구조 변경 (v1)
-packages/web/package.json                     — 패키지명, 버전, shared 의존성
-packages/web/src/types/agent.ts               — re-export로 전환
-packages/web/src/types/metrics.ts             — re-export로 전환
-packages/web/src/types/uaep.ts                — re-export로 전환
-packages/web/src/hooks/useSocket.ts           — 싱글턴 재작성
-```
-
 ---
 
 ## 7. 백엔드 테스트 현황
@@ -367,31 +555,34 @@ packages/web/src/hooks/useSocket.ts           — 싱글턴 재작성
 FE 연동 전에 백엔드가 정상인지 확인:
 
 ```bash
-pnpm test          # 전체 216개 테스트 (v3: 149→216)
+pnpm test          # 전체 255개 테스트 (v4: 216→255)
 # shared:     35 tests (타입 유틸, 검증, UUID)
 # collectors: 87 tests (CC/OC 파서·노멀라이저 + Agent SDK Collector + HTTP Collector)
-# server:     94 tests (코어, API, WebSocket, E2E + SQLite 영속화 + 계층/팀/검색 API)
+# server:    133 tests (코어, API, WebSocket, E2E + 세션 재생 + 분석 API + OpenAPI)
 ```
 
-**E2E 통합 테스트 (`packages/server/src/__tests__/e2e.test.ts`)** 에서 다음 시나리오를 검증합니다:
-- CC JSONL fixture → 파서 → 노멀라이저 → EventBus → StateManager → REST API 응답
-- OC JSONL fixture → 동일 파이프라인
-- CC + OC 멀티소스 동시 에이전트
-- CC → EventBus → WebSocket dashboard broadcast 수신
+**v4에서 추가된 테스트 범위 (+39 tests)**:
+- HistoryStore Phase 3 쿼리: getSession, getSessionReplay (시간범위/타입 필터, 페이지네이션), getCostSummary, getCostByAgent (다중 에이전트 그룹핑), getCostByTeam (팀별 그룹핑, 팀 없는 에이전트 제외), getCostTimeseries (분 단위 버킷 집계), getToolCallDistribution, getTokensByAgent (15 tests)
+- Session Replay API: 404 unknown session, 전체 이벤트 시간순, gap_ms/offset_ms 정확성, from/to 필터, types 필터, summary 필드 (6 tests)
+- Analytics API: 각 5개 엔드포인트 기본 응답, 시간 범위 필터, 빈 DB 0값, cost_percentage 합계 ~100%, by-tool 비례 배분 (12 tests)
+- OpenAPI: /api-docs/openapi.json → 200 + openapi 3.0.3, 모든 엔드포인트 paths 존재, Swagger UI 서빙 (6 tests)
 
-**v3에서 추가된 테스트 범위**:
+**기존 테스트 (v3 이하)**:
+- E2E 통합: CC/OC JSONL → 파서 → 노멀라이저 → EventBus → API/WebSocket (5 tests)
 - HistoryStore SQLite: CRUD, FTS5 검색, 세션 테이블, 파일 영속화 (21 tests)
-- MetricsAggregator SQLite: 시계열 영속/조회, 인메모리+SQLite 결합 (11 tests)
-- Agent SDK Collector: Hook→UAEP 변환, Router 테스트 (13 tests)
-- HTTP Collector: API key 인증, 세션 라이프사이클, 배치 수집 (20 tests)
+- MetricsAggregator: 시계열 영속/조회, 인메모리+SQLite 결합 (11 tests)
 - StateManager 계층: getHierarchy, getSubtree, getTeams (21 tests)
-- API 신규 엔드포인트: hierarchy, by-team, events/search (24 tests)
+- REST API 코어: agents, sessions, metrics, config, events (24 tests)
+- WebSocket: init, agent:state, batch broadcast (6 tests)
+- EventBus: publish/subscribe/filter (6 tests)
 
 ---
 
 ## 8. 커밋 히스토리 참조
 
 ```
+(Phase 3 커밋 — v4)
+f939d55 feat: implement Phase 2 backend — SQLite persistence, collectors, hierarchy API
 28ce251 docs: update FE handoff document (v2)
 65b85c0 server: add PUT /api/v1/config, E2E integration tests, and root scripts
 6daac67 server: broadcast events to dashboard-view clients and fix CLI entry point
@@ -401,18 +592,35 @@ b24a624 Merge branch 'feat/dashboard'                          ← FE 병합
 e873858 feat(dashboard): initialize React/Vite web application ← FE 초기 구현
 85611bf feat: implement Phase 1 backend (shared, collectors, server)
 6ad8960 chore: initial commit
-(+ Phase 2 커밋들 — 아래 v3 변경 요약 참고)
 ```
 
-### v3에서 추가된 백엔드 변경 요약 (Phase 2)
+### v5 규약 정정 요약
+
+| 이슈 | 변경 전 (잘못됨) | 변경 후 (정확) | FE 영향 |
+|------|------------------|---------------|---------|
+| **WebSocket payload** | `socket.emit('subscribe', { agent_id })` | `socket.emit('subscribe', agentId)` — raw string | FE가 객체로 보내면 구독 무시됨 |
+| **WebSocket payload** | `socket.emit('set_view', { view: '...' })` | `socket.emit('set_view', 'dashboard')` — raw string | FE가 객체로 보내면 뷰 전환 안됨 |
+| **Sessions API** | `GET /sessions` — 라이브 상태만 (종료 세션 불가) | SQLite sessions 테이블 기반 — 종료 세션 포함, `team_id`/`end_time` 포함 | SessionListView에서 과거 세션 조회 가능 |
+| **Sessions/:id** | events 0개면 404 | sessions 테이블 존재 여부로 404 판정 | 이벤트 없는 세션도 200 반환 |
+| **metrics:snapshot** | 대시보드 스펙에 1초 간격 | 실제 5초 간격 (코드 변경 없음, 문서만 정정) | StatusBar 갱신 주기 5초 기준 설계 |
+| **SessionSummary 타입** | `team_id` 필드 없음 | `team_id?: string` 추가 | 세션 목록에서 팀 필터링 가능 |
+
+### v4에서 추가된 백엔드 변경 요약 (Phase 3)
 
 | 변경 영역 | 내용 | FE 영향 |
 |-----------|------|---------|
-| **SQLite 영속화** | HistoryStore + MetricsAggregator가 SQLite에 데이터 저장. `OBSERVATORY_DB_PATH` 환경변수로 파일 경로 지정 가능 | 서버 재시작 후에도 이벤트/메트릭 조회 가능. FE 코드 변경 불필요 |
-| **계층 API** | `GET /api/v1/agents/hierarchy` — 부모-자식 에이전트 트리 반환 | RelationshipGraph에서 활용 가능 (기존 flat 목록 대신 트리 구조) |
-| **팀 API** | `GET /api/v1/agents/by-team` — team_id별 에이전트 그룹 반환 | 팀 필터/그룹바이 구현 시 활용 (서버 측 그룹핑) |
-| **이벤트 검색** | `GET /api/v1/events/search?q=...` — FTS5 전문검색 | AgentDetailPanel 이벤트 히스토리 검색 기능에 활용 |
-| **시계열 확장** | `GET /api/v1/metrics/timeseries?from=120` — 60분 이상 과거 데이터 지원 | 차트에서 더 긴 시간 범위 표시 가능 |
-| **Agent SDK Collector** | `POST /api/v1/hooks/sdk` — Claude Code Hook 직접 수신 | FE 변경 불필요 (서버가 자동으로 UAEP 변환 후 WebSocket emit) |
-| **HTTP Collector** | `/api/v1/collector/*` — API key 인증 외부 에이전트 수집 | FE 변경 불필요 (서버가 자동으로 이벤트 처리) |
-| **신규 타입** | `AgentHierarchyNode`, API 응답 타입 (`shared` 패키지) | `@agent-observatory/shared`에서 import 가능 |
+| **세션 재생 API** | `GET /sessions/:id/replay` — gap_ms, offset_ms 포함 이벤트 시퀀스 | Playback UI 구현 가능. gap_ms로 실시간 타이밍 재현, offset_ms로 시크바 |
+| **비용 분석 API** | `/analytics/cost`, `/cost/by-agent`, `/cost/by-team`, `/cost/by-tool` | 비용 대시보드 차트 5종 구현 가능 (시계열, 파이, 바차트) |
+| **토큰 분석 API** | `/analytics/tokens` — 시계열 + 에이전트별 토큰 집계 | 토큰 사용량 모니터링 차트 |
+| **OpenAPI 문서** | `/api-docs/` → Swagger UI 자동 생성 | 개발 중 API 탐색/테스트 도구, FE 코드 변경 불필요 |
+| **신규 타입 12개** | `shared` 패키지에 Replay + Analytics 응답 타입 추가 | `@agent-observatory/shared`에서 import 가능 |
+
+### v3 백엔드 변경 요약 (Phase 2)
+
+| 변경 영역 | 내용 | FE 영향 |
+|-----------|------|---------|
+| **SQLite 영속화** | HistoryStore + MetricsAggregator가 SQLite에 데이터 저장 | 서버 재시작 후에도 조회 가능. FE 코드 변경 불필요 |
+| **계층 API** | `GET /api/v1/agents/hierarchy` — 부모-자식 에이전트 트리 반환 | RelationshipGraph에서 활용 가능 |
+| **팀 API** | `GET /api/v1/agents/by-team` — team_id별 에이전트 그룹 반환 | 팀 필터/그룹바이 구현 시 활용 |
+| **이벤트 검색** | `GET /api/v1/events/search?q=...` — FTS5 전문검색 | AgentDetailPanel 검색 기능에 활용 |
+| **Agent SDK/HTTP Collector** | 서버가 자동으로 UAEP 변환 후 WebSocket emit | FE 변경 불필요 |

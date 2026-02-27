@@ -141,7 +141,7 @@ socket.on('agent:remove', (data: { agent_id: string }) => void);
 // 실시간 이벤트 (Activity Feed용)
 socket.on('event', (event: UAEPEvent) => void);
 
-// 집계 메트릭 스냅샷 (1초 간격)
+// 집계 메트릭 스냅샷 (5초 간격)
 socket.on('metrics:snapshot', (metrics: MetricsSnapshot) => void);
 
 // 초기 상태 (연결 시 전체 스냅샷)
@@ -154,12 +154,12 @@ socket.on('init', (data: {
 ```typescript
 // 클라이언트 → 서버
 
-// 뷰 전환 알림 (서버 최적화용)
-socket.emit('set_view', { view: 'dashboard' | 'pixel' | 'timeline' });
+// 뷰 전환 알림 (서버 최적화용) — raw string, 객체가 아님
+socket.emit('set_view', 'dashboard' | 'pixel' | 'timeline');
 
-// 특정 에이전트 상세 구독
-socket.emit('subscribe', { agent_id: string });
-socket.emit('unsubscribe', { agent_id: string });
+// 특정 에이전트 상세 구독 — raw string (agent_id), 객체가 아님
+socket.emit('subscribe', agentId: string);
+socket.emit('unsubscribe', agentId: string);
 ```
 
 ### 2.3 MetricsSnapshot (집계 메트릭)
@@ -198,23 +198,61 @@ interface MetricsSnapshot {
 
 ```
 GET /api/v1/agents
-  Response: { agents: AgentLiveState[] }
+  Response: { agents: AgentLiveState[], total: number }
 
 GET /api/v1/agents/:id
-  Response: AgentLiveState
+  Response: { agent: AgentLiveState }
 
-GET /api/v1/agents/:id/events?limit=50&offset=0
-  Response: { events: UAEPEvent[], total: number, hasMore: boolean }
+GET /api/v1/agents/:id/events?limit=50&offset=0&type=tool.start
+  Response: { events: UAEPEvent[], total: number, offset: number, limit: number }
+
+GET /api/v1/agents/hierarchy
+  Response: { hierarchy: AgentHierarchyNode[] }
+
+GET /api/v1/agents/by-team
+  Response: { teams: [{ team_id, agents: AgentLiveState[] }] }
 
 GET /api/v1/metrics/summary
-  Response: MetricsSnapshot
+  Response: { metrics: MetricsSnapshot }
+
+GET /api/v1/metrics/timeseries?metric=tokens_per_minute&from=60
+  Response: { metric, from, data: [{ ts, value }] }
 
 GET /api/v1/sessions
-  Response: { sessions: SessionSummary[] }
-  SessionSummary: { session_id, agent_id, agent_name, source, start, end?, tokens, cost, tool_calls, errors }
+  Response: { sessions: SessionSummary[], total }
+
+GET /api/v1/sessions/:id
+  Response: { session_id, events: UAEPEvent[], total }
+
+GET /api/v1/sessions/:id/replay?from=&to=&types=&limit=&offset=
+  Response: SessionReplayResponse (v4)
+
+GET /api/v1/events/search?q=...&limit=50&offset=0
+  Response: { query, events: UAEPEvent[], total }
+
+GET /api/v1/analytics/cost?from=&to=
+  Response: CostAnalyticsResponse (v4)
+
+GET /api/v1/analytics/cost/by-agent?from=&to=
+  Response: CostByAgentResponse (v4)
+
+GET /api/v1/analytics/cost/by-team?from=&to=
+  Response: CostByTeamResponse (v4)
+
+GET /api/v1/analytics/cost/by-tool?from=&to=
+  Response: CostByToolResponse (v4)
+
+GET /api/v1/analytics/tokens?from=&to=
+  Response: TokenAnalyticsResponse (v4)
 
 GET /api/v1/config
-  Response: { watch_paths: string[], refresh_interval_ms: number, ... }
+  Response: { config: { watch_paths, metrics_interval_ms, timeseries_retention_minutes } }
+
+GET /api-docs/
+  → Swagger UI (API 탐색/테스트) (v4)
+
+GET /api-docs/openapi.json
+  → OpenAPI 3.0.3 스펙 JSON (v4)
 ```
 
 ---
@@ -293,7 +331,7 @@ GET /api/v1/config
   - 연결 상태: 🟢 Connected / 🔴 Disconnected / 🟡 Reconnecting
 
 동작:
-  - 1초마다 metrics:snapshot으로 갱신
+  - 5초마다 metrics:snapshot으로 갱신
   - 연결 끊김 시 "Reconnecting..." 표시 + 자동 재연결
 ```
 
@@ -581,7 +619,7 @@ interface DashboardLocalState {
 ```
 1. DashboardView 마운트
 2. useSocket 훅이 Socket.IO 연결 확인 (이미 연결되어 있으면 스킵)
-3. socket.emit('set_view', { view: 'dashboard' }) → 서버에 최적화 힌트
+3. socket.emit('set_view', 'dashboard') → 서버에 최적화 힌트
 4. socket.on('init') → agentStore에 초기 상태 세팅
 5. MetricsSnapshot 수신 → metricsStore 초기화
 6. 렌더링 시작
@@ -594,7 +632,7 @@ interface DashboardLocalState {
   socket.on('agent:state')     → agentStore.setAgent() → AgentCard 리렌더
   socket.on('event')           → useActivityFeed 버퍼에 추가 → ActivityFeed 리렌더
 
-매 1초:
+매 5초:
   socket.on('metrics:snapshot') → metricsStore 갱신 → 차트 리렌더
 
 매 5초:
@@ -607,10 +645,10 @@ interface DashboardLocalState {
 1. AgentCard 클릭
 2. agentStore.selectAgent(agent_id)
 3. AgentDetailPanel (공통 사이드패널) 열림
-4. socket.emit('subscribe', { agent_id }) → 상세 이벤트 구독
+4. socket.emit('subscribe', agent_id) → 상세 이벤트 구독 (raw string)
 5. 패널에 에이전트 상세 정보 + 최근 이벤트 히스토리 표시
 6. REST API: GET /api/v1/agents/{id}/events → 과거 이벤트 로딩
-7. 패널 닫힘 시: socket.emit('unsubscribe', { agent_id })
+7. 패널 닫힘 시: socket.emit('unsubscribe', agent_id) (raw string)
 ```
 
 ---
@@ -875,9 +913,20 @@ Phase 2:
   □ 에이전트 상세 패널 내 미니 타임라인
   □ 비용 알림 임계치 설정 UI
 
-Phase 3:
-  □ 세션 히스토리 목록 뷰
-  □ 세션 재생(Playback) 컨트롤 (재생/일시정지/속도)
+Phase 3 (백엔드 API 완성됨 — v4):
+  □ 세션 히스토리 목록 뷰 (GET /api/v1/sessions)
+  □ 세션 재생(Playback) 컨트롤 (GET /api/v1/sessions/:id/replay)
+    - gap_ms 활용 실시간 타이밍 재현
+    - offset_ms 활용 시크바/타임라인
+    - types 필터로 특정 이벤트만 재생
+  □ 비용 분석 대시보드 (GET /api/v1/analytics/cost/*)
+    - 비용 시계열 라인차트 (cost_timeseries)
+    - 에이전트별 비용 파이차트 (cost/by-agent)
+    - 팀별 비용 바차트 (cost/by-team)
+    - 도구별 추정 비용 (cost/by-tool)
+  □ 토큰 사용량 분석 (GET /api/v1/analytics/tokens)
+    - 토큰 시계열 + 에이전트별 분석
+  □ API 탐색: GET /api-docs/ → Swagger UI 활용
   □ 에이전트 그룹/팀 관리 설정 UI
   □ 다크/라이트 모드 토글
 ```

@@ -11,6 +11,8 @@ import { MetricsAggregator } from './core/metrics-aggregator.js';
 import { HistoryStore } from './core/history-store.js';
 import { createApiRouter } from './delivery/api.js';
 import type { ApiConfig } from './delivery/api.js';
+import { createAnalyticsRouter } from './delivery/api-analytics.js';
+import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
 
 export interface AppConfig {
@@ -59,6 +61,8 @@ export function createApp(config?: AppConfig): AppInstance {
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
   };
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
+  app.use(createAnalyticsRouter(historyStore));
+  app.use(createOpenApiRouter());
 
   // Error handler
   app.use(

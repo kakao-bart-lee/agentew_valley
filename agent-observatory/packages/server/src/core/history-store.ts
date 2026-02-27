@@ -226,6 +226,264 @@ export class HistoryStore {
     `).all() as SessionRow[];
   }
 
+  /** Get a single session by ID */
+  getSession(sessionId: string): SessionRow | undefined {
+    return this.db.prepare(`
+      SELECT * FROM sessions WHERE session_id = ?
+    `).get(sessionId) as SessionRow | undefined;
+  }
+
+  /** Get session replay events with optional filters */
+  getSessionReplay(
+    sessionId: string,
+    opts?: { from?: string; to?: string; types?: string[]; limit?: number; offset?: number },
+  ): UAEPEvent[] {
+    const conditions = ['session_id = ?'];
+    const params: unknown[] = [sessionId];
+
+    if (opts?.from) {
+      conditions.push('ts >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('ts <= ?');
+      params.push(opts.to);
+    }
+    if (opts?.types && opts.types.length > 0) {
+      const placeholders = opts.types.map(() => '?').join(', ');
+      conditions.push(`type IN (${placeholders})`);
+      params.push(...opts.types);
+    }
+
+    const where = conditions.join(' AND ');
+    let sql = `SELECT * FROM events WHERE ${where} ORDER BY ts ASC`;
+
+    if (opts?.limit !== undefined) {
+      sql += ' LIMIT ?';
+      params.push(opts.limit);
+      if (opts?.offset !== undefined) {
+        sql += ' OFFSET ?';
+        params.push(opts.offset);
+      }
+    }
+
+    const rows = this.db.prepare(sql).all(...params);
+    return rows.map((row) => this.rowToEvent(row as EventRow));
+  }
+
+  /** Get event type counts for a session */
+  getSessionEventTypeCounts(sessionId: string): Record<string, number> {
+    const rows = this.db.prepare(`
+      SELECT type, COUNT(*) as cnt FROM events WHERE session_id = ? GROUP BY type
+    `).all(sessionId) as { type: string; cnt: number }[];
+
+    const counts: Record<string, number> = {};
+    for (const row of rows) {
+      counts[row.type] = row.cnt;
+    }
+    return counts;
+  }
+
+  /** Get total tool.start count for a session */
+  getSessionToolCallCount(sessionId: string): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as cnt FROM events WHERE session_id = ? AND type = 'tool.start'
+    `).get(sessionId) as { cnt: number } | undefined;
+    return row?.cnt ?? 0;
+  }
+
+  /** Get cost summary across sessions */
+  getCostSummary(opts?: { from?: string; to?: string }): {
+    total_cost_usd: number;
+    total_tokens: number;
+    total_sessions: number;
+  } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const row = this.db.prepare(`
+      SELECT COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as total_sessions
+      FROM sessions ${where}
+    `).get(...params) as { total_cost_usd: number; total_tokens: number; total_sessions: number };
+
+    return row;
+  }
+
+  /** Get cost grouped by agent */
+  getCostByAgent(opts?: { from?: string; to?: string }): {
+    agent_id: string;
+    agent_name: string;
+    source: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    session_count: number;
+  }[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return this.db.prepare(`
+      SELECT agent_id, agent_name, source,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as session_count
+      FROM sessions ${where}
+      GROUP BY agent_id
+      ORDER BY total_cost_usd DESC
+    `).all(...params) as {
+      agent_id: string;
+      agent_name: string;
+      source: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      session_count: number;
+    }[];
+  }
+
+  /** Get cost grouped by team (excludes sessions without team_id) */
+  getCostByTeam(opts?: { from?: string; to?: string }): {
+    team_id: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    agent_count: number;
+    session_count: number;
+  }[] {
+    const conditions = ['team_id IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT team_id,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(DISTINCT agent_id) as agent_count,
+             COUNT(*) as session_count
+      FROM sessions ${where}
+      GROUP BY team_id
+      ORDER BY total_cost_usd DESC
+    `).all(...params) as {
+      team_id: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      agent_count: number;
+      session_count: number;
+    }[];
+  }
+
+  /** Get cost timeseries from metrics.usage events (minute buckets) */
+  getCostTimeseries(opts?: { from?: string; to?: string }): {
+    ts: string;
+    cost: number;
+    tokens: number;
+  }[] {
+    const conditions = ["type = 'metrics.usage'"];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('ts >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('ts <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT strftime('%Y-%m-%dT%H:%M:00Z', ts) as ts,
+             COALESCE(SUM(CAST(json_extract(data, '$.cost') AS REAL)), 0) as cost,
+             COALESCE(SUM(CAST(json_extract(data, '$.tokens') AS INTEGER)), 0) as tokens
+      FROM events ${where}
+      GROUP BY strftime('%Y-%m-%dT%H:%M:00Z', ts)
+      ORDER BY ts ASC
+    `).all(...params) as { ts: string; cost: number; tokens: number }[];
+  }
+
+  /** Get tool call distribution from tool.start events */
+  getToolCallDistribution(opts?: { from?: string; to?: string }): {
+    tool_name: string;
+    count: number;
+  }[] {
+    const conditions = ["type = 'tool.start'"];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('ts >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('ts <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT json_extract(data, '$.tool_name') as tool_name,
+             COUNT(*) as count
+      FROM events ${where}
+      GROUP BY tool_name
+      ORDER BY count DESC
+    `).all(...params) as { tool_name: string; count: number }[];
+  }
+
+  /** Get tokens grouped by agent from sessions table */
+  getTokensByAgent(opts?: { from?: string; to?: string }): {
+    agent_id: string;
+    agent_name: string;
+    total_tokens: number;
+  }[] {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return this.db.prepare(`
+      SELECT agent_id, agent_name,
+             COALESCE(SUM(total_tokens), 0) as total_tokens
+      FROM sessions ${where}
+      GROUP BY agent_id
+      ORDER BY total_tokens DESC
+    `).all(...params) as { agent_id: string; agent_name: string; total_tokens: number }[];
+  }
+
   /** Close the database connection */
   close(): void {
     this.db.close();

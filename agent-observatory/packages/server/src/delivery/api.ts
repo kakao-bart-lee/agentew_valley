@@ -69,16 +69,18 @@ export function createApiRouter(
 
   // GET /api/v1/sessions
   router.get('/api/v1/sessions', (_req, res) => {
-    const agents = stateManager.getAllAgents();
-    const sessions = agents.map((a) => ({
-      session_id: a.session_id,
-      agent_id: a.agent_id,
-      agent_name: a.agent_name,
-      source: a.source,
-      start_time: a.session_start,
-      total_events: historyStore.getAgentEventCount(a.agent_id),
-      total_tokens: a.total_tokens,
-      total_cost_usd: a.total_cost_usd,
+    const rows = historyStore.getSessionSummaries();
+    const sessions = rows.map((r) => ({
+      session_id: r.session_id,
+      agent_id: r.agent_id,
+      agent_name: r.agent_name,
+      source: r.source,
+      team_id: r.team_id ?? undefined,
+      start_time: r.start_time,
+      end_time: r.end_time ?? undefined,
+      total_events: r.total_events,
+      total_tokens: r.total_tokens,
+      total_cost_usd: r.total_cost_usd,
     }));
     res.json({ sessions, total: sessions.length });
   });
@@ -86,12 +88,77 @@ export function createApiRouter(
   // GET /api/v1/sessions/:id
   router.get('/api/v1/sessions/:id', (req, res) => {
     const sessionId = req.params.id;
-    const events = historyStore.getBySession(sessionId);
-    if (events.length === 0) {
+    const session = historyStore.getSession(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
       return;
     }
+    const events = historyStore.getBySession(sessionId);
     res.json({ session_id: sessionId, events, total: events.length });
+  });
+
+  // GET /api/v1/sessions/:id/replay
+  router.get('/api/v1/sessions/:id/replay', (req, res) => {
+    const sessionId = req.params.id;
+    const session = historyStore.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
+      return;
+    }
+
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const typesParam = req.query.types as string | undefined;
+    const limit = req.query.limit !== undefined ? parseInt(req.query.limit as string, 10) : undefined;
+    const offset = req.query.offset !== undefined ? parseInt(req.query.offset as string, 10) : undefined;
+    const types = typesParam ? typesParam.split(',').map((t) => t.trim()) : undefined;
+
+    const events = historyStore.getSessionReplay(sessionId, { from, to, types, limit, offset });
+    const eventTypeCounts = historyStore.getSessionEventTypeCounts(sessionId);
+    const toolCallCount = historyStore.getSessionToolCallCount(sessionId);
+
+    // Compute gap_ms and offset_ms
+    const sessionStartMs = new Date(session.start_time).getTime();
+    let prevMs = sessionStartMs;
+
+    const replayEvents = events.map((event) => {
+      const eventMs = new Date(event.ts).getTime();
+      const gap_ms = eventMs - prevMs;
+      const offset_ms = eventMs - sessionStartMs;
+      prevMs = eventMs;
+      return { event, gap_ms, offset_ms };
+    });
+
+    const endTime = session.end_time ?? events[events.length - 1]?.ts ?? session.start_time;
+    const duration_ms = new Date(endTime).getTime() - sessionStartMs;
+
+    const summary = {
+      agent_id: session.agent_id,
+      agent_name: session.agent_name,
+      source: session.source,
+      team_id: session.team_id ?? undefined,
+      start_time: session.start_time,
+      end_time: session.end_time ?? undefined,
+      duration_ms,
+      total_events: session.total_events,
+      total_tokens: session.total_tokens,
+      total_cost_usd: session.total_cost_usd,
+      total_tool_calls: toolCallCount,
+      event_type_counts: eventTypeCounts,
+    };
+
+    const response: Record<string, unknown> = {
+      session_id: sessionId,
+      summary,
+      events: replayEvents,
+      total_events: session.total_events,
+    };
+
+    if (from || to) {
+      response.time_range = { from: from ?? session.start_time, to: to ?? endTime };
+    }
+
+    res.json(response);
   });
 
   // GET /api/v1/metrics/summary
