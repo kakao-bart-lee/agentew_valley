@@ -9,11 +9,9 @@ import {
   INACTIVE_SEAT_TIMER_RANGE_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
-  CHARACTER_SITTING_OFFSET_PX,
-  CHARACTER_HIT_HALF_WIDTH,
-  CHARACTER_HIT_HEIGHT,
 } from '../constants'
-import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types'
+import type { Character, CharacterKind, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types'
+import { getCharSizeConfig } from '../spriteConfig'
 import { createCharacter, updateCharacter } from './characters'
 import { matrixEffectSeeds } from './matrixEffect'
 import { isWalkable, getWalkableTiles, findPath } from '../layout/tileMap'
@@ -193,7 +191,7 @@ export class OfficeState {
     return { palette, hueShift }
   }
 
-  addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean): void {
+  addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, kind?: CharacterKind): void {
     if (this.characters.has(id)) return
 
     let palette: number
@@ -223,13 +221,13 @@ export class OfficeState {
     if (seatId) {
       const seat = this.seats.get(seatId)!
       seat.assigned = true
-      ch = createCharacter(id, palette, seatId, seat, hueShift)
+      ch = createCharacter(id, palette, seatId, seat, hueShift, kind)
     } else {
       // No seats — spawn at random walkable tile
       const spawn = this.walkableTiles.length > 0
         ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
         : { col: 1, row: 1 }
-      ch = createCharacter(id, palette, null, null, hueShift)
+      ch = createCharacter(id, palette, null, null, hueShift, kind)
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
@@ -386,7 +384,7 @@ export class OfficeState {
     if (bestSeatId) {
       const seat = this.seats.get(bestSeatId)!
       seat.assigned = true
-      ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
+      ch = createCharacter(id, palette, bestSeatId, seat, hueShift, 'chicken')
     } else {
       // No seats — spawn at closest walkable tile to parent
       let spawn = { col: 1, row: 1 }
@@ -402,7 +400,7 @@ export class OfficeState {
         }
         spawn = closest
       }
-      ch = createCharacter(id, palette, null, null, hueShift)
+      ch = createCharacter(id, palette, null, null, hueShift, 'chicken')
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
@@ -660,13 +658,13 @@ export class OfficeState {
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue
-      // Character sprite is 16x24, anchored bottom-center
-      // Apply sitting offset to match visual position
-      const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
+      // Use kind-based size config for hit detection
+      const sizeConf = getCharSizeConfig(ch.kind)
+      const sittingOffset = ch.state === CharacterState.TYPE ? sizeConf.sittingOffset : 0
       const anchorY = ch.y + sittingOffset
-      const left = ch.x - CHARACTER_HIT_HALF_WIDTH
-      const right = ch.x + CHARACTER_HIT_HALF_WIDTH
-      const top = anchorY - CHARACTER_HIT_HEIGHT
+      const left = ch.x - sizeConf.hitHalfWidth
+      const right = ch.x + sizeConf.hitHalfWidth
+      const top = anchorY - sizeConf.hitHeight
       const bottom = anchorY
       if (worldX >= left && worldX <= right && worldY >= top && worldY <= bottom) {
         return ch.id

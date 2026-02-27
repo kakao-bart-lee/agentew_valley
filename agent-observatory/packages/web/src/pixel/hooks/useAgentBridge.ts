@@ -9,6 +9,14 @@ import { useEffect, useRef } from 'react'
 import { useAgentStore } from '../../stores/agentStore'
 import type { AgentLiveState } from '../../types/agent'
 import type { OfficeState } from '../engine/officeState'
+import type { CharacterKind } from '../types'
+
+/** Determine character kind from AgentLiveState */
+function determineCharacterKind(agent: AgentLiveState): CharacterKind {
+  if (agent.parent_agent_id) return 'chicken'          // sub-agent
+  if (agent.child_agent_ids.length > 0) return 'cat'   // orchestrator
+  return 'cow'                                          // independent agent
+}
 
 /** string UUID → number ID 매핑 */
 function useIdMap() {
@@ -150,7 +158,8 @@ export function useAgentBridge(getOfficeState: () => OfficeState): void {
           } else {
             // 일반 에이전트
             const numId = getOrCreateId(agentId)
-            officeState.addAgent(numId)
+            const kind = determineCharacterKind(agent)
+            officeState.addAgent(numId, undefined, undefined, undefined, undefined, kind)
           }
         }
 

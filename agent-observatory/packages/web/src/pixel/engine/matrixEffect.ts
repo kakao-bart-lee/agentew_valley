@@ -2,8 +2,6 @@ import type { Character, SpriteData } from '../types'
 import { MATRIX_EFFECT_DURATION } from '../types'
 import {
   MATRIX_TRAIL_LENGTH,
-  MATRIX_SPRITE_COLS,
-  MATRIX_SPRITE_ROWS,
   MATRIX_FLICKER_FPS,
   MATRIX_FLICKER_VISIBILITY_THRESHOLD,
   MATRIX_COLUMN_STAGGER_RANGE,
@@ -21,9 +19,10 @@ function flickerVisible(col: number, row: number, time: number): boolean {
   return hash < MATRIX_FLICKER_VISIBILITY_THRESHOLD
 }
 
-function generateSeeds(): number[] {
+/** Generate random per-column seeds. Default 48 columns (largest sprite width). */
+function generateSeeds(cols = 48): number[] {
   const seeds: number[] = []
-  for (let i = 0; i < MATRIX_SPRITE_COLS; i++) {
+  for (let i = 0; i < cols; i++) {
     seeds.push(Math.random())
   }
   return seeds
@@ -46,15 +45,17 @@ export function renderMatrixEffect(
   const progress = ch.matrixEffectTimer / MATRIX_EFFECT_DURATION
   const isSpawn = ch.matrixEffect === 'spawn'
   const time = ch.matrixEffectTimer
-  const totalSweep = MATRIX_SPRITE_ROWS + MATRIX_TRAIL_LENGTH
+  const spriteCols = spriteData[0]?.length ?? 16
+  const spriteRows = spriteData.length
+  const totalSweep = spriteRows + MATRIX_TRAIL_LENGTH
 
-  for (let col = 0; col < MATRIX_SPRITE_COLS; col++) {
+  for (let col = 0; col < spriteCols; col++) {
     // Stagger: each column starts at a slightly different time
     const stagger = (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE
     const colProgress = Math.max(0, Math.min(1, (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE)))
     const headRow = colProgress * totalSweep
 
-    for (let row = 0; row < MATRIX_SPRITE_ROWS; row++) {
+    for (let row = 0; row < spriteRows; row++) {
       const pixel = spriteData[row]?.[col]
       const hasPixel = pixel && pixel !== ''
       const distFromHead = headRow - row

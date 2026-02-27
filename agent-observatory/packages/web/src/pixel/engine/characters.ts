@@ -1,5 +1,5 @@
 import { CharacterState, Direction, TILE_SIZE } from '../types'
-import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types'
+import type { Character, CharacterKind, Seat, SpriteData, TileType as TileTypeVal } from '../types'
 import type { CharacterSprites } from '../sprites/spriteData'
 import { findPath } from '../layout/tileMap'
 import {
@@ -46,12 +46,14 @@ export function createCharacter(
   seatId: string | null,
   seat: Seat | null,
   hueShift = 0,
+  kind?: CharacterKind,
 ): Character {
   const col = seat ? seat.seatCol : 1
   const row = seat ? seat.seatRow : 1
   const center = tileCenter(col, row)
   return {
     id,
+    kind,
     state: CharacterState.TYPE,
     dir: seat ? seat.facingDir : Direction.DOWN,
     x: center.x,

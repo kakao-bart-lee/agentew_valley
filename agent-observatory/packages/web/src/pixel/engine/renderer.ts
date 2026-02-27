@@ -1,13 +1,14 @@
 import { TileType, TILE_SIZE, CharacterState } from '../types'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData'
+import { getCharacterSprites } from '../sprites/spriteData'
+import { getSproutBubbleSprite } from '../sprites/sproutAssetLoader'
 import { getCharacterSprite } from './characters'
 import { renderMatrixEffect } from './matrixEffect'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles'
+import { getCharSizeConfig } from '../spriteConfig'
 import {
-  CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   OUTLINE_Z_SORT_OFFSET,
   SELECTED_OUTLINE_ALPHA,
@@ -21,8 +22,6 @@ import {
   BUTTON_LINE_WIDTH_MIN,
   BUTTON_LINE_WIDTH_ZOOM_FACTOR,
   BUBBLE_FADE_DURATION_SEC,
-  BUBBLE_SITTING_OFFSET_PX,
-  BUBBLE_VERTICAL_OFFSET_PX,
   FALLBACK_FLOOR_COLOR,
   SEAT_OWN_COLOR,
   SEAT_AVAILABLE_COLOR,
@@ -121,11 +120,12 @@ export function renderScene(
 
   // Characters
   for (const ch of characters) {
-    const sprites = getCharacterSprites(ch.palette, ch.hueShift)
+    const sizeConf = getCharSizeConfig(ch.kind)
+    const sprites = getCharacterSprites(ch.palette, ch.hueShift, ch.kind)
     const spriteData = getCharacterSprite(ch, sprites)
     const cached = getCachedSprite(spriteData, zoom)
     // Sitting offset: shift character down when seated so they visually sit in the chair
-    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
+    const sittingOffset = ch.state === CharacterState.TYPE ? sizeConf.sittingOffset : 0
     // Anchor at bottom-center of character — round to integer device pixels
     const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
     const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - cached.height)
@@ -457,9 +457,7 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue
 
-    const sprite = ch.bubbleType === 'permission'
-      ? BUBBLE_PERMISSION_SPRITE
-      : BUBBLE_WAITING_SPRITE
+    const sprite = getSproutBubbleSprite(ch.bubbleType as 'permission' | 'waiting')
 
     // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0
@@ -469,11 +467,11 @@ export function renderBubbles(
 
     const cached = getCachedSprite(sprite, zoom)
     // Position: centered above the character's head
-    // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
     // Place bubble above head with a small gap; follow sitting offset
-    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
+    const bConf = getCharSizeConfig(ch.kind)
+    const sittingOff = ch.state === CharacterState.TYPE ? bConf.bubbleSittingOffset : 0
     const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
-    const bubbleY = Math.round(offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom)
+    const bubbleY = Math.round(offsetY + (ch.y + sittingOff - bConf.bubbleVerticalOffset) * zoom - cached.height - 1 * zoom)
 
     ctx.save()
     if (alpha < 1.0) ctx.globalAlpha = alpha

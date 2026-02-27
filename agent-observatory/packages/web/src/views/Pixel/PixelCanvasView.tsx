@@ -17,6 +17,7 @@ import { defaultZoom } from '../../pixel/toolUtils'
 import { EditTool, TileType } from '../../pixel/types'
 import type { OfficeLayout, FloorColor } from '../../pixel/types'
 import { LAYOUT_SAVE_DEBOUNCE_MS } from '../../pixel/constants'
+import { loadAllSproutAssets } from '../../pixel/sprites/sproutAssetLoader'
 
 const LAYOUT_STORAGE_KEY = 'pixel-office-layout'
 
@@ -54,6 +55,15 @@ export function PixelCanvasView() {
   const [editorTick, setEditorTick] = useState(0)
 
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sprout 에셋 로딩 (마운트 시 1회)
+  useEffect(() => {
+    loadAllSproutAssets().then((result) => {
+      const s = Object.values(result).filter(Boolean).length
+      const t = Object.keys(result).length
+      console.log(`Sprout assets: ${s}/${t} loaded`)
+    })
+  }, [])
 
   // agentStore → OfficeState 브릿지
   const getOfficeState = useCallback(() => officeStateRef.current!, [])

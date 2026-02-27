@@ -2,8 +2,8 @@ import type { FloorColor } from './types'
 
 // ── Grid & Layout ────────────────────────────────────────────
 export const TILE_SIZE = 16
-export const DEFAULT_COLS = 20
-export const DEFAULT_ROWS = 11
+export const DEFAULT_COLS = 22
+export const DEFAULT_ROWS = 15
 export const MAX_COLS = 64
 export const MAX_ROWS = 64
 

@@ -204,64 +204,70 @@ export function getSeatTiles(seats: Map<string, Seat>): Set<string> {
   return tiles
 }
 
-/** Default floor colors for the two rooms */
-const DEFAULT_LEFT_ROOM_COLOR: FloorColor = { h: 35, s: 30, b: 15, c: 0 }  // warm beige
-const DEFAULT_RIGHT_ROOM_COLOR: FloorColor = { h: 25, s: 45, b: 5, c: 10 }  // warm brown
-const DEFAULT_CARPET_COLOR: FloorColor = { h: 280, s: 40, b: -5, c: 0 }     // purple
-const DEFAULT_DOORWAY_COLOR: FloorColor = { h: 35, s: 25, b: 10, c: 0 }     // tan
+/** Default floor colors */
+const DEFAULT_GRASS_COLOR: FloorColor = { h: 120, s: 45, b: 10, c: 0 }    // green grass
+const DEFAULT_DIRT_COLOR: FloorColor = { h: 30, s: 35, b: -5, c: 0 }      // dirt path
+const DEFAULT_DARK_GRASS: FloorColor = { h: 130, s: 50, b: -5, c: 0 }     // dark grass (crop area)
 
-/** Create the default office layout matching the current hardcoded office */
+/** Create the default farm layout */
 export function createDefaultLayout(): OfficeLayout {
   const W = TileType.WALL
-  const F1 = TileType.FLOOR_1
-  const F2 = TileType.FLOOR_2
-  const F3 = TileType.FLOOR_3
-  const F4 = TileType.FLOOR_4
+  const F1 = TileType.FLOOR_1  // grass
+  const F2 = TileType.FLOOR_2  // dirt path
+  const F3 = TileType.FLOOR_3  // dark grass (crop beds)
 
   const tiles: TileTypeVal[] = []
   const tileColors: Array<FloorColor | null> = []
 
   for (let r = 0; r < DEFAULT_ROWS; r++) {
     for (let c = 0; c < DEFAULT_COLS; c++) {
-      if (r === 0 || r === DEFAULT_ROWS - 1) { tiles.push(W); tileColors.push(null); continue }
-      if (c === 0 || c === DEFAULT_COLS - 1) { tiles.push(W); tileColors.push(null); continue }
-      if (c === 10) {
-        if (r >= 4 && r <= 6) {
-          tiles.push(F4); tileColors.push(DEFAULT_DOORWAY_COLOR)
-        } else {
-          tiles.push(W); tileColors.push(null)
-        }
-        continue
+      // Fence border
+      if (r === 0 || r === DEFAULT_ROWS - 1 || c === 0 || c === DEFAULT_COLS - 1) {
+        tiles.push(W); tileColors.push(null); continue
       }
-      if (c >= 15 && c <= 18 && r >= 7 && r <= 9) {
-        tiles.push(F3); tileColors.push(DEFAULT_CARPET_COLOR); continue
+      // Dirt path (horizontal at row 7, vertical at col 11)
+      if (r === 7 || c === 11) {
+        tiles.push(F2); tileColors.push(DEFAULT_DIRT_COLOR); continue
       }
-      if (c < 10) {
-        tiles.push(F1); tileColors.push(DEFAULT_LEFT_ROOM_COLOR)
-      } else {
-        tiles.push(F2); tileColors.push(DEFAULT_RIGHT_ROOM_COLOR)
+      // Crop bed areas (left field and right field)
+      if ((c >= 3 && c <= 6 && r >= 3 && r <= 6) ||
+          (c >= 14 && c <= 17 && r >= 3 && r <= 6)) {
+        tiles.push(F3); tileColors.push(DEFAULT_DARK_GRASS); continue
       }
+      // Default grass
+      tiles.push(F1); tileColors.push(DEFAULT_GRASS_COLOR)
     }
   }
 
+  // Use dynamic Sprout IDs if available, else fall back to hardcoded FurnitureType
   const furniture: PlacedFurniture[] = [
-    { uid: 'desk-left', type: FurnitureType.DESK, col: 4, row: 3 },
-    { uid: 'desk-right', type: FurnitureType.DESK, col: 13, row: 3 },
-    { uid: 'bookshelf-1', type: FurnitureType.BOOKSHELF, col: 1, row: 5 },
-    { uid: 'plant-left', type: FurnitureType.PLANT, col: 1, row: 1 },
-    { uid: 'cooler-1', type: FurnitureType.COOLER, col: 17, row: 7 },
-    { uid: 'plant-right', type: FurnitureType.PLANT, col: 18, row: 1 },
-    { uid: 'whiteboard-1', type: FurnitureType.WHITEBOARD, col: 15, row: 0 },
-    // Left desk chairs
-    { uid: 'chair-l-top', type: FurnitureType.CHAIR, col: 4, row: 2 },
-    { uid: 'chair-l-bottom', type: FurnitureType.CHAIR, col: 5, row: 5 },
-    { uid: 'chair-l-left', type: FurnitureType.CHAIR, col: 3, row: 4 },
-    { uid: 'chair-l-right', type: FurnitureType.CHAIR, col: 6, row: 3 },
-    // Right desk chairs
-    { uid: 'chair-r-top', type: FurnitureType.CHAIR, col: 13, row: 2 },
-    { uid: 'chair-r-bottom', type: FurnitureType.CHAIR, col: 14, row: 5 },
-    { uid: 'chair-r-left', type: FurnitureType.CHAIR, col: 12, row: 4 },
-    { uid: 'chair-r-right', type: FurnitureType.CHAIR, col: 15, row: 3 },
+    // Left crop patches (desks — agents work here)
+    { uid: 'crop-l-1', type: 'crop-wheat' in {} ? 'crop-wheat' : FurnitureType.DESK, col: 3, row: 3 },
+    { uid: 'crop-l-2', type: 'crop-carrot' in {} ? 'crop-carrot' : FurnitureType.DESK, col: 5, row: 3 },
+    // Right crop patches
+    { uid: 'crop-r-1', type: 'crop-tomato' in {} ? 'crop-tomato' : FurnitureType.DESK, col: 14, row: 3 },
+    { uid: 'crop-r-2', type: 'crop-pumpkin' in {} ? 'crop-pumpkin' : FurnitureType.DESK, col: 16, row: 3 },
+    // Work spots (chairs — agent standing positions next to crops)
+    { uid: 'spot-l-1', type: FurnitureType.CHAIR, col: 3, row: 5 },
+    { uid: 'spot-l-2', type: FurnitureType.CHAIR, col: 5, row: 5 },
+    { uid: 'spot-l-3', type: FurnitureType.CHAIR, col: 4, row: 6 },
+    { uid: 'spot-r-1', type: FurnitureType.CHAIR, col: 14, row: 5 },
+    { uid: 'spot-r-2', type: FurnitureType.CHAIR, col: 16, row: 5 },
+    { uid: 'spot-r-3', type: FurnitureType.CHAIR, col: 15, row: 6 },
+    // Trees (storage)
+    { uid: 'tree-1', type: FurnitureType.BOOKSHELF, col: 1, row: 1 },
+    { uid: 'tree-2', type: FurnitureType.BOOKSHELF, col: 19, row: 1 },
+    // Nature decor
+    { uid: 'flower-1', type: FurnitureType.PLANT, col: 8, row: 2 },
+    { uid: 'flower-2', type: FurnitureType.PLANT, col: 13, row: 10 },
+    { uid: 'flower-3', type: FurnitureType.PLANT, col: 2, row: 12 },
+    // Chest / barrel (misc)
+    { uid: 'chest-1', type: FurnitureType.COOLER, col: 19, row: 12 },
+    // Lower field work spots
+    { uid: 'spot-b-1', type: FurnitureType.CHAIR, col: 4, row: 10 },
+    { uid: 'spot-b-2', type: FurnitureType.CHAIR, col: 6, row: 10 },
+    { uid: 'spot-b-3', type: FurnitureType.CHAIR, col: 15, row: 10 },
+    { uid: 'spot-b-4', type: FurnitureType.CHAIR, col: 17, row: 10 },
   ]
 
   return { version: 1, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, tiles, tileColors, furniture }
@@ -305,20 +311,20 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
   const tileColors: Array<FloorColor | null> = []
   for (const tile of layout.tiles) {
     switch (tile) {
-      case 0: // WALL
+      case 0: // WALL (fence)
         tileColors.push(null)
         break
-      case 1: // was TILE_FLOOR → FLOOR_1 beige
-        tileColors.push(DEFAULT_LEFT_ROOM_COLOR)
+      case 1: // FLOOR_1 → grass
+        tileColors.push(DEFAULT_GRASS_COLOR)
         break
-      case 2: // was WOOD_FLOOR → FLOOR_2 brown
-        tileColors.push(DEFAULT_RIGHT_ROOM_COLOR)
+      case 2: // FLOOR_2 → dirt path
+        tileColors.push(DEFAULT_DIRT_COLOR)
         break
-      case 3: // was CARPET → FLOOR_3 purple
-        tileColors.push(DEFAULT_CARPET_COLOR)
+      case 3: // FLOOR_3 → dark grass
+        tileColors.push(DEFAULT_DARK_GRASS)
         break
-      case 4: // was DOORWAY → FLOOR_4 tan
-        tileColors.push(DEFAULT_DOORWAY_COLOR)
+      case 4: // FLOOR_4 → dirt (legacy doorway)
+        tileColors.push(DEFAULT_DIRT_COLOR)
         break
       default:
         // New tile types (5-7) without colors — use neutral gray

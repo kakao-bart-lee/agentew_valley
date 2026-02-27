@@ -259,12 +259,12 @@ export function getActiveCategories(): Array<{ id: FurnitureCategory; label: str
 }
 
 export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string }> = [
-  { id: 'desks', label: 'Desks' },
-  { id: 'chairs', label: 'Chairs' },
-  { id: 'storage', label: 'Storage' },
+  { id: 'desks', label: 'Crops' },
+  { id: 'chairs', label: 'Work Spots' },
+  { id: 'storage', label: 'Trees' },
   { id: 'electronics', label: 'Tech' },
-  { id: 'decor', label: 'Decor' },
-  { id: 'wall', label: 'Wall' },
+  { id: 'decor', label: 'Nature' },
+  { id: 'wall', label: 'Fence' },
   { id: 'misc', label: 'Misc' },
 ]
 

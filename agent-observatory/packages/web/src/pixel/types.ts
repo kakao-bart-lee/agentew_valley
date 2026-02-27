@@ -41,6 +41,9 @@ export const CharacterState = {
 } as const
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState]
 
+/** Character kind determines sprite set and size */
+export type CharacterKind = 'cat' | 'cow' | 'chicken'
+
 export const Direction = {
   DOWN: 0,
   LEFT: 1,
@@ -144,6 +147,8 @@ export interface OfficeLayout {
 
 export interface Character {
   id: number
+  /** Character kind — determines sprite set and size. undefined = legacy human sprite */
+  kind?: CharacterKind
   state: CharacterState
   dir: Direction
   /** Pixel position */
