@@ -7,67 +7,89 @@ export { MetricsAggregator } from './core/metrics-aggregator.js';
 export { HistoryStore } from './core/history-store.js';
 export { createApiRouter } from './delivery/api.js';
 export { createWebSocketServer } from './delivery/websocket.js';
+export { createCollectorGateway } from './delivery/collector-gateway.js';
+export type { CollectorGateway } from './delivery/collector-gateway.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
 
+type ObservatoryMode = 'local' | 'remote';
+
 async function main(): Promise<void> {
   const port = parseInt(process.env.PORT ?? '3000', 10);
   const watchPaths = (process.env.WATCH_PATHS ?? '').split(',').filter(Boolean);
   const dbPath = process.env.OBSERVATORY_DB_PATH ?? undefined;
+  const tailOnly = process.env.OBSERVATORY_TAIL_ONLY !== 'false'; // 기본 true
+  const mode: ObservatoryMode = (process.env.OBSERVATORY_MODE as ObservatoryMode) ?? 'local';
+  const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
 
-  const { app, server, eventBus, close } = createApp({ watchPaths, dbPath });
+  const { app, server, eventBus, close } = createApp({ watchPaths, dbPath, collectorApiKeys });
 
   const activeCollectors: Collector[] = [];
 
-  // Claude Code Collector
-  try {
-    const ccPaths = (process.env.CLAUDE_CODE_WATCH_PATHS ?? '~/.claude/projects').split(',');
-    const cc = new ClaudeCodeCollector({ watchPaths: ccPaths });
-    cc.onEvent((event: UAEPEvent) => eventBus.publish(event));
-    await cc.start();
-    activeCollectors.push(cc);
-    console.log(`[server] Claude Code collector started (paths: ${ccPaths.join(', ')})`);
-  } catch (err) {
-    console.warn('[server] Claude Code collector failed to start:', err);
+  if (mode === 'local') {
+    // Local mode: run collectors in-process (existing behavior)
+
+    // Claude Code Collector
+    try {
+      const ccPaths = (process.env.CLAUDE_CODE_WATCH_PATHS ?? '~/.claude/projects').split(',');
+      const cc = new ClaudeCodeCollector({ watchPaths: ccPaths, tailOnly });
+      cc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      await cc.start();
+      activeCollectors.push(cc);
+      console.log(`[server] Claude Code collector started (paths: ${ccPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] Claude Code collector failed to start:', err);
+    }
+
+    // OpenClaw Collector
+    try {
+      const ocPaths = (process.env.OPENCLAW_WATCH_PATHS ?? '~/.openclaw/agents').split(',');
+      const oc = new OpenClawCollector({ watchPaths: ocPaths, tailOnly });
+      oc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      await oc.start();
+      activeCollectors.push(oc);
+      console.log(`[server] OpenClaw collector started (paths: ${ocPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] OpenClaw collector failed to start:', err);
+    }
+
+    // Agent SDK Hook Collector (Express Router)
+    const sdkCollector = new AgentSDKCollector();
+    sdkCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    app.use(sdkCollector.getRouter());
+    activeCollectors.push(sdkCollector);
+    console.log('[server] Agent SDK hook collector mounted');
+
+    // HTTP Collector (Express Router with API key auth)
+    const apiKeys = (process.env.OBSERVATORY_API_KEYS ?? '').split(',').filter(Boolean);
+    const httpCollector = new HTTPCollector({ apiKeys: apiKeys.length > 0 ? apiKeys : undefined });
+    httpCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    app.use(httpCollector.getRouter());
+    activeCollectors.push(httpCollector);
+    console.log(`[server] HTTP collector mounted (API keys: ${apiKeys.length > 0 ? apiKeys.length + ' configured' : 'open access'})`);
+  } else {
+    console.log('[server] Remote mode — local collectors disabled, WebSocket Gateway active');
   }
 
-  // OpenClaw Collector
-  try {
-    const ocPaths = (process.env.OPENCLAW_WATCH_PATHS ?? '~/.openclaw/agents').split(',');
-    const oc = new OpenClawCollector({ watchPaths: ocPaths });
-    oc.onEvent((event: UAEPEvent) => eventBus.publish(event));
-    await oc.start();
-    activeCollectors.push(oc);
-    console.log(`[server] OpenClaw collector started (paths: ${ocPaths.join(', ')})`);
-  } catch (err) {
-    console.warn('[server] OpenClaw collector failed to start:', err);
-  }
-
-  // Agent SDK Hook Collector (Express Router)
-  const sdkCollector = new AgentSDKCollector();
-  sdkCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
-  app.use(sdkCollector.getRouter());
-  activeCollectors.push(sdkCollector);
-  console.log('[server] Agent SDK hook collector mounted');
-
-  // HTTP Collector (Express Router with API key auth)
-  const apiKeys = (process.env.OBSERVATORY_API_KEYS ?? '').split(',').filter(Boolean);
-  const httpCollector = new HTTPCollector({ apiKeys: apiKeys.length > 0 ? apiKeys : undefined });
-  httpCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
-  app.use(httpCollector.getRouter());
-  activeCollectors.push(httpCollector);
-  console.log(`[server] HTTP collector mounted (API keys: ${apiKeys.length > 0 ? apiKeys.length + ' configured' : 'open access'})`);
-
-  if (activeCollectors.length === 0) {
+  if (mode === 'local' && activeCollectors.length === 0) {
     console.log('[server] No collectors active — running in API-only mode');
   }
 
   server.listen(port, () => {
     console.log(`[server] Agent Observatory server listening on port ${port}`);
-    console.log(`[server] Active collectors: ${activeCollectors.map(c => c.name).join(', ') || 'none'}`);
+    console.log(`[server] Mode: ${mode}`);
+    if (mode === 'local') {
+      console.log(`[server] Active collectors: ${activeCollectors.map(c => c.name).join(', ') || 'none'}`);
+      console.log(`[server] Tail-only mode: ${tailOnly ? 'ON (skip existing, collect new only)' : 'OFF (read all existing files)'}`);
+    }
+    if (collectorApiKeys.length > 0) {
+      console.log(`[server] Collector Gateway: ${collectorApiKeys.length} API key(s) configured`);
+    } else {
+      console.log('[server] Collector Gateway: open access (no API keys)');
+    }
     if (dbPath) {
       console.log(`[server] SQLite database: ${dbPath}`);
     } else {

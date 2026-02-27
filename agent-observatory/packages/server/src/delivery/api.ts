@@ -4,6 +4,7 @@ import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
+import type { CollectorGateway } from './collector-gateway.js';
 
 export interface ApiConfig {
   watchPaths: string[];
@@ -23,8 +24,15 @@ export function createApiRouter(
   metricsAggregator: MetricsAggregator,
   eventBus: EventBus,
   config: ApiConfig = DEFAULT_CONFIG,
+  collectorGateway?: CollectorGateway,
 ): Router {
   const router = Router();
+
+  // GET /api/v1/collectors
+  router.get('/api/v1/collectors', (_req, res) => {
+    const collectors = collectorGateway?.getConnectedCollectors() ?? [];
+    res.json({ collectors, total: collectors.length });
+  });
 
   // GET /api/v1/agents
   router.get('/api/v1/agents', (_req, res) => {

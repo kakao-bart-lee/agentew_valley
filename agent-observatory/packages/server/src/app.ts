@@ -14,6 +14,8 @@ import type { ApiConfig } from './delivery/api.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
 import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
+import { createCollectorGateway } from './delivery/collector-gateway.js';
+import type { CollectorGateway } from './delivery/collector-gateway.js';
 
 export interface AppConfig {
   watchPaths?: string[];
@@ -21,6 +23,8 @@ export interface AppConfig {
   timeseriesRetentionMinutes?: number;
   /** SQLite database file path. Defaults to :memory: */
   dbPath?: string;
+  /** API keys for authenticating remote Collectors. Empty = open access. */
+  collectorApiKeys?: string[];
 }
 
 export interface AppInstance {
@@ -31,6 +35,7 @@ export interface AppInstance {
   stateManager: StateManager;
   metricsAggregator: MetricsAggregator;
   historyStore: HistoryStore;
+  collectorGateway: CollectorGateway;
   /** Gracefully close the app (DB connections, etc.) */
   close(): void;
 }
@@ -60,7 +65,12 @@ export function createApp(config?: AppConfig): AppInstance {
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
   };
-  app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
+  // Note: collectorGateway passed later after creation; use a getter pattern
+  let collectorGatewayRef: CollectorGateway | undefined;
+  app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig, {
+    getConnectedCollectors: () => collectorGatewayRef?.getConnectedCollectors() ?? [],
+    close: () => collectorGatewayRef?.close(),
+  }));
   app.use(createAnalyticsRouter(historyStore));
   app.use(createOpenApiRouter());
 
@@ -81,10 +91,16 @@ export function createApp(config?: AppConfig): AppInstance {
   const server = createServer(app);
   const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator);
 
-  // 5. Graceful close
+  // 5. Collector WebSocket Gateway (/collectors namespace)
+  const collectorApiKeys = config?.collectorApiKeys ?? [];
+  const collectorGateway = createCollectorGateway(io, eventBus, collectorApiKeys);
+  collectorGatewayRef = collectorGateway;
+
+  // 6. Graceful close
   const close = () => {
+    collectorGateway.close();
     historyStore.close();
   };
 
-  return { app, server, io, eventBus, stateManager, metricsAggregator, historyStore, close };
+  return { app, server, io, eventBus, stateManager, metricsAggregator, historyStore, collectorGateway, close };
 }

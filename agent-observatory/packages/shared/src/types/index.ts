@@ -61,3 +61,10 @@ export type {
   ServerToClientEvents,
   ClientToServerEvents,
 } from './api.js';
+
+export type {
+  CollectorRegistration,
+  ConnectedCollector,
+  CollectorToServerEvents,
+  ServerToCollectorEvents,
+} from './collector.js';
