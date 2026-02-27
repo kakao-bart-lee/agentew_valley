@@ -17,6 +17,7 @@ export type {
   AgentStatus,
   ToolCategory,
   AgentLiveState,
+  AgentHierarchyNode,
 } from './agent.js';
 
 export {
@@ -33,6 +34,9 @@ export type {
   AgentsListResponse,
   AgentDetailResponse,
   AgentEventsResponse,
+  AgentHierarchyResponse,
+  AgentsByTeamResponse,
+  EventSearchResponse,
   SessionsListResponse,
   SessionSummary,
   MetricsSummaryResponse,

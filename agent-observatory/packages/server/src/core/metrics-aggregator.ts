@@ -6,6 +6,7 @@ import type {
 } from '@agent-observatory/shared';
 import { getToolCategory } from '@agent-observatory/shared';
 import type { StateManager } from './state-manager.js';
+import type Database from 'better-sqlite3';
 
 interface MinuteWindow {
   ts: string;
@@ -34,9 +35,31 @@ export class MetricsAggregator {
   private toolDistribution: Record<string, number> = {};
   private sourceDistribution: Record<string, number> = {};
   private stateManager?: StateManager;
+  private db?: Database.Database;
 
   setStateManager(sm: StateManager): void {
     this.stateManager = sm;
+  }
+
+  /** Set SQLite DB instance for persisting timeseries data beyond in-memory window */
+  setDb(db: Database.Database): void {
+    this.db = db;
+    this.initMetricsTable();
+  }
+
+  private initMetricsTable(): void {
+    if (!this.db) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS metrics_timeseries (
+        ts TEXT PRIMARY KEY,
+        tokens INTEGER DEFAULT 0,
+        cost REAL DEFAULT 0,
+        tool_calls INTEGER DEFAULT 0,
+        errors INTEGER DEFAULT 0,
+        active_agents INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_timeseries(ts);
+    `);
   }
 
   handleEvent(event: UAEPEvent): void {
@@ -141,36 +164,109 @@ export class MetricsAggregator {
     const now = new Date();
     this.pruneOldWindows(now);
 
+    // If within in-memory range, use windows
+    if (fromMinutesAgo <= MAX_WINDOWS) {
+      return this.getInMemoryTimeseries(metric, fromMinutesAgo, now);
+    }
+
+    // Otherwise, combine SQLite historical + in-memory recent
+    return this.getCombinedTimeseries(metric, fromMinutesAgo, now);
+  }
+
+  private getInMemoryTimeseries(
+    metric: string,
+    fromMinutesAgo: number,
+    now: Date,
+  ): { ts: string; value: number }[] {
     const cutoff = new Date(now.getTime() - fromMinutesAgo * 60_000);
     const result: { ts: string; value: number }[] = [];
 
     for (const w of this.windows) {
       if (new Date(w.ts) < cutoff) continue;
-
-      let value: number;
-      switch (metric) {
-        case 'tokens_per_minute':
-          value = w.tokens;
-          break;
-        case 'cost_per_minute':
-          value = w.cost;
-          break;
-        case 'active_agents':
-          value = w.active_agents.size;
-          break;
-        case 'tool_calls_per_minute':
-          value = w.tool_calls;
-          break;
-        case 'error_count':
-          value = w.errors;
-          break;
-        default:
-          value = 0;
-      }
-      result.push({ ts: w.ts, value });
+      result.push({ ts: w.ts, value: this.extractMetricValue(w, metric) });
     }
 
     return result;
+  }
+
+  private getCombinedTimeseries(
+    metric: string,
+    fromMinutesAgo: number,
+    now: Date,
+  ): { ts: string; value: number }[] {
+    const cutoff = new Date(now.getTime() - fromMinutesAgo * 60_000);
+    const result: { ts: string; value: number }[] = [];
+
+    // Get historical data from SQLite
+    if (this.db) {
+      const dbColumn = this.metricToColumn(metric);
+      if (dbColumn) {
+        const rows = this.db.prepare(`
+          SELECT ts, ${dbColumn} as value FROM metrics_timeseries
+          WHERE ts >= ? ORDER BY ts ASC
+        `).all(cutoff.toISOString()) as { ts: string; value: number }[];
+        result.push(...rows);
+      }
+    }
+
+    // Merge in-memory windows (they may overlap with persisted data, prefer in-memory)
+    const existingTs = new Set(result.map((r) => r.ts));
+    for (const w of this.windows) {
+      if (new Date(w.ts) < cutoff) continue;
+      if (existingTs.has(w.ts)) {
+        // Replace with in-memory (more accurate for recent data)
+        const idx = result.findIndex((r) => r.ts === w.ts);
+        if (idx >= 0) {
+          result[idx] = { ts: w.ts, value: this.extractMetricValue(w, metric) };
+        }
+      } else {
+        result.push({ ts: w.ts, value: this.extractMetricValue(w, metric) });
+      }
+    }
+
+    // Sort by timestamp
+    result.sort((a, b) => a.ts.localeCompare(b.ts));
+
+    return result;
+  }
+
+  /** Get historical timeseries from SQLite for a specific time range */
+  getHistoricalTimeseries(
+    metric: string,
+    from: string,
+    to: string,
+  ): { ts: string; value: number }[] {
+    if (!this.db) return [];
+
+    const dbColumn = this.metricToColumn(metric);
+    if (!dbColumn) return [];
+
+    return this.db.prepare(`
+      SELECT ts, ${dbColumn} as value FROM metrics_timeseries
+      WHERE ts >= ? AND ts <= ? ORDER BY ts ASC
+    `).all(from, to) as { ts: string; value: number }[];
+  }
+
+  private extractMetricValue(w: MinuteWindow, metric: string): number {
+    switch (metric) {
+      case 'tokens_per_minute': return w.tokens;
+      case 'cost_per_minute': return w.cost;
+      case 'active_agents': return w.active_agents.size;
+      case 'tool_calls_per_minute': return w.tool_calls;
+      case 'error_count': return w.errors;
+      default: return 0;
+    }
+  }
+
+  private metricToColumn(metric: string): string | null {
+    switch (metric) {
+      case 'tokens_per_minute': return 'tokens';
+      case 'cost_per_minute': return 'cost';
+      case 'active_agents': return 'active_agents';
+      case 'tool_calls_per_minute': return 'tool_calls';
+      case 'error_count': return 'errors';
+      default: return null;
+    }
   }
 
   getTotalToolCalls(): number {
@@ -210,6 +306,28 @@ export class MetricsAggregator {
 
   private pruneOldWindows(now: Date): void {
     if (this.windows.length <= MAX_WINDOWS) return;
+
+    // Persist pruned windows to SQLite before discarding
+    const toPrune = this.windows.slice(0, this.windows.length - MAX_WINDOWS);
+    this.persistWindows(toPrune);
+
     this.windows = this.windows.slice(-MAX_WINDOWS);
+  }
+
+  private persistWindows(windows: MinuteWindow[]): void {
+    if (!this.db || windows.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO metrics_timeseries (ts, tokens, cost, tool_calls, errors, active_agents)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((ww: MinuteWindow[]) => {
+      for (const w of ww) {
+        stmt.run(w.ts, w.tokens, w.cost, w.tool_calls, w.errors, w.active_agents.size);
+      }
+    });
+
+    insertMany(windows);
   }
 }

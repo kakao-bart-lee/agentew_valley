@@ -174,4 +174,156 @@ describe('StateManager', () => {
     expect(sm.getAgentsByTeam('team-x')).toHaveLength(2);
     expect(sm.getAgentsByTeam('team-y')).toHaveLength(1);
   });
+
+  describe('getHierarchy()', () => {
+    it('should return empty array when no agents exist', () => {
+      const sm = new StateManager();
+      expect(sm.getHierarchy()).toEqual([]);
+    });
+
+    it('should return single root agent with no children', () => {
+      const sm = new StateManager();
+      sm.handleEvent(makeSessionStart('root-1', 'sess-1'));
+
+      const hierarchy = sm.getHierarchy();
+      expect(hierarchy).toHaveLength(1);
+      expect(hierarchy[0].agent.agent_id).toBe('root-1');
+      expect(hierarchy[0].children).toEqual([]);
+    });
+
+    it('should return nested tree for parent-child relationship', () => {
+      const sm = new StateManager();
+      // Create parent agent
+      sm.handleEvent(makeSessionStart('parent-1', 'sess-p1'));
+      // Parent spawns a child
+      sm.handleEvent(
+        makeEvent({
+          type: 'subagent.spawn',
+          agent_id: 'parent-1',
+          data: { child_agent_id: 'child-1' },
+        }),
+      );
+      // Create child agent with parent_agent_id
+      sm.handleEvent(
+        makeSessionStart('child-1', 'sess-c1', {
+          data: { parent_agent_id: 'parent-1' },
+        }),
+      );
+
+      const hierarchy = sm.getHierarchy();
+      expect(hierarchy).toHaveLength(1);
+      expect(hierarchy[0].agent.agent_id).toBe('parent-1');
+      expect(hierarchy[0].children).toHaveLength(1);
+      expect(hierarchy[0].children[0].agent.agent_id).toBe('child-1');
+      expect(hierarchy[0].children[0].children).toEqual([]);
+    });
+
+    it('should return correct tree for multi-level hierarchy (grandchild)', () => {
+      const sm = new StateManager();
+      // Create root
+      sm.handleEvent(makeSessionStart('root', 'sess-r'));
+      // Root spawns child
+      sm.handleEvent(
+        makeEvent({
+          type: 'subagent.spawn',
+          agent_id: 'root',
+          data: { child_agent_id: 'child' },
+        }),
+      );
+      // Create child with parent
+      sm.handleEvent(
+        makeSessionStart('child', 'sess-c', {
+          data: { parent_agent_id: 'root' },
+        }),
+      );
+      // Child spawns grandchild
+      sm.handleEvent(
+        makeEvent({
+          type: 'subagent.spawn',
+          agent_id: 'child',
+          data: { child_agent_id: 'grandchild' },
+        }),
+      );
+      // Create grandchild with parent
+      sm.handleEvent(
+        makeSessionStart('grandchild', 'sess-gc', {
+          data: { parent_agent_id: 'child' },
+        }),
+      );
+
+      const hierarchy = sm.getHierarchy();
+      expect(hierarchy).toHaveLength(1);
+      expect(hierarchy[0].agent.agent_id).toBe('root');
+      expect(hierarchy[0].children).toHaveLength(1);
+      expect(hierarchy[0].children[0].agent.agent_id).toBe('child');
+      expect(hierarchy[0].children[0].children).toHaveLength(1);
+      expect(hierarchy[0].children[0].children[0].agent.agent_id).toBe('grandchild');
+      expect(hierarchy[0].children[0].children[0].children).toEqual([]);
+    });
+  });
+
+  describe('getSubtree()', () => {
+    it('should return subtree for an existing agent', () => {
+      const sm = new StateManager();
+      sm.handleEvent(makeSessionStart('parent', 'sess-p'));
+      sm.handleEvent(
+        makeEvent({
+          type: 'subagent.spawn',
+          agent_id: 'parent',
+          data: { child_agent_id: 'child' },
+        }),
+      );
+      sm.handleEvent(
+        makeSessionStart('child', 'sess-c', {
+          data: { parent_agent_id: 'parent' },
+        }),
+      );
+
+      const subtree = sm.getSubtree('parent');
+      expect(subtree).toBeDefined();
+      expect(subtree!.agent.agent_id).toBe('parent');
+      expect(subtree!.children).toHaveLength(1);
+      expect(subtree!.children[0].agent.agent_id).toBe('child');
+    });
+
+    it('should return undefined for non-existing agent', () => {
+      const sm = new StateManager();
+      expect(sm.getSubtree('non-existent')).toBeUndefined();
+    });
+  });
+
+  describe('getTeams()', () => {
+    it('should return agents grouped by team', () => {
+      const sm = new StateManager();
+      sm.handleEvent(makeSessionStart('a1', 's1', { team_id: 'team-alpha' }));
+      sm.handleEvent(makeSessionStart('a2', 's2', { team_id: 'team-alpha' }));
+      sm.handleEvent(makeSessionStart('a3', 's3', { team_id: 'team-beta' }));
+
+      const teams = sm.getTeams();
+      expect(teams).toHaveLength(2);
+
+      const alpha = teams.find((t) => t.team_id === 'team-alpha');
+      const beta = teams.find((t) => t.team_id === 'team-beta');
+
+      expect(alpha).toBeDefined();
+      expect(alpha!.agents).toHaveLength(2);
+      expect(alpha!.agents.map((a) => a.agent_id).sort()).toEqual(['a1', 'a2']);
+
+      expect(beta).toBeDefined();
+      expect(beta!.agents).toHaveLength(1);
+      expect(beta!.agents[0].agent_id).toBe('a3');
+    });
+
+    it('should exclude agents without team_id', () => {
+      const sm = new StateManager();
+      sm.handleEvent(makeSessionStart('a1', 's1', { team_id: 'team-alpha' }));
+      sm.handleEvent(makeSessionStart('a2', 's2')); // no team_id
+
+      const teams = sm.getTeams();
+      expect(teams).toHaveLength(1);
+      expect(teams[0].team_id).toBe('team-alpha');
+      expect(teams[0].agents).toHaveLength(1);
+      expect(teams[0].agents[0].agent_id).toBe('a1');
+    });
+  });
 });

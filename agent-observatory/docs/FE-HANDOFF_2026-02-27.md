@@ -1,8 +1,8 @@
-# FE 에이전트 팀 핸드오프 — 2026-02-27 (v2)
+# FE 에이전트 팀 핸드오프 — 2026-02-27 (v3)
 
 > 백엔드 팀(본체)에서 FE 에이전트 팀에 전달하는 작업 현황 및 다음 단계 가이드.
 >
-> **v2 업데이트**: 백엔드 후속 작업 완료 반영 — Activity Feed broadcast 해결, PUT /api/v1/config 추가, E2E 통합 테스트, 루트 편의 스크립트.
+> **v3 업데이트**: Phase 2 백엔드 구현 완료 반영 — SQLite 영속화, 계층/팀/검색 API 추가, Agent SDK Hook Collector, HTTP Collector, 테스트 216개 통과.
 
 ---
 
@@ -165,6 +165,8 @@ pnpm --filter @agent-observatory/server start
 #   PORT=3000 (기본)
 #   CLAUDE_CODE_WATCH_PATHS=~/.claude/projects (기본)
 #   OPENCLAW_WATCH_PATHS=~/.openclaw/agents (기본)
+#   OBSERVATORY_DB_PATH=./observatory.db (v3, 미지정 시 in-memory — 재시작 시 데이터 유실)
+#   OBSERVATORY_API_KEYS=key1,key2 (v3, HTTP Collector API key, 미지정 시 open access)
 
 # 서버 시작 시 출력 예시:
 # [server] Claude Code collector started (paths: ~/.claude/projects)
@@ -190,8 +192,9 @@ JSONL 파일 변경 감지 (chokidar)
   → FE: metricsStore.setSnapshot()
 
 동시에:
-  → HistoryStore.append()
+  → HistoryStore.append() → SQLite events/sessions 테이블에 영속 저장 (v3)
   → REST API에서 히스토리 조회 가능
+  → GET /api/v1/events/search로 FTS5 전문검색 가능 (v3)
 ```
 
 ### 4-3. WebSocket 이벤트 정리 (서버가 실제로 emit하는 것)
@@ -208,22 +211,67 @@ JSONL 파일 변경 감지 (chokidar)
 
 ### 4-4. REST API (구현 완료)
 
+#### 코어 API (인증 불필요)
+
 ```
 GET  /api/v1/agents              → { agents: AgentLiveState[], total: number }
 GET  /api/v1/agents/:id          → { agent: AgentLiveState }
 GET  /api/v1/agents/:id/events   → { events: UAEPEvent[], total, offset, limit }
                                     ?limit=50&offset=0&type=tool.start
+GET  /api/v1/agents/hierarchy    → { hierarchy: AgentHierarchyNode[] }           ← v3 추가
+GET  /api/v1/agents/by-team      → { teams: [{ team_id, agents: AgentLiveState[] }] }  ← v3 추가
 GET  /api/v1/sessions            → { sessions: [...], total }
 GET  /api/v1/sessions/:id        → { session_id, events, total }
 GET  /api/v1/metrics/summary     → { metrics: MetricsSnapshot }
 GET  /api/v1/metrics/timeseries  → { metric, from, data: [{ts,value},...] }
                                     ?metric=tokens_per_minute&from=30
+                                    from > 60이면 SQLite 과거 데이터도 포함 (v3)
+GET  /api/v1/events/search       → { query, events: UAEPEvent[], total }         ← v3 추가
+                                    ?q=tool.start&limit=50&offset=0
+                                    FTS5 전문검색 (type, agent_id, data 필드)
 GET  /api/v1/config              → { config: { watch_paths, metrics_interval_ms, timeseries_retention_minutes } }
-PUT  /api/v1/config              → 런타임 설정 변경 (v2 추가)
+PUT  /api/v1/config              → 런타임 설정 변경
                                     Body: { watch_paths?: string[], metrics_interval_ms?: number, timeseries_retention_minutes?: number }
-                                    → 변경된 config 반환
-POST /api/v1/events              → 외부 이벤트 수신 (HTTP Collector)
+POST /api/v1/events              → 외부 이벤트 수신
 POST /api/v1/events/batch        → 배치 수신
+```
+
+#### Agent SDK Hook Collector (v3 추가)
+
+```
+POST /api/v1/hooks/sdk           → Claude Code Hook payload → UAEP 변환
+                                    Body: { hook_name, session_id, agent_id?, tool_name?, input?, output?, ... }
+                                    hook_name 매핑:
+                                      PreToolUse  → tool.start
+                                      PostToolUse → tool.end
+                                      Notification → agent.status
+                                      Stop        → session.end
+```
+
+#### HTTP Collector (v3 추가, API key 인증)
+
+```
+POST   /api/v1/collector/sessions      → 세션 등록 → session.start 이벤트 생성
+                                          Body: { agent_id, agent_name?, session_id?, source?, team_id? }
+                                          Header: x-api-key (OBSERVATORY_API_KEYS 설정 시)
+DELETE /api/v1/collector/sessions/:id  → 세션 종료 → session.end 이벤트 생성
+POST   /api/v1/collector/events        → 단일 UAEP 이벤트 수집
+POST   /api/v1/collector/events/batch  → 배치 수집
+```
+
+#### v3 신규 타입
+
+```typescript
+// packages/shared/src/types/agent.ts
+export interface AgentHierarchyNode {
+  agent: AgentLiveState;
+  children: AgentHierarchyNode[];
+}
+
+// FE에서 hierarchy API 사용 예시:
+// const { hierarchy } = await fetch('/api/v1/agents/hierarchy').then(r => r.json());
+// hierarchy[0].agent.agent_id  → 루트 에이전트
+// hierarchy[0].children[0].agent.agent_id → 자식 에이전트
 ```
 
 ### 4-5. Mock 모드에서 실서버 전환
@@ -248,12 +296,12 @@ pnpm --filter @agent-observatory/web dev
 3. **set_view 뷰 전환 연동** — 현재 connect 시 1회만 emit. 뷰 전환 탭 구현 시 재전송 필요
 4. **에러 상태/재연결 UI** — 연결 끊김 시 반투명 오버레이, 자동 재연결 표시
 
-### Phase B: 멀티 에이전트/팀 UX
+### Phase B: 멀티 에이전트/팀 UX (v3 API 활용)
 
-5. **팀 필터 UI** — `AgentCardFilters`에 team_id 기반 필터 버튼 추가
-6. **카드 그룹바이 팀** — `AgentCardGrid`에 team_id별 섹션 분리 토글
+5. **팀 필터 UI** — `AgentCardFilters`에 team_id 기반 필터 버튼 추가. `GET /api/v1/agents/by-team`으로 팀 목록 조회 가능 (v3)
+6. **카드 그룹바이 팀** — `AgentCardGrid`에 team_id별 섹션 분리 토글. 서버 측 그룹핑 API 활용 (v3)
 7. **카드에 팀/서브에이전트 표시** — team_id 뱃지, 자식 에이전트 칩
-8. **RelationshipGraph 팀 그룹핑** — team_id별 점선 박스 경계
+8. **RelationshipGraph 팀 그룹핑** — `GET /api/v1/agents/hierarchy`로 트리 구조 직접 조회 (v3). CSS 트리 대신 API 트리 데이터 활용
 
 ### Phase C: 차트 분리 + 추가
 
@@ -262,10 +310,10 @@ pnpm --filter @agent-observatory/web dev
 11. **ActiveAgentsChart** 추가 (활성 에이전트 에어리어 차트)
 12. **ActivityFeedFilters** 추가 (에이전트별/타입별 필터 UI)
 
-### Phase D: 상세 패널 + 인터랙션
+### Phase D: 상세 패널 + 인터랙션 (v3 API 활용)
 
 13. **AgentDetailPanel** 사이드패널 구현 (에이전트 상세 + 이벤트 히스토리)
-14. REST API 연동: `GET /api/v1/agents/:id/events` 호출
+14. REST API 연동: `GET /api/v1/agents/:id/events` + `GET /api/v1/events/search?q=...` (v3 검색 API)
 15. 카드 클릭 → 패널 열기/닫기 인터랙션
 16. 관계 그래프 노드 클릭 → 카드 하이라이트 연동
 
@@ -278,32 +326,38 @@ pnpm --filter @agent-observatory/web dev
 
 ---
 
-## 6. 참고: 수정된 파일 목록
+## 6. 참고: Phase 2 (v3) 변경 파일 목록
 
-이번 정합성 수정에서 변경된 파일입니다. FE 팀이 pull 후 확인해야 할 파일:
+### 백엔드 변경 (FE 직접 영향 없음, 참고용)
 
 ```
-# 구조 변경
+# shared 패키지 — FE에서 import 가능한 신규 타입
+packages/shared/src/types/agent.ts            — AgentHierarchyNode 타입 추가
+packages/shared/src/types/api.ts              — AgentHierarchyResponse, AgentsByTeamResponse, EventSearchResponse 추가
+packages/shared/src/types/index.ts            — 신규 타입 export
+
+# server 패키지
+packages/server/src/core/history-store.ts     — SQLite 전면 재작성 (better-sqlite3)
+packages/server/src/core/metrics-aggregator.ts — SQLite 시계열 영속화 추가
+packages/server/src/core/state-manager.ts     — getHierarchy(), getSubtree(), getTeams() 추가
+packages/server/src/delivery/api.ts           — 3개 신규 엔드포인트 (hierarchy, by-team, search)
+packages/server/src/app.ts                    — SQLite 초기화, close() 추가
+packages/server/src/index.ts                  — SDK/HTTP Collector 마운트, 환경변수 추가
+
+# collectors 패키지
+packages/collectors/src/agent-sdk/index.ts    — Agent SDK Hook Collector 구현
+packages/collectors/src/http/index.ts         — HTTP Collector 구현 (API key 인증)
+```
+
+### v1/v2 변경 (이전 핸드오프 참고)
+
+```
+# 구조 변경 (v1)
 packages/web/package.json                     — 패키지명, 버전, shared 의존성
-packages/web/src/types/agent.ts               — re-export로 전환 (5줄)
-packages/web/src/types/metrics.ts             — re-export로 전환 (4줄)
-packages/web/src/types/uaep.ts                — re-export로 전환 (4줄)
-packages/web/src/hooks/useSocket.ts           — 싱글턴 재작성 (79줄)
-
-# 빌드 오류 수정
-packages/web/src/mock.ts                      — UAEPEvent import 제거
-packages/web/src/dev-mock.ts                  — 정리
-packages/web/src/views/Dashboard/DashboardView.tsx    — mock 환경분리
-packages/web/src/views/Dashboard/ActivityFeed.tsx     — unused React 제거
-packages/web/src/views/Dashboard/ActivityFeedItem.tsx — unknown→Boolean() 캐스트
-packages/web/src/views/Dashboard/AgentCard.tsx        — unused React 제거
-packages/web/src/views/Dashboard/AgentCardFilters.tsx — import 수정
-packages/web/src/views/Dashboard/AgentCardGrid.tsx    — unused import 제거
-packages/web/src/views/Dashboard/MetricsPanel.tsx     — unused React 제거
-packages/web/src/views/Dashboard/RelationshipGraph.tsx — unused React 제거
-
-# 삭제
-packages/web/package-lock.json               — npm lock 제거 (pnpm 사용)
+packages/web/src/types/agent.ts               — re-export로 전환
+packages/web/src/types/metrics.ts             — re-export로 전환
+packages/web/src/types/uaep.ts                — re-export로 전환
+packages/web/src/hooks/useSocket.ts           — 싱글턴 재작성
 ```
 
 ---
@@ -313,10 +367,10 @@ packages/web/package-lock.json               — npm lock 제거 (pnpm 사용)
 FE 연동 전에 백엔드가 정상인지 확인:
 
 ```bash
-pnpm test          # 전체 149개 테스트
+pnpm test          # 전체 216개 테스트 (v3: 149→216)
 # shared:     35 tests (타입 유틸, 검증, UUID)
-# collectors: 54 tests (CC/OC 파서, 노멀라이저)
-# server:     60 tests (코어, API, WebSocket, E2E)
+# collectors: 87 tests (CC/OC 파서·노멀라이저 + Agent SDK Collector + HTTP Collector)
+# server:     94 tests (코어, API, WebSocket, E2E + SQLite 영속화 + 계층/팀/검색 API)
 ```
 
 **E2E 통합 테스트 (`packages/server/src/__tests__/e2e.test.ts`)** 에서 다음 시나리오를 검증합니다:
@@ -325,11 +379,20 @@ pnpm test          # 전체 149개 테스트
 - CC + OC 멀티소스 동시 에이전트
 - CC → EventBus → WebSocket dashboard broadcast 수신
 
+**v3에서 추가된 테스트 범위**:
+- HistoryStore SQLite: CRUD, FTS5 검색, 세션 테이블, 파일 영속화 (21 tests)
+- MetricsAggregator SQLite: 시계열 영속/조회, 인메모리+SQLite 결합 (11 tests)
+- Agent SDK Collector: Hook→UAEP 변환, Router 테스트 (13 tests)
+- HTTP Collector: API key 인증, 세션 라이프사이클, 배치 수집 (20 tests)
+- StateManager 계층: getHierarchy, getSubtree, getTeams (21 tests)
+- API 신규 엔드포인트: hierarchy, by-team, events/search (24 tests)
+
 ---
 
 ## 8. 커밋 히스토리 참조
 
 ```
+28ce251 docs: update FE handoff document (v2)
 65b85c0 server: add PUT /api/v1/config, E2E integration tests, and root scripts
 6daac67 server: broadcast events to dashboard-view clients and fix CLI entry point
 61ad1c0 docs: add FE team handoff document
@@ -338,11 +401,18 @@ b24a624 Merge branch 'feat/dashboard'                          ← FE 병합
 e873858 feat(dashboard): initialize React/Vite web application ← FE 초기 구현
 85611bf feat: implement Phase 1 backend (shared, collectors, server)
 6ad8960 chore: initial commit
+(+ Phase 2 커밋들 — 아래 v3 변경 요약 참고)
 ```
 
-### v2에서 추가된 백엔드 변경 요약
+### v3에서 추가된 백엔드 변경 요약 (Phase 2)
 
-| 커밋 | 변경 내용 | FE 영향 |
-|------|----------|---------|
-| `6daac67` | Dashboard broadcast + CLI 진입점 수정 + OpenClaw collector 로딩 | Activity Feed가 이제 이벤트 수신함 (FE 변경 불필요) |
-| `65b85c0` | PUT /api/v1/config + E2E 테스트 + 루트 `pnpm start` | 설정 페이지 구현 시 사용 가능 |
+| 변경 영역 | 내용 | FE 영향 |
+|-----------|------|---------|
+| **SQLite 영속화** | HistoryStore + MetricsAggregator가 SQLite에 데이터 저장. `OBSERVATORY_DB_PATH` 환경변수로 파일 경로 지정 가능 | 서버 재시작 후에도 이벤트/메트릭 조회 가능. FE 코드 변경 불필요 |
+| **계층 API** | `GET /api/v1/agents/hierarchy` — 부모-자식 에이전트 트리 반환 | RelationshipGraph에서 활용 가능 (기존 flat 목록 대신 트리 구조) |
+| **팀 API** | `GET /api/v1/agents/by-team` — team_id별 에이전트 그룹 반환 | 팀 필터/그룹바이 구현 시 활용 (서버 측 그룹핑) |
+| **이벤트 검색** | `GET /api/v1/events/search?q=...` — FTS5 전문검색 | AgentDetailPanel 이벤트 히스토리 검색 기능에 활용 |
+| **시계열 확장** | `GET /api/v1/metrics/timeseries?from=120` — 60분 이상 과거 데이터 지원 | 차트에서 더 긴 시간 범위 표시 가능 |
+| **Agent SDK Collector** | `POST /api/v1/hooks/sdk` — Claude Code Hook 직접 수신 | FE 변경 불필요 (서버가 자동으로 UAEP 변환 후 WebSocket emit) |
+| **HTTP Collector** | `/api/v1/collector/*` — API key 인증 외부 에이전트 수집 | FE 변경 불필요 (서버가 자동으로 이벤트 처리) |
+| **신규 타입** | `AgentHierarchyNode`, API 응답 타입 (`shared` 패키지) | `@agent-observatory/shared`에서 import 가능 |

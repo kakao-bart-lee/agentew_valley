@@ -10,14 +10,15 @@ export { createWebSocketServer } from './delivery/websocket.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
-import { ClaudeCodeCollector, OpenClawCollector } from '@agent-observatory/collectors';
+import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
 
 async function main(): Promise<void> {
   const port = parseInt(process.env.PORT ?? '3000', 10);
   const watchPaths = (process.env.WATCH_PATHS ?? '').split(',').filter(Boolean);
+  const dbPath = process.env.OBSERVATORY_DB_PATH ?? undefined;
 
-  const { server, eventBus } = createApp({ watchPaths });
+  const { app, server, eventBus, close } = createApp({ watchPaths, dbPath });
 
   const activeCollectors: Collector[] = [];
 
@@ -45,6 +46,21 @@ async function main(): Promise<void> {
     console.warn('[server] OpenClaw collector failed to start:', err);
   }
 
+  // Agent SDK Hook Collector (Express Router)
+  const sdkCollector = new AgentSDKCollector();
+  sdkCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+  app.use(sdkCollector.getRouter());
+  activeCollectors.push(sdkCollector);
+  console.log('[server] Agent SDK hook collector mounted');
+
+  // HTTP Collector (Express Router with API key auth)
+  const apiKeys = (process.env.OBSERVATORY_API_KEYS ?? '').split(',').filter(Boolean);
+  const httpCollector = new HTTPCollector({ apiKeys: apiKeys.length > 0 ? apiKeys : undefined });
+  httpCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+  app.use(httpCollector.getRouter());
+  activeCollectors.push(httpCollector);
+  console.log(`[server] HTTP collector mounted (API keys: ${apiKeys.length > 0 ? apiKeys.length + ' configured' : 'open access'})`);
+
   if (activeCollectors.length === 0) {
     console.log('[server] No collectors active — running in API-only mode');
   }
@@ -52,6 +68,11 @@ async function main(): Promise<void> {
   server.listen(port, () => {
     console.log(`[server] Agent Observatory server listening on port ${port}`);
     console.log(`[server] Active collectors: ${activeCollectors.map(c => c.name).join(', ') || 'none'}`);
+    if (dbPath) {
+      console.log(`[server] SQLite database: ${dbPath}`);
+    } else {
+      console.log('[server] SQLite database: in-memory (data will not persist across restarts)');
+    }
   });
 
   // Graceful shutdown
@@ -65,6 +86,7 @@ async function main(): Promise<void> {
         console.warn(`[server] Error stopping collector ${collector.name}:`, err);
       }
     }
+    close();
     server.close(() => {
       console.log('[server] Server closed');
       process.exit(0);
