@@ -53,13 +53,24 @@ export interface CCSubagentProgress {
   timestamp?: string;
 }
 
+/** LLM 사용량 레코드 (assistant 메시지의 message.usage 필드) */
+export interface CCUsage {
+  kind: 'usage';
+  inputTokens: number;
+  outputTokens: number;
+  /** Claude Code JSONL 최상위 costUSD 필드 */
+  costUsd?: number;
+  timestamp?: string;
+}
+
 /** 파서가 반환하는 모든 레코드 타입의 합집합 */
 export type CCParsedRecord =
   | CCToolUse
   | CCToolResult
   | CCTurnDuration
   | CCUserInput
-  | CCSubagentProgress;
+  | CCSubagentProgress
+  | CCUsage;
 
 /**
  * content 블록 배열에서 tool_use / tool_result를 추출한다.
@@ -144,10 +155,25 @@ export function parseLine(line: string): CCParsedRecord[] {
 
   if (type === 'assistant') {
     const message = record.message as Record<string, unknown> | undefined;
+    const records: CCParsedRecord[] = [];
+
     if (message && Array.isArray(message.content)) {
-      return extractContentBlocks(message.content, timestamp);
+      records.push(...extractContentBlocks(message.content, timestamp));
     }
-    return [];
+
+    // message.usage에서 토큰 사용량 추출
+    const usage = message?.usage as Record<string, unknown> | undefined;
+    const inputTokens =
+      typeof usage?.input_tokens === 'number' ? usage.input_tokens : 0;
+    const outputTokens =
+      typeof usage?.output_tokens === 'number' ? usage.output_tokens : 0;
+    if (inputTokens > 0 || outputTokens > 0) {
+      const costUsd =
+        typeof record.costUSD === 'number' ? record.costUSD : undefined;
+      records.push({ kind: 'usage', inputTokens, outputTokens, costUsd, timestamp });
+    }
+
+    return records;
   }
 
   if (type === 'user') {

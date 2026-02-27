@@ -9,7 +9,7 @@ import {
   extractSessionId,
   buildAgentId,
 } from '../claude-code/normalizer.js';
-import type { CCToolUse, CCToolResult, CCTurnDuration, CCUserInput, CCSubagentProgress } from '../claude-code/parser.js';
+import type { CCToolUse, CCToolResult, CCTurnDuration, CCUserInput, CCSubagentProgress, CCUsage } from '../claude-code/parser.js';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 
@@ -128,6 +128,41 @@ describe('Claude Code Normalizer', () => {
       expect(events[0].data?.text_length).toBe(11);
     });
 
+    it('should normalize usage to metrics.usage event with tokens and cost', () => {
+      const record: CCUsage = {
+        kind: 'usage',
+        inputTokens: 1024,
+        outputTokens: 256,
+        costUsd: 0.005,
+        timestamp: '2026-02-27T10:00:03.000Z',
+      };
+
+      const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
+      const events = normalize(record, freshCtx);
+      expect(events).toHaveLength(1);
+      const e = events[0];
+      expect(e.type).toBe('metrics.usage');
+      expect(e.data?.tokens).toBe(1280); // 1024 + 256
+      expect(e.data?.input_tokens).toBe(1024);
+      expect(e.data?.output_tokens).toBe(256);
+      expect(e.data?.cost).toBe(0.005);
+    });
+
+    it('should normalize usage without cost (no costUSD field)', () => {
+      const record: CCUsage = {
+        kind: 'usage',
+        inputTokens: 512,
+        outputTokens: 128,
+        timestamp: '2026-02-27T10:00:01.000Z',
+      };
+
+      const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
+      const events = normalize(record, freshCtx);
+      expect(events).toHaveLength(1);
+      expect(events[0].data?.cost).toBeUndefined();
+      expect(events[0].data?.tokens).toBe(640);
+    });
+
     it('should normalize subagent_progress to subagent.spawn + nested events', () => {
       const record: CCSubagentProgress = {
         kind: 'subagent_progress',
@@ -175,11 +210,19 @@ describe('Claude Code Normalizer', () => {
       const toolEnds = events.filter((e) => e.type === 'tool.end');
       const statuses = events.filter((e) => e.type === 'agent.status');
       const userInputs = events.filter((e) => e.type === 'user.input');
+      const metricsUsage = events.filter((e) => e.type === 'metrics.usage');
 
       expect(toolStarts).toHaveLength(4);
       expect(toolEnds).toHaveLength(4);
       expect(statuses).toHaveLength(1);
       expect(userInputs).toHaveLength(1);
+      // fixture의 3개 assistant 메시지 중 3개 모두 usage 데이터 포함
+      expect(metricsUsage).toHaveLength(3);
+      // 비용 있는 메시지 (costUSD 포함된 첫 두 assistant 메시지)
+      const withCost = metricsUsage.filter((e) => typeof e.data?.cost === 'number');
+      expect(withCost).toHaveLength(2);
+      // 토큰 합계 검증 (1024+256=1280 for second assistant msg)
+      expect(metricsUsage[1].data?.tokens).toBe(1280);
 
       // All events should have consistent source and agent_id
       for (const event of events) {

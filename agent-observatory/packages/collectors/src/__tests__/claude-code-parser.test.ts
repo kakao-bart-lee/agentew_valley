@@ -8,6 +8,7 @@ import type {
   CCTurnDuration,
   CCUserInput,
   CCSubagentProgress,
+  CCUsage,
 } from '../claude-code/parser.js';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
@@ -197,6 +198,78 @@ describe('Claude Code Parser', () => {
     it('should ignore system records without turn_duration subtype', () => {
       const line = JSON.stringify({ type: 'system', subtype: 'other' });
       expect(parseLine(line)).toEqual([]);
+    });
+
+    it('should parse usage from assistant message with message.usage', () => {
+      const line = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [],
+          usage: { input_tokens: 1024, output_tokens: 256 },
+        },
+        costUSD: 0.005,
+        timestamp: '2026-02-27T10:00:03.000Z',
+      });
+
+      const records = parseLine(line);
+      expect(records).toHaveLength(1);
+      const r = records[0] as CCUsage;
+      expect(r.kind).toBe('usage');
+      expect(r.inputTokens).toBe(1024);
+      expect(r.outputTokens).toBe(256);
+      expect(r.costUsd).toBe(0.005);
+      expect(r.timestamp).toBe('2026-02-27T10:00:03.000Z');
+    });
+
+    it('should parse usage together with tool_use from the same assistant message', () => {
+      const line = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }],
+          usage: { input_tokens: 512, output_tokens: 64 },
+        },
+        costUSD: 0.002,
+        timestamp: '2026-02-27T10:00:01.000Z',
+      });
+
+      const records = parseLine(line);
+      expect(records).toHaveLength(2);
+      expect(records[0].kind).toBe('tool_use');
+      const usage = records[1] as CCUsage;
+      expect(usage.kind).toBe('usage');
+      expect(usage.inputTokens).toBe(512);
+      expect(usage.outputTokens).toBe(64);
+      expect(usage.costUsd).toBe(0.002);
+    });
+
+    it('should skip usage record when input_tokens and output_tokens are both 0', () => {
+      const line = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [],
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      });
+
+      const records = parseLine(line);
+      expect(records).toHaveLength(0);
+    });
+
+    it('should parse usage without costUSD (costUsd is undefined)', () => {
+      const line = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [],
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+        timestamp: '2026-02-27T10:00:05.000Z',
+      });
+
+      const records = parseLine(line);
+      expect(records).toHaveLength(1);
+      const r = records[0] as CCUsage;
+      expect(r.kind).toBe('usage');
+      expect(r.costUsd).toBeUndefined();
     });
   });
 

@@ -94,7 +94,7 @@ function makeEvent(
  * 민감 데이터 노출 방지를 위해 최소 정보만 포함.
  */
 function summarizeInput(
-  toolName: string,
+  _toolName: string,
   input: Record<string, unknown>,
 ): string {
   // 일반적인 파일 경로 키
@@ -182,6 +182,19 @@ export function normalize(
         makeEvent(ctx, 'user.input', ts, {
           data: {
             text_length: record.text.length,
+          },
+        }),
+      ];
+    }
+
+    case 'usage': {
+      return [
+        makeEvent(ctx, 'metrics.usage', ts, {
+          data: {
+            tokens: record.inputTokens + record.outputTokens,
+            input_tokens: record.inputTokens,
+            output_tokens: record.outputTokens,
+            ...(record.costUsd !== undefined ? { cost: record.costUsd } : {}),
           },
         }),
       ];
