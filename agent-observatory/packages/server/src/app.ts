@@ -17,6 +17,8 @@ export interface AppConfig {
   watchPaths?: string[];
   metricsIntervalMs?: number;
   timeseriesRetentionMinutes?: number;
+  /** SQLite database file path. Defaults to :memory: */
+  dbPath?: string;
 }
 
 export interface AppInstance {
@@ -27,6 +29,8 @@ export interface AppInstance {
   stateManager: StateManager;
   metricsAggregator: MetricsAggregator;
   historyStore: HistoryStore;
+  /** Gracefully close the app (DB connections, etc.) */
+  close(): void;
 }
 
 export function createApp(config?: AppConfig): AppInstance {
@@ -34,9 +38,10 @@ export function createApp(config?: AppConfig): AppInstance {
   const eventBus = new InMemoryEventBus();
   const stateManager = new StateManager();
   const metricsAggregator = new MetricsAggregator();
-  const historyStore = new HistoryStore();
+  const historyStore = new HistoryStore(config?.dbPath);
 
   metricsAggregator.setStateManager(stateManager);
+  metricsAggregator.setDb(historyStore.getDb());
 
   // 2. EventBus subscriptions
   eventBus.subscribe((event) => stateManager.handleEvent(event));
@@ -72,5 +77,10 @@ export function createApp(config?: AppConfig): AppInstance {
   const server = createServer(app);
   const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator);
 
-  return { app, server, io, eventBus, stateManager, metricsAggregator, historyStore };
+  // 5. Graceful close
+  const close = () => {
+    historyStore.close();
+  };
+
+  return { app, server, io, eventBus, stateManager, metricsAggregator, historyStore, close };
 }

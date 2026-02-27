@@ -32,6 +32,18 @@ export function createApiRouter(
     res.json({ agents, total: agents.length });
   });
 
+  // GET /api/v1/agents/hierarchy (must be before :id route)
+  router.get('/api/v1/agents/hierarchy', (_req, res) => {
+    const hierarchy = stateManager.getHierarchy();
+    res.json({ hierarchy });
+  });
+
+  // GET /api/v1/agents/by-team (must be before :id route)
+  router.get('/api/v1/agents/by-team', (_req, res) => {
+    const teams = stateManager.getTeams();
+    res.json({ teams });
+  });
+
   // GET /api/v1/agents/:id
   router.get('/api/v1/agents/:id', (req, res) => {
     const agent = stateManager.getAgent(req.params.id);
@@ -94,6 +106,25 @@ export function createApiRouter(
     const from = parseInt(req.query.from as string, 10) || 60;
     const data = metricsAggregator.getTimeseries(metric, from);
     res.json({ metric, from, data });
+  });
+
+  // GET /api/v1/events/search
+  router.get('/api/v1/events/search', (req, res) => {
+    const q = req.query.q as string | undefined;
+    if (!q) {
+      res.status(400).json({ error: 'Missing search query parameter "q"', code: 'MISSING_QUERY' });
+      return;
+    }
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+
+    try {
+      const events = historyStore.search(q, { limit, offset });
+      const total = historyStore.searchCount(q);
+      res.json({ query: q, events, total });
+    } catch {
+      res.json({ query: q, events: [], total: 0 });
+    }
   });
 
   // GET /api/v1/config

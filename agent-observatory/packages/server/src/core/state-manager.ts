@@ -1,5 +1,6 @@
 import type {
   AgentLiveState,
+  AgentHierarchyNode,
   UAEPEvent,
   AgentSourceType,
   ToolCategory,
@@ -265,6 +266,48 @@ export class StateManager {
 
   getAgentsByTeam(teamId: string): AgentLiveState[] {
     return this.getAllAgents().filter((a) => a.team_id === teamId);
+  }
+
+  /** Get full agent hierarchy tree (root agents with children) */
+  getHierarchy(): AgentHierarchyNode[] {
+    const allAgents = this.getAllAgents();
+    // Root agents: those without parent_agent_id or whose parent doesn't exist
+    const roots = allAgents.filter(
+      (a) => !a.parent_agent_id || !this.agents.has(a.parent_agent_id),
+    );
+    return roots.map((root) => this.buildSubtree(root));
+  }
+
+  /** Get subtree for a specific agent */
+  getSubtree(agentId: string): AgentHierarchyNode | undefined {
+    const agent = this.agents.get(agentId);
+    if (!agent) return undefined;
+    return this.buildSubtree(agent);
+  }
+
+  /** Get agents grouped by team */
+  getTeams(): { team_id: string; agents: AgentLiveState[] }[] {
+    const teamMap = new Map<string, AgentLiveState[]>();
+    for (const agent of this.agents.values()) {
+      const teamId = agent.team_id ?? '__no_team__';
+      let list = teamMap.get(teamId);
+      if (!list) {
+        list = [];
+        teamMap.set(teamId, list);
+      }
+      list.push(agent);
+    }
+    return Array.from(teamMap.entries())
+      .filter(([id]) => id !== '__no_team__')
+      .map(([team_id, agents]) => ({ team_id, agents }));
+  }
+
+  private buildSubtree(agent: AgentLiveState): AgentHierarchyNode {
+    const children = agent.child_agent_ids
+      .map((id) => this.agents.get(id))
+      .filter((a): a is AgentLiveState => a !== undefined)
+      .map((child) => this.buildSubtree(child));
+    return { agent, children };
   }
 
   onChange(handler: ChangeHandler): () => void {

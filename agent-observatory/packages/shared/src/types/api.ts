@@ -5,7 +5,7 @@
  */
 
 import type { UAEPEvent } from './uaep.js';
-import type { AgentLiveState } from './agent.js';
+import type { AgentLiveState, AgentHierarchyNode } from './agent.js';
 import type { MetricsSnapshot } from './metrics.js';
 
 // ─── REST API 응답 타입 ───
@@ -51,6 +51,23 @@ export interface SessionSummary {
 /** GET /api/v1/metrics/summary 응답 */
 export interface MetricsSummaryResponse {
   metrics: MetricsSnapshot;
+}
+
+/** GET /api/v1/agents/hierarchy 응답 */
+export interface AgentHierarchyResponse {
+  hierarchy: AgentHierarchyNode[];
+}
+
+/** GET /api/v1/agents/by-team 응답 */
+export interface AgentsByTeamResponse {
+  teams: { team_id: string; agents: AgentLiveState[] }[];
+}
+
+/** GET /api/v1/events/search 응답 */
+export interface EventSearchResponse {
+  query: string;
+  events: UAEPEvent[];
+  total: number;
 }
 
 /** GET /api/v1/config 응답 */

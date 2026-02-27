@@ -95,6 +95,16 @@ export interface AgentLiveState {
   child_agent_ids: string[];
 }
 
+/**
+ * 에이전트 계층 트리 노드.
+ *
+ * StateManager.getHierarchy()가 반환하는 재귀적 트리 구조.
+ */
+export interface AgentHierarchyNode {
+  agent: AgentLiveState;
+  children: AgentHierarchyNode[];
+}
+
 /** 지원하는 모든 AgentStatus 값 목록 */
 export const AGENT_STATUSES: readonly AgentStatus[] = [
   'idle',

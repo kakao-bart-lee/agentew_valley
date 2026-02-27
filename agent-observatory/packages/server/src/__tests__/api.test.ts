@@ -12,6 +12,7 @@ describe('REST API', () => {
   });
 
   afterEach(() => {
+    instance.close();
     instance.server.close();
     instance.io.close();
   });
@@ -165,6 +166,100 @@ describe('REST API', () => {
         .send({ invalid: true });
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/v1/agents/hierarchy', () => {
+    it('should return empty hierarchy initially', async () => {
+      const res = await request(instance.app).get('/api/v1/agents/hierarchy');
+      expect(res.status).toBe(200);
+      expect(res.body.hierarchy).toEqual([]);
+    });
+
+    it('should return hierarchy with parent-child', async () => {
+      instance.eventBus.publish(makeSessionStart('parent-1', 'sess-p1'));
+      instance.eventBus.publish(
+        makeEvent({
+          type: 'subagent.spawn',
+          agent_id: 'parent-1',
+          session_id: 'sess-p1',
+          data: { child_agent_id: 'child-1' },
+        }),
+      );
+      instance.eventBus.publish(makeSessionStart('child-1', 'sess-c1', { data: { parent_agent_id: 'parent-1' } }));
+
+      const res = await request(instance.app).get('/api/v1/agents/hierarchy');
+      expect(res.status).toBe(200);
+      expect(res.body.hierarchy).toHaveLength(1);
+      expect(res.body.hierarchy[0].agent.agent_id).toBe('parent-1');
+      expect(res.body.hierarchy[0].children).toHaveLength(1);
+      expect(res.body.hierarchy[0].children[0].agent.agent_id).toBe('child-1');
+    });
+  });
+
+  describe('GET /api/v1/agents/by-team', () => {
+    it('should return empty teams initially', async () => {
+      const res = await request(instance.app).get('/api/v1/agents/by-team');
+      expect(res.status).toBe(200);
+      expect(res.body.teams).toEqual([]);
+    });
+
+    it('should group agents by team', async () => {
+      instance.eventBus.publish(makeSessionStart('a1', 's1', { team_id: 'team-alpha' }));
+      instance.eventBus.publish(makeSessionStart('a2', 's2', { team_id: 'team-alpha' }));
+      instance.eventBus.publish(makeSessionStart('a3', 's3', { team_id: 'team-beta' }));
+
+      const res = await request(instance.app).get('/api/v1/agents/by-team');
+      expect(res.status).toBe(200);
+      expect(res.body.teams).toHaveLength(2);
+
+      const alpha = res.body.teams.find((t: { team_id: string }) => t.team_id === 'team-alpha');
+      expect(alpha.agents).toHaveLength(2);
+
+      const beta = res.body.teams.find((t: { team_id: string }) => t.team_id === 'team-beta');
+      expect(beta.agents).toHaveLength(1);
+    });
+  });
+
+  describe('GET /api/v1/events/search', () => {
+    it('should return 400 without query', async () => {
+      const res = await request(instance.app).get('/api/v1/events/search');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_QUERY');
+    });
+
+    it('should search events by type', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1'));
+      instance.eventBus.publish(makeToolStart('Read', 'agent-1', undefined, { session_id: 'sess-1' }));
+      instance.eventBus.publish(makeToolStart('Bash', 'agent-1', undefined, { session_id: 'sess-1' }));
+
+      const res = await request(instance.app).get('/api/v1/events/search?q=tool.start');
+      expect(res.status).toBe(200);
+      expect(res.body.query).toBe('tool.start');
+      expect(res.body.events.length).toBeGreaterThanOrEqual(2);
+      expect(res.body.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should search events by agent_id', async () => {
+      instance.eventBus.publish(makeSessionStart('search-agent', 'sess-sa'));
+      instance.eventBus.publish(makeSessionStart('other-agent', 'sess-oa'));
+
+      const res = await request(instance.app).get('/api/v1/events/search?q=search-agent');
+      expect(res.status).toBe(200);
+      expect(res.body.events.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.events.every((e: { agent_id: string }) => e.agent_id === 'search-agent')).toBe(true);
+    });
+
+    it('should support pagination', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1'));
+      for (let i = 0; i < 5; i++) {
+        instance.eventBus.publish(makeToolStart('Read', 'agent-1', undefined, { session_id: 'sess-1' }));
+      }
+
+      const res = await request(instance.app).get('/api/v1/events/search?q=tool.start&limit=2&offset=0');
+      expect(res.status).toBe(200);
+      expect(res.body.events).toHaveLength(2);
+      expect(res.body.total).toBeGreaterThanOrEqual(5);
     });
   });
 
