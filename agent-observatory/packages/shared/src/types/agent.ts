@@ -76,7 +76,16 @@ export interface AgentLiveState {
   /** 세션 시작 시각 (ISO-8601) */
   session_start: string;
 
-  /** 누적 토큰 수 */
+  /** 사용 중인 LLM 모델 ID (예: "claude-sonnet-4-6") */
+  model_id?: string;
+
+  /** 누적 입력 토큰 수 */
+  total_input_tokens: number;
+
+  /** 누적 출력 토큰 수 */
+  total_output_tokens: number;
+
+  /** 누적 토큰 수 (input + output) */
   total_tokens: number;
 
   /** 누적 비용 (USD) */

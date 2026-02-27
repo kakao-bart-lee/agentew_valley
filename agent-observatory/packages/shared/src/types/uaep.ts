@@ -59,6 +59,9 @@ export interface UAEPEvent {
   /** 세션/trace 단위 식별자 */
   session_id: string;
 
+  /** 사용 중인 LLM 모델 ID (예: "claude-sonnet-4-6") */
+  model_id?: string;
+
   /** 작업 단위 span (tool/llm call) */
   span_id?: string;
 

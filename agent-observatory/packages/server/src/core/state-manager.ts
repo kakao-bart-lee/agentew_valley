@@ -82,6 +82,20 @@ export class StateManager {
   }
 
   private handleSessionStart(event: UAEPEvent): void {
+    const existing = this.agents.get(event.agent_id);
+
+    // 이미 존재하는 에이전트라면 model_id 등 누락된 필드만 보완 (데이터 유실 방지)
+    if (existing) {
+      if (!existing.model_id && event.model_id) {
+        existing.model_id = event.model_id;
+      }
+      if (!existing.model_id && event.data?.['model_id']) {
+        existing.model_id = event.data['model_id'] as string;
+      }
+      this.notifyChange(existing);
+      return;
+    }
+
     const state: AgentLiveState = {
       agent_id: event.agent_id,
       agent_name: event.agent_name ?? event.agent_id,
@@ -92,6 +106,9 @@ export class StateManager {
       last_activity: event.ts,
       session_id: event.session_id,
       session_start: event.ts,
+      model_id: event.model_id ?? (event.data?.['model_id'] as string | undefined),
+      total_input_tokens: 0,
+      total_output_tokens: 0,
       total_tokens: 0,
       total_cost_usd: 0,
       total_tool_calls: 0,
@@ -247,11 +264,24 @@ export class StateManager {
     const agent = this.agents.get(event.agent_id);
     if (!agent) return;
 
+    if (typeof event.data?.['input_tokens'] === 'number') {
+      agent.total_input_tokens += event.data['input_tokens'] as number;
+    }
+    if (typeof event.data?.['output_tokens'] === 'number') {
+      agent.total_output_tokens += event.data['output_tokens'] as number;
+    }
     if (typeof event.data?.['tokens'] === 'number') {
       agent.total_tokens += event.data['tokens'] as number;
+    } else {
+      // tokens 필드가 없으면 input + output 합산
+      agent.total_tokens = agent.total_input_tokens + agent.total_output_tokens;
     }
     if (typeof event.data?.['cost'] === 'number') {
       agent.total_cost_usd += event.data['cost'] as number;
+    }
+    // 모델 정보가 이벤트에 포함된 경우 갱신
+    if (!agent.model_id && event.model_id) {
+      agent.model_id = event.model_id;
     }
 
     this.notifyChange(agent);

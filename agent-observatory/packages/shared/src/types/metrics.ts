@@ -24,16 +24,34 @@ export interface MetricsSnapshot {
   /** 전체 등록 에이전트 수 (비활성 포함) */
   total_agents: number;
 
-  /** 분당 토큰 사용량 */
+  /** 누적 세션 수 */
+  total_sessions: number;
+
+  /** 누적 도구 호출 수 (전체 기간) */
+  total_tool_calls: number;
+
+  /** 누적 입력 토큰 수 (전체 기간) */
+  total_input_tokens: number;
+
+  /** 누적 출력 토큰 수 (전체 기간) */
+  total_output_tokens: number;
+
+  /** 누적 비용 USD (전체 기간) */
+  total_cost_usd: number;
+
+  /** 도구 에러율 (최근 5분 기준, 0~1) */
+  tool_error_rate: number;
+
+  /** 분당 토큰 사용량 (최근 1분) */
   total_tokens_per_minute: number;
 
-  /** 시간당 비용 (USD) */
+  /** 시간당 비용 (USD, 최근 1시간) */
   total_cost_per_hour: number;
 
   /** 최근 1시간 에러 수 */
   total_errors_last_hour: number;
 
-  /** 분당 도구 호출 수 */
+  /** 분당 도구 호출 수 (최근 1분) */
   total_tool_calls_per_minute: number;
 
   /** 도구 카테고리별 사용 횟수 분포 */
@@ -41,6 +59,9 @@ export interface MetricsSnapshot {
 
   /** 에이전트 소스별 분포 */
   source_distribution: Record<AgentSourceType, number>;
+
+  /** LLM 모델별 세션 수 분포 (예: { "claude-sonnet-4-6": 3, "claude-opus-4-6": 1 }) */
+  model_distribution: Record<string, number>;
 
   /** 시계열 데이터 (슬라이딩 윈도우) */
   timeseries: MetricsTimeseries;
@@ -56,7 +77,13 @@ export interface MetricsTimeseries {
   /** 시간축 (ISO-8601 타임스탬프 배열) */
   timestamps: string[];
 
-  /** 분당 토큰 수 */
+  /** 분당 입력 토큰 수 */
+  input_tokens_per_minute: number[];
+
+  /** 분당 출력 토큰 수 */
+  output_tokens_per_minute: number[];
+
+  /** 분당 전체 토큰 수 (input + output) */
   tokens_per_minute: number[];
 
   /** 분당 비용 (USD) */

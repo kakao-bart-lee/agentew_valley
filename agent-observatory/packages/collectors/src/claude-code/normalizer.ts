@@ -35,6 +35,8 @@ export interface NormalizerContext {
   subContexts: Map<string, NormalizerContext>;
   /** 프로젝트 ID (JSONL 파일 경로의 projects/ 하위 디렉토리명) */
   projectId?: string;
+  /** LLM 모델 ID (예: "claude-sonnet-4-6"). Claude Code hooks의 SessionStart에서 주입. */
+  modelId?: string;
 }
 
 /**
@@ -79,6 +81,7 @@ export function buildAgentId(sessionId: string): string {
 export function createContext(
   filePath: string,
   agentIndex: number = 1,
+  modelId?: string,
 ): NormalizerContext {
   const sessionId = extractSessionId(filePath);
   return {
@@ -89,6 +92,7 @@ export function createContext(
     activeToolTimestamps: new Map(),
     subContexts: new Map(),
     projectId: extractProjectId(filePath),
+    modelId,
   };
 }
 
@@ -114,6 +118,7 @@ function makeEvent(
     agent_name: ctx.agentName,
     session_id: ctx.sessionId,
     ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
+    ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
     type,
     ...extra,
   };
@@ -236,6 +241,7 @@ export function normalize(
             input_tokens: record.inputTokens,
             output_tokens: record.outputTokens,
             ...(record.costUsd !== undefined ? { cost: record.costUsd } : {}),
+            ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
           },
         }),
       ];
