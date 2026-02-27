@@ -163,7 +163,7 @@ describe('Claude Code Normalizer', () => {
       expect(events[0].data?.tokens).toBe(640);
     });
 
-    it('should normalize subagent_progress to subagent.spawn + nested events', () => {
+    it('should normalize first subagent_progress to spawn + session.start + nested events', () => {
       const record: CCSubagentProgress = {
         kind: 'subagent_progress',
         parentToolUseId: 'toolu_task1',
@@ -181,11 +181,48 @@ describe('Claude Code Normalizer', () => {
 
       const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
       const events = normalize(record, freshCtx);
-      expect(events).toHaveLength(2);
+
+      // subagent.spawn (parent) + session.start (sub) + tool.start (sub)
+      expect(events).toHaveLength(3);
       expect(events[0].type).toBe('subagent.spawn');
+      expect(events[0].agent_id).toBe('cc-abcd1234'); // parent
       expect(events[0].parent_span_id).toBe('toolu_task1');
-      expect(events[1].type).toBe('tool.start');
-      expect(events[1].data?.tool_name).toBe('Read');
+      expect(events[0].data?.child_agent_id).toBe('cc-abcd1234-s1');
+
+      expect(events[1].type).toBe('session.start');
+      expect(events[1].agent_id).toBe('cc-abcd1234-s1'); // sub-agent
+      expect(events[1].data?.parent_agent_id).toBe('cc-abcd1234');
+
+      expect(events[2].type).toBe('tool.start');
+      expect(events[2].agent_id).toBe('cc-abcd1234-s1'); // sub-agent
+      expect(events[2].data?.tool_name).toBe('Read');
+    });
+
+    it('should reuse sub-agent context on subsequent progress for same parentToolUseId', () => {
+      const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
+
+      const firstProgress: CCSubagentProgress = {
+        kind: 'subagent_progress',
+        parentToolUseId: 'toolu_task1',
+        nestedRecords: [{ kind: 'tool_use', id: 'sub_r1', name: 'Read', input: {}, timestamp: '2026-02-27T11:00:01.000Z' }],
+        timestamp: '2026-02-27T11:00:01.000Z',
+      };
+      const secondProgress: CCSubagentProgress = {
+        kind: 'subagent_progress',
+        parentToolUseId: 'toolu_task1',
+        nestedRecords: [{ kind: 'tool_use', id: 'sub_g1', name: 'Grep', input: {}, timestamp: '2026-02-27T11:00:02.000Z' }],
+        timestamp: '2026-02-27T11:00:02.000Z',
+      };
+
+      const events1 = normalize(firstProgress, freshCtx);
+      const events2 = normalize(secondProgress, freshCtx);
+
+      // 두 번째 progress: spawn/session.start 없이 tool.start만
+      expect(events2).toHaveLength(1);
+      expect(events2[0].type).toBe('tool.start');
+      expect(events2[0].data?.tool_name).toBe('Grep');
+      // 같은 서브에이전트 ID 사용
+      expect(events2[0].agent_id).toBe(events1[1].agent_id); // events1[1] = session.start
     });
   });
 
@@ -243,9 +280,23 @@ describe('Claude Code Normalizer', () => {
       const ctx = createContext('/path/to/sub12345-test.jsonl', 1);
       const events = normalizeAll(records, ctx);
 
+      // toolu_task1에 대해 progress가 2번 오지만 spawn은 1번만
       const spawns = events.filter((e) => e.type === 'subagent.spawn');
-      expect(spawns).toHaveLength(2);
+      expect(spawns).toHaveLength(1);
       expect(spawns[0].parent_span_id).toBe('toolu_task1');
+      expect(spawns[0].data?.child_agent_id).toBe('cc-sub12345-s1');
+
+      // 서브에이전트 session.start 1회
+      const subStarts = events.filter((e) => e.type === 'session.start');
+      expect(subStarts).toHaveLength(1);
+      expect(subStarts[0].agent_id).toBe('cc-sub12345-s1');
+      expect(subStarts[0].data?.parent_agent_id).toBe('cc-sub12345');
+
+      // 서브에이전트 도구 이벤트는 서브에이전트 agent_id로 발행됨
+      const subToolStarts = events.filter(
+        (e) => e.type === 'tool.start' && e.agent_id === 'cc-sub12345-s1',
+      );
+      expect(subToolStarts).toHaveLength(2); // Read + Grep
     });
 
     it('should assign sequential seq numbers', () => {

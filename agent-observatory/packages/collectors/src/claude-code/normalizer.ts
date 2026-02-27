@@ -27,6 +27,12 @@ export interface NormalizerContext {
   seq: number;
   /** 활성 도구 시작 시각 (span_id -> ISO timestamp) */
   activeToolTimestamps: Map<string, string>;
+  /**
+   * 서브에이전트 컨텍스트 캐시 (parentToolUseId → NormalizerContext).
+   * 동일 parentToolUseId의 progress가 여러 번 올 때 컨텍스트를 재사용하여
+   * session.start/subagent.spawn이 중복 발행되지 않도록 한다.
+   */
+  subContexts: Map<string, NormalizerContext>;
 }
 
 /**
@@ -60,6 +66,7 @@ export function createContext(
     agentName: `Claude Code #${agentIndex}`,
     seq: 0,
     activeToolTimestamps: new Map(),
+    subContexts: new Map(),
   };
 }
 
@@ -202,20 +209,47 @@ export function normalize(
 
     case 'subagent_progress': {
       const events: UAEPEvent[] = [];
+      const isFirstProgress = !ctx.subContexts.has(record.parentToolUseId);
 
-      // subagent.spawn 이벤트
-      events.push(
-        makeEvent(ctx, 'subagent.spawn', ts, {
-          parent_span_id: record.parentToolUseId,
-          data: {
-            parent_tool_use_id: record.parentToolUseId,
-          },
-        }),
-      );
+      // 서브에이전트 컨텍스트 get-or-create
+      if (isFirstProgress) {
+        const subIdx = ctx.subContexts.size + 1;
+        const subAgentId = `${ctx.agentId}-s${subIdx}`;
+        const subSessionId = `${ctx.sessionId}-s${subIdx}`;
+        const subCtx: NormalizerContext = {
+          sessionId: subSessionId,
+          agentId: subAgentId,
+          agentName: `${ctx.agentName} (sub ${subIdx})`,
+          seq: 0,
+          activeToolTimestamps: new Map(),
+          subContexts: new Map(),
+        };
+        ctx.subContexts.set(record.parentToolUseId, subCtx);
 
-      // 중첩 레코드를 재귀적으로 정규화
+        // 첫 progress: 부모에 subagent.spawn, 서브에이전트에 session.start
+        events.push(
+          makeEvent(ctx, 'subagent.spawn', ts, {
+            parent_span_id: record.parentToolUseId,
+            data: {
+              parent_tool_use_id: record.parentToolUseId,
+              child_agent_id: subAgentId,
+            },
+          }),
+        );
+        events.push(
+          makeEvent(subCtx, 'session.start', ts, {
+            data: {
+              parent_agent_id: ctx.agentId,
+              parent_tool_use_id: record.parentToolUseId,
+            },
+          }),
+        );
+      }
+
+      // 서브에이전트 컨텍스트로 중첩 레코드 정규화
+      const subCtx = ctx.subContexts.get(record.parentToolUseId)!;
       for (const nested of record.nestedRecords) {
-        events.push(...normalize(nested, ctx));
+        events.push(...normalize(nested, subCtx));
       }
 
       return events;
