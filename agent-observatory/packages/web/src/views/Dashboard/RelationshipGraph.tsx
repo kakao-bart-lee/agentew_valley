@@ -7,6 +7,8 @@ interface RelationshipGraphProps {
     onSelectAgent?: (id: string) => void;
 }
 
+const API_BASE = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+
 export function RelationshipGraph({ selectedAgentId, onSelectAgent }: RelationshipGraphProps) {
     const { agents } = useAgentStore();
     // agents.size(primitive)를 별도 selector로 구독 — 에이전트 수 변경 시에만 hierarchy 재fetch
@@ -14,8 +16,10 @@ export function RelationshipGraph({ selectedAgentId, onSelectAgent }: Relationsh
     const [hierarchyTeams, setHierarchyTeams] = useState<AgentHierarchyNode[]>([]);
 
     useEffect(() => {
-        if (import.meta.env?.VITE_MOCK !== 'true') {
-            fetch('http://localhost:3000/api/v1/agents/hierarchy')
+        // Reset on every change — prevents stale hierarchy after agent removal
+        setHierarchyTeams([]);
+        if (import.meta.env?.VITE_MOCK !== 'true' && agentCount > 0) {
+            fetch(`${API_BASE}/api/v1/agents/hierarchy`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.hierarchy) {

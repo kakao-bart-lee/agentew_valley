@@ -56,6 +56,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
         s.on('disconnect', () => {
             setConnectionStatus(false, true);
+            initSession([]); // 연결 해제 시 stale 에이전트 제거
         });
 
         s.on('init', (data: { agents: AgentLiveState[]; metrics: MetricsSnapshot }) => {

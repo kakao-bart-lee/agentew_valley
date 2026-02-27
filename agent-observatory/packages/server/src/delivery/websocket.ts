@@ -95,8 +95,11 @@ export function createWebSocketServer(
     }
   });
 
-  // Agent remove
+  // Agent remove — flush pending batched state updates before emitting remove
+  // to prevent stale agent:state from re-adding agent after agent:remove
   stateManager.onRemove((agentId) => {
+    dashboardBatch = dashboardBatch.filter((s) => s.agent_id !== agentId);
+    pixelBatch = pixelBatch.filter((s) => s.agent_id !== agentId);
     io.emit('agent:remove', { agent_id: agentId });
   });
 

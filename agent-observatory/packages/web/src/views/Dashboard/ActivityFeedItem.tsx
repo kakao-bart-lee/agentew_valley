@@ -18,34 +18,36 @@ export function ActivityFeedItem({ event }: { event: UAEPEvent }) {
     const sourceLabel = SOURCE_LABELS[source] || 'U';
     const sourceColor = SOURCE_COLORS[source] || '#9ca3af';
 
+    const str = (val: unknown, fallback = '') => (val != null ? String(val) : fallback);
+
     const renderContent = () => {
         switch (type) {
             case 'tool.start':
                 return (
                     <div className="flex flex-col">
-                        <div><span className="text-slate-400">→</span> {String(data?.tool_name)} <span className="text-xs text-slate-500">({String(data?.tool_category)})</span></div>
-                        {Boolean(data?.tool_input_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data!.tool_input_summary)}</div>}
+                        <div><span className="text-slate-400">→</span> {str(data?.tool_name, 'unknown')} <span className="text-xs text-slate-500">({str(data?.tool_category, 'other')})</span></div>
+                        {Boolean(data?.input_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{str(data?.input_summary)}</div>}
                     </div>
                 );
             case 'tool.end':
                 return (
                     <div className="flex flex-col">
                         <div className="flex items-center gap-1">
-                            {data?.success ? <span className="text-emerald-500">✓</span> : <span className="text-red-500">✗</span>}
-                            {String(data?.tool_name)}
-                            <span className="text-xs text-slate-500 ml-1">{String(data?.duration_ms)}ms</span>
+                            {data?.success !== false ? <span className="text-emerald-500">✓</span> : <span className="text-red-500">✗</span>}
+                            {str(data?.tool_name, 'Tool completed')}
+                            {data?.duration_ms != null && <span className="text-xs text-slate-500 ml-1">{str(data.duration_ms)}ms</span>}
                         </div>
-                        {Boolean(data?.output_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{String(data!.output_summary)}</div>}
+                        {Boolean(data?.output_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{str(data?.output_summary)}</div>}
                     </div>
                 );
             case 'tool.error':
                 return (
                     <div className="text-red-400">
-                        <span>✗</span> {String(data?.tool_name)}: {data?.error_message ? String(data.error_message) : 'Error occurred'}
+                        <span>✗</span> {str(data?.tool_name, 'unknown')}: {data?.error_message ? str(data.error_message) : 'Error occurred'}
                     </div>
                 );
             case 'agent.status':
-                return <div className="text-amber-400">⚡ Status: {String(data?.status)}</div>;
+                return <div className="text-amber-400">⚡ Status: {str(data?.status)}</div>;
             case 'user.input':
                 return <div className="text-blue-400">💬 User input</div>;
             case 'session.start':
@@ -53,7 +55,7 @@ export function ActivityFeedItem({ event }: { event: UAEPEvent }) {
             case 'session.end':
                 return <div className="text-slate-400">⏹ Session ended</div>;
             case 'subagent.spawn':
-                return <div className="text-purple-400">🔀 Spawned: {String(data?.child_agent_name)}</div>;
+                return <div className="text-purple-400">🔀 Spawned: {str(data?.child_agent_name ?? data?.child_agent_id, 'sub-agent')}</div>;
             default:
                 return <div className="text-slate-500 text-xs">Unknown event: {type}</div>;
         }
