@@ -32,18 +32,24 @@ export function createWebSocketServer(
   // Batch buffers
   let dashboardBatch: AgentLiveState[] = [];
   let pixelBatch: AgentLiveState[] = [];
+  let dashboardEventBatch: UAEPEvent[] = [];
 
-  // Dashboard batch: every 1s
+  // Dashboard batch: every 1s (agent:state + event)
   const dashboardInterval = setInterval(() => {
-    if (dashboardBatch.length === 0) return;
-    const batch = dashboardBatch;
+    const stateBatch = dashboardBatch;
+    const eventBatch = dashboardEventBatch;
     dashboardBatch = [];
+    dashboardEventBatch = [];
+    if (stateBatch.length === 0 && eventBatch.length === 0) return;
     for (const [socketId, state] of clients) {
       if (state.view === 'dashboard') {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
-          for (const agentState of batch) {
+          for (const agentState of stateBatch) {
             socket.emit('agent:state', agentState);
+          }
+          for (const evt of eventBatch) {
+            socket.emit('event', evt);
           }
         }
       }
@@ -94,10 +100,16 @@ export function createWebSocketServer(
     io.emit('agent:remove', { agent_id: agentId });
   });
 
-  // Forward events to subscribed clients
+  // Forward events to clients:
+  // - dashboard view: all events batched (1s interval via dashboardEventBatch)
+  // - other views: only subscribed agent events (immediate)
   eventBus.subscribe((event: UAEPEvent) => {
+    // Always add to dashboard batch — flush sends only to dashboard-view clients
+    dashboardEventBatch.push(event);
+
+    // Subscribed agents get immediate events (non-dashboard views only)
     for (const [socketId, state] of clients) {
-      if (state.subscribedAgents.has(event.agent_id)) {
+      if (state.view !== 'dashboard' && state.subscribedAgents.has(event.agent_id)) {
         const socket = io.sockets.sockets.get(socketId);
         if (socket) {
           socket.emit('event', event);

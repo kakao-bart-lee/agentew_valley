@@ -103,13 +103,15 @@ describe('WebSocket Server', () => {
     expect(removed.agent_id).toBe('agent-ws');
   });
 
-  it('should send subscribed agent events on subscribe', async () => {
+  it('should send subscribed agent events on subscribe (non-dashboard view)', async () => {
     const socket = connect();
     await waitFor(socket, 'init');
 
+    // Switch to timeline view for immediate subscribe-based delivery
+    socket.emit('set_view', 'timeline');
     socket.emit('subscribe', 'agent-sub');
 
-    // Small delay for subscription
+    // Small delay for subscription + view change
     await new Promise((r) => setTimeout(r, 50));
 
     const eventPromise = waitFor<{ agent_id: string; type: string }>(socket, 'event');
@@ -120,5 +122,48 @@ describe('WebSocket Server', () => {
     const received = await eventPromise;
     expect(received.agent_id).toBe('agent-sub');
     expect(received.type).toBe('tool.start');
+  });
+
+  it('should broadcast all events to dashboard-view clients (batched)', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    // Default view is dashboard — should receive ALL events via batch
+    const events: Array<{ agent_id: string; type: string }> = [];
+    socket.on('event', (evt: { agent_id: string; type: string }) => {
+      events.push(evt);
+    });
+
+    // Publish events from different agents (no explicit subscribe)
+    instance.eventBus.publish(makeToolStart('Read', 'agent-a'));
+    instance.eventBus.publish(makeToolStart('Write', 'agent-b'));
+
+    // Wait for 1s batch flush
+    await new Promise((r) => setTimeout(r, 1500));
+
+    expect(events.length).toBe(2);
+    expect(events[0].agent_id).toBe('agent-a');
+    expect(events[1].agent_id).toBe('agent-b');
+  });
+
+  it('should not send events to non-dashboard view without subscribe', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    socket.emit('set_view', 'timeline');
+    await new Promise((r) => setTimeout(r, 50));
+
+    const events: unknown[] = [];
+    socket.on('event', (evt: unknown) => {
+      events.push(evt);
+    });
+
+    // Publish event without subscribing
+    instance.eventBus.publish(makeToolStart('Read', 'agent-no-sub'));
+
+    // Wait a bit — should not receive any events
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(events.length).toBe(0);
   });
 });

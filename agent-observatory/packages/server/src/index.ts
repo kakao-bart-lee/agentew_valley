@@ -8,43 +8,71 @@ export { HistoryStore } from './core/history-store.js';
 export { createApiRouter } from './delivery/api.js';
 export { createWebSocketServer } from './delivery/websocket.js';
 
+import type { UAEPEvent } from '@agent-observatory/shared';
+import type { Collector } from '@agent-observatory/collectors';
+import { ClaudeCodeCollector, OpenClawCollector } from '@agent-observatory/collectors';
+import { createApp } from './app.js';
+
 async function main(): Promise<void> {
   const port = parseInt(process.env.PORT ?? '3000', 10);
   const watchPaths = (process.env.WATCH_PATHS ?? '').split(',').filter(Boolean);
 
-  const { createApp } = await import('./app.js');
   const { server, eventBus } = createApp({ watchPaths });
 
-  // Collectors integration (try to load, skip if not available)
+  const activeCollectors: Collector[] = [];
+
+  // Claude Code Collector
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const collectors = await (import('@agent-observatory/collectors' as any) as Promise<any>);
-    if (collectors.ClaudeCodeCollector) {
-      const ccPaths = (process.env.CLAUDE_CODE_WATCH_PATHS ?? '~/.claude/projects').split(',');
-      const cc = new collectors.ClaudeCodeCollector({ watchPaths: ccPaths });
-      cc.onEvent((event: unknown) => eventBus.publish(event as import('@agent-observatory/shared').UAEPEvent));
-      await cc.start();
-      console.log('[server] Claude Code collector started');
-    }
-  } catch {
-    console.log('[server] Collectors not available, running without collectors');
+    const ccPaths = (process.env.CLAUDE_CODE_WATCH_PATHS ?? '~/.claude/projects').split(',');
+    const cc = new ClaudeCodeCollector({ watchPaths: ccPaths });
+    cc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    await cc.start();
+    activeCollectors.push(cc);
+    console.log(`[server] Claude Code collector started (paths: ${ccPaths.join(', ')})`);
+  } catch (err) {
+    console.warn('[server] Claude Code collector failed to start:', err);
+  }
+
+  // OpenClaw Collector
+  try {
+    const ocPaths = (process.env.OPENCLAW_WATCH_PATHS ?? '~/.openclaw/agents').split(',');
+    const oc = new OpenClawCollector({ watchPaths: ocPaths });
+    oc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    await oc.start();
+    activeCollectors.push(oc);
+    console.log(`[server] OpenClaw collector started (paths: ${ocPaths.join(', ')})`);
+  } catch (err) {
+    console.warn('[server] OpenClaw collector failed to start:', err);
+  }
+
+  if (activeCollectors.length === 0) {
+    console.log('[server] No collectors active — running in API-only mode');
   }
 
   server.listen(port, () => {
     console.log(`[server] Agent Observatory server listening on port ${port}`);
+    console.log(`[server] Active collectors: ${activeCollectors.map(c => c.name).join(', ') || 'none'}`);
   });
 
   // Graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     console.log('[server] Shutting down...');
+    for (const collector of activeCollectors) {
+      try {
+        await collector.stop();
+        console.log(`[server] Collector ${collector.name} stopped`);
+      } catch (err) {
+        console.warn(`[server] Error stopping collector ${collector.name}:`, err);
+      }
+    }
     server.close(() => {
       console.log('[server] Server closed');
       process.exit(0);
     });
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
 }
 
 // Run only when executed directly
