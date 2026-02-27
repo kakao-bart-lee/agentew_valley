@@ -314,16 +314,24 @@ describe('StateManager', () => {
       expect(beta!.agents[0].agent_id).toBe('a3');
     });
 
-    it('should exclude agents without team_id', () => {
+    it('should group agents without team_id under "Ungrouped"', () => {
       const sm = new StateManager();
       sm.handleEvent(makeSessionStart('a1', 's1', { team_id: 'team-alpha' }));
       sm.handleEvent(makeSessionStart('a2', 's2')); // no team_id
 
       const teams = sm.getTeams();
-      expect(teams).toHaveLength(1);
-      expect(teams[0].team_id).toBe('team-alpha');
-      expect(teams[0].agents).toHaveLength(1);
-      expect(teams[0].agents[0].agent_id).toBe('a1');
+      expect(teams).toHaveLength(2);
+
+      const alpha = teams.find((t) => t.team_id === 'team-alpha');
+      const ungrouped = teams.find((t) => t.team_id === 'Ungrouped');
+
+      expect(alpha).toBeDefined();
+      expect(alpha!.agents).toHaveLength(1);
+      expect(alpha!.agents[0].agent_id).toBe('a1');
+
+      expect(ungrouped).toBeDefined();
+      expect(ungrouped!.agents).toHaveLength(1);
+      expect(ungrouped!.agents[0].agent_id).toBe('a2');
     });
   });
 });

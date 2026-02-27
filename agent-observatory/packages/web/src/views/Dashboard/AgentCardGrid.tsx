@@ -101,26 +101,38 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
             groupedTeams = Array.from(teamMap.entries()).map(([team_id, team_agents]) => ({ team_id, agents: team_agents }));
         }
 
-        content = [...groupedTeams].sort((a, b) => a.team_id.localeCompare(b.team_id)).map(({ team_id, agents: teamAgents }) => {
-            // Apply current filters to the team's agents
-            let localFiltered = teamAgents;
-            if (sourceFilter.length > 0) localFiltered = localFiltered.filter(a => sourceFilter.includes(a.source));
-            if (statusFilter.length > 0) localFiltered = localFiltered.filter(a => statusFilter.includes(a.status));
+        content = [...groupedTeams]
+            .sort((a, b) => {
+                if (a.team_id === 'Ungrouped') return 1;
+                if (b.team_id === 'Ungrouped') return -1;
+                return a.team_id.localeCompare(b.team_id);
+            })
+            .map(({ team_id, agents: teamAgents }) => {
+                // Apply current filters to the team's agents
+                let localFiltered = teamAgents;
+                if (sourceFilter.length > 0) localFiltered = localFiltered.filter(a => sourceFilter.includes(a.source));
+                if (statusFilter.length > 0) localFiltered = localFiltered.filter(a => statusFilter.includes(a.status));
 
-            // Sort them using our local sort utility
-            const sortedLocal = sortAgents(localFiltered, sortMode);
+                // Sort them using our local sort utility
+                const sortedLocal = sortAgents(localFiltered, sortMode);
 
-            if (sortedLocal.length === 0) return null; // Don't show empty teams after filtering
+                if (sortedLocal.length === 0) return null; // Don't show empty teams after filtering
 
-            return (
-                <div key={team_id} className="mb-6 bg-slate-900/40 p-3 rounded-lg border border-slate-800/80">
-                    <h3 className="text-sm font-semibold text-slate-300 mb-3 px-1 border-b border-slate-800 pb-2">
-                        Team: {team_id} <span className="text-slate-500 text-xs font-normal ml-2">({sortedLocal.length} agents)</span>
-                    </h3>
-                    {renderGrid(sortedLocal)}
-                </div>
-            );
-        });
+                const isUngrouped = team_id === 'Ungrouped';
+                return (
+                    <div key={team_id} className={`mb-6 p-3 rounded-lg border ${isUngrouped ? 'bg-slate-900/20 border-slate-800/40' : 'bg-slate-900/40 border-slate-800/80'}`}>
+                        <h3 className="text-sm font-semibold text-slate-300 mb-3 px-1 border-b border-slate-800 pb-2">
+                            {isUngrouped ? (
+                                <span className="text-slate-400">Ungrouped</span>
+                            ) : (
+                                <>Team: {team_id}</>
+                            )}
+                            <span className="text-slate-500 text-xs font-normal ml-2">({sortedLocal.length} agents)</span>
+                        </h3>
+                        {renderGrid(sortedLocal)}
+                    </div>
+                );
+            });
     } else {
         content = renderGrid(filteredAndSortedAgents);
     }

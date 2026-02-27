@@ -289,7 +289,7 @@ export class StateManager {
   getTeams(): { team_id: string; agents: AgentLiveState[] }[] {
     const teamMap = new Map<string, AgentLiveState[]>();
     for (const agent of this.agents.values()) {
-      const teamId = agent.team_id ?? '__no_team__';
+      const teamId = agent.team_id ?? 'Ungrouped';
       let list = teamMap.get(teamId);
       if (!list) {
         list = [];
@@ -298,7 +298,6 @@ export class StateManager {
       list.push(agent);
     }
     return Array.from(teamMap.entries())
-      .filter(([id]) => id !== '__no_team__')
       .map(([team_id, agents]) => ({ team_id, agents }));
   }
 
