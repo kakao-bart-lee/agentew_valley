@@ -715,7 +715,7 @@ export function PixelOfficeCanvas({
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: '#1E1E2E',
+        background: '#8ACFCF',
       }}
     >
       <canvas

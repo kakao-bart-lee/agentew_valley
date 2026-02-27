@@ -1,4 +1,4 @@
-import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types'
+import { TileType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types'
 import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types'
 import { getCatalogEntry } from './furnitureCatalog'
 import { getColorizedSprite } from '../colorize'
@@ -204,10 +204,11 @@ export function getSeatTiles(seats: Map<string, Seat>): Set<string> {
   return tiles
 }
 
-/** Default floor colors */
-const DEFAULT_GRASS_COLOR: FloorColor = { h: 120, s: 45, b: 10, c: 0 }    // green grass
-const DEFAULT_DIRT_COLOR: FloorColor = { h: 30, s: 35, b: -5, c: 0 }      // dirt path
-const DEFAULT_DARK_GRASS: FloorColor = { h: 130, s: 50, b: -5, c: 0 }     // dark grass (crop area)
+/** Default floor colors — neutral preserves original Sprout Lands PNG colors */
+const NEUTRAL_COLOR: FloorColor = { h: 0, s: 0, b: 0, c: 0 }             // original sprite colors
+const DEFAULT_GRASS_COLOR: FloorColor = NEUTRAL_COLOR                      // warm yellow-green grass
+const DEFAULT_DIRT_COLOR: FloorColor = NEUTRAL_COLOR                       // uses dirt pattern as-is
+const DEFAULT_DARK_GRASS: FloorColor = NEUTRAL_COLOR                       // uses dark grass as-is
 
 /** Create the default farm layout */
 export function createDefaultLayout(): OfficeLayout {
@@ -223,7 +224,7 @@ export function createDefaultLayout(): OfficeLayout {
     for (let c = 0; c < DEFAULT_COLS; c++) {
       // Fence border
       if (r === 0 || r === DEFAULT_ROWS - 1 || c === 0 || c === DEFAULT_COLS - 1) {
-        tiles.push(W); tileColors.push(null); continue
+        tiles.push(W); tileColors.push(NEUTRAL_COLOR); continue
       }
       // Dirt path (horizontal at row 7, vertical at col 11)
       if (r === 7 || c === 11) {
@@ -239,35 +240,65 @@ export function createDefaultLayout(): OfficeLayout {
     }
   }
 
-  // Use dynamic Sprout IDs if available, else fall back to hardcoded FurnitureType
+  // Use Sprout Lands asset IDs — getCatalogEntry() falls back to hardcoded catalog for legacy types
   const furniture: PlacedFurniture[] = [
-    // Left crop patches (desks — agents work here)
-    { uid: 'crop-l-1', type: 'crop-wheat' in {} ? 'crop-wheat' : FurnitureType.DESK, col: 3, row: 3 },
-    { uid: 'crop-l-2', type: 'crop-carrot' in {} ? 'crop-carrot' : FurnitureType.DESK, col: 5, row: 3 },
-    // Right crop patches
-    { uid: 'crop-r-1', type: 'crop-tomato' in {} ? 'crop-tomato' : FurnitureType.DESK, col: 14, row: 3 },
-    { uid: 'crop-r-2', type: 'crop-pumpkin' in {} ? 'crop-pumpkin' : FurnitureType.DESK, col: 16, row: 3 },
-    // Work spots (chairs — agent standing positions next to crops)
-    { uid: 'spot-l-1', type: FurnitureType.CHAIR, col: 3, row: 5 },
-    { uid: 'spot-l-2', type: FurnitureType.CHAIR, col: 5, row: 5 },
-    { uid: 'spot-l-3', type: FurnitureType.CHAIR, col: 4, row: 6 },
-    { uid: 'spot-r-1', type: FurnitureType.CHAIR, col: 14, row: 5 },
-    { uid: 'spot-r-2', type: FurnitureType.CHAIR, col: 16, row: 5 },
-    { uid: 'spot-r-3', type: FurnitureType.CHAIR, col: 15, row: 6 },
-    // Trees (storage)
-    { uid: 'tree-1', type: FurnitureType.BOOKSHELF, col: 1, row: 1 },
-    { uid: 'tree-2', type: FurnitureType.BOOKSHELF, col: 19, row: 1 },
-    // Nature decor
-    { uid: 'flower-1', type: FurnitureType.PLANT, col: 8, row: 2 },
-    { uid: 'flower-2', type: FurnitureType.PLANT, col: 13, row: 10 },
-    { uid: 'flower-3', type: FurnitureType.PLANT, col: 2, row: 12 },
-    // Chest / barrel (misc)
-    { uid: 'chest-1', type: FurnitureType.COOLER, col: 19, row: 12 },
-    // Lower field work spots
-    { uid: 'spot-b-1', type: FurnitureType.CHAIR, col: 4, row: 10 },
-    { uid: 'spot-b-2', type: FurnitureType.CHAIR, col: 6, row: 10 },
-    { uid: 'spot-b-3', type: FurnitureType.CHAIR, col: 15, row: 10 },
-    { uid: 'spot-b-4', type: FurnitureType.CHAIR, col: 17, row: 10 },
+    // ── Trees (corners and edges for a lush farm feel) ──
+    { uid: 'tree-1', type: 'tree-oak-tree', col: 1, row: 1 },
+    { uid: 'tree-2', type: 'tree-pine-tree', col: 19, row: 1 },
+    { uid: 'tree-3', type: 'tree-apple-tree', col: 1, row: 10 },
+    { uid: 'tree-4', type: 'tree-oak-tree', col: 19, row: 10 },
+    { uid: 'bush-1', type: 'tree-bush', col: 9, row: 1 },
+    { uid: 'bush-2', type: 'tree-berry-bush', col: 12, row: 1 },
+
+    // ── Left crop patches (desks — agents work here, staggered rows) ──
+    { uid: 'crop-l-1', type: 'crop-wheat', col: 3, row: 3 },
+    { uid: 'crop-l-2', type: 'crop-sunflower', col: 4, row: 4 },
+    { uid: 'crop-l-3', type: 'crop-carrot', col: 5, row: 3 },
+    { uid: 'crop-l-4', type: 'crop-corn', col: 6, row: 4 },
+
+    // ── Right crop patches (staggered rows) ──
+    { uid: 'crop-r-1', type: 'crop-turnip', col: 14, row: 3 },
+    { uid: 'crop-r-2', type: 'crop-pumpkin', col: 15, row: 4 },
+    { uid: 'crop-r-3', type: 'crop-corn', col: 16, row: 3 },
+    { uid: 'crop-r-4', type: 'crop-wheat', col: 17, row: 4 },
+
+    // ── Work spots (chairs — agent standing positions next to crops) ──
+    { uid: 'spot-l-1', type: 'chair', col: 3, row: 5 },
+    { uid: 'spot-l-2', type: 'chair', col: 5, row: 5 },
+    { uid: 'spot-l-3', type: 'chair', col: 4, row: 6 },
+    { uid: 'spot-l-4', type: 'chair', col: 6, row: 6 },
+    { uid: 'spot-r-1', type: 'chair', col: 14, row: 5 },
+    { uid: 'spot-r-2', type: 'chair', col: 16, row: 5 },
+    { uid: 'spot-r-3', type: 'chair', col: 15, row: 6 },
+    { uid: 'spot-r-4', type: 'chair', col: 17, row: 6 },
+
+    // ── Flowers and nature decor (scattered naturally) ──
+    { uid: 'flower-1', type: 'nature-flower-red', col: 8, row: 2 },
+    { uid: 'flower-2', type: 'nature-flower-blue', col: 13, row: 2 },
+    { uid: 'flower-3', type: 'nature-flower-yellow', col: 2, row: 8 },
+    { uid: 'flower-4', type: 'nature-flower-red', col: 18, row: 8 },
+    { uid: 'grass-1', type: 'nature-grass-tuft', col: 7, row: 9 },
+    { uid: 'grass-2', type: 'nature-grass-tuft', col: 10, row: 5 },
+    { uid: 'grass-3', type: 'nature-grass-tuft', col: 13, row: 12 },
+    { uid: 'mushroom-1', type: 'nature-mushroom', col: 9, row: 12 },
+
+    // ── Stones ──
+    { uid: 'stone-1', type: 'nature-stone-small', col: 8, row: 6 },
+    { uid: 'stone-2', type: 'nature-rock-pile', col: 18, row: 5 },
+    { uid: 'stone-3', type: 'nature-stone-large', col: 2, row: 11 },
+
+    // ── Chests and barrels ──
+    { uid: 'chest-1', type: 'misc-chest', col: 19, row: 12 },
+    { uid: 'barrel-1', type: 'misc-barrel', col: 20, row: 12 },
+
+    // ── Tree stump ──
+    { uid: 'stump-1', type: 'tree-stump', col: 10, row: 8 },
+
+    // ── Lower field work spots ──
+    { uid: 'spot-b-1', type: 'chair', col: 4, row: 10 },
+    { uid: 'spot-b-2', type: 'chair', col: 6, row: 10 },
+    { uid: 'spot-b-3', type: 'chair', col: 15, row: 10 },
+    { uid: 'spot-b-4', type: 'chair', col: 17, row: 10 },
   ]
 
   return { version: 1, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, tiles, tileColors, furniture }
@@ -311,8 +342,8 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
   const tileColors: Array<FloorColor | null> = []
   for (const tile of layout.tiles) {
     switch (tile) {
-      case 0: // WALL (fence)
-        tileColors.push(null)
+      case 0: // WALL (fence) — neutral preserves original fence sprite colors
+        tileColors.push(NEUTRAL_COLOR)
         break
       case 1: // FLOOR_1 → grass
         tileColors.push(DEFAULT_GRASS_COLOR)

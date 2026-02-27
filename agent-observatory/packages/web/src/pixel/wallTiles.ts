@@ -105,7 +105,9 @@ export function getWallInstances(
       if (tileMap[r][c] !== TileType.WALL) continue
       const colorIdx = r * layoutCols + c
       const wallColor = tileColors?.[colorIdx]
-      const wallInfo = wallColor
+      // Skip colorize for neutral colors — use original sprite as-is
+      const isNeutral = wallColor && wallColor.h === 0 && wallColor.s === 0 && wallColor.b === 0 && wallColor.c === 0
+      const wallInfo = (wallColor && !isNeutral)
         ? getColorizedWallSprite(c, r, tileMap, wallColor)
         : getWallSprite(c, r, tileMap)
       if (!wallInfo) continue

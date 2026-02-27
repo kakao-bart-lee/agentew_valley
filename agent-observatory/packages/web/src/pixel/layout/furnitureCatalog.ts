@@ -238,10 +238,12 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
 export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefined {
   // Check internal catalog first (includes all variants, e.g., non-front rotations)
   if (internalCatalog) {
-    return internalCatalog.find((e) => e.type === type)
+    const found = internalCatalog.find((e) => e.type === type)
+    if (found) return found
   }
-  const catalog = dynamicCatalog || FURNITURE_CATALOG
-  return catalog.find((e) => e.type === type)
+  // Fallback to dynamic or hardcoded catalog for legacy type IDs (desk, bookshelf, etc.)
+  return (dynamicCatalog || FURNITURE_CATALOG).find((e) => e.type === type)
+    ?? FURNITURE_CATALOG.find((e) => e.type === type)
 }
 
 export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryWithCategory[] {

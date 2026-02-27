@@ -56,12 +56,17 @@ export function PixelCanvasView() {
 
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sprout 에셋 로딩 (마운트 시 1회)
+  // Sprout 에셋 로딩 (마운트 시 1회) — 로드 후 furniture 재빌드
   useEffect(() => {
     loadAllSproutAssets().then((result) => {
       const s = Object.values(result).filter(Boolean).length
       const t = Object.keys(result).length
       console.log(`Sprout assets: ${s}/${t} loaded`)
+      // Rebuild furniture instances now that dynamic catalog is available
+      const office = officeStateRef.current
+      if (office) {
+        office.rebuildFromLayout(office.layout)
+      }
     })
   }, [])
 

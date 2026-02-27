@@ -15,7 +15,7 @@
 
 import type { SpriteData } from '../types'
 import type { LoadedAssetData } from '../layout/furnitureCatalog'
-import { loadImage, extractRegionToSpriteData, desaturateSprite } from './spriteSheetLoader'
+import { loadImage, extractRegionToSpriteData } from './spriteSheetLoader'
 
 const FARMING_PLANTS_URL = '/sprites/sprout/objects/farming-plants-v2.png'
 const TREES_URL = '/sprites/sprout/objects/trees-v2.png'
@@ -46,15 +46,16 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
   const items: ExtractedFurniture[] = []
 
   // ── Farming Plants v2 (112×528) — crop patches ─────────────────
-  // Various growth stages. We pick a few mature crop sprites.
-  // Each crop is approximately 16×32 (1×2 tiles)
+  // Layout: 7 cols × 33 rows (16px grid). Each crop type = 2 rows (32px).
+  // Growth stages go left→right (col 0=seed → col 5=mature, col 6 mostly empty).
+  // We pick the most visually distinct mature stage per crop group.
   const cropPositions: Array<{ x: number; y: number; w: number; h: number; label: string }> = [
-    { x: 0, y: 0, w: 16, h: 32, label: 'Wheat' },
-    { x: 16, y: 0, w: 16, h: 32, label: 'Carrot' },
-    { x: 32, y: 0, w: 16, h: 32, label: 'Tomato' },
-    { x: 48, y: 0, w: 16, h: 32, label: 'Pumpkin' },
-    { x: 64, y: 0, w: 16, h: 32, label: 'Corn' },
-    { x: 80, y: 0, w: 16, h: 32, label: 'Sunflower' },
+    { x: 80, y: 0,   w: 16, h: 32, label: 'Wheat' },      // G0 col5: golden wheat stalks
+    { x: 80, y: 32,  w: 16, h: 32, label: 'Carrot' },      // G1 col5: orange carrots visible
+    { x: 80, y: 64,  w: 16, h: 32, label: 'Turnip' },      // G2 col5: purple beet/turnip
+    { x: 64, y: 256, w: 16, h: 32, label: 'Pumpkin' },     // G8 col4: orange pumpkin on vine
+    { x: 64, y: 224, w: 16, h: 32, label: 'Sunflower' },   // G7 col4: yellow sunflower head
+    { x: 80, y: 128, w: 16, h: 32, label: 'Corn' },        // G4 col5: golden corn/grain
   ]
 
   for (const crop of cropPositions) {
@@ -66,20 +67,23 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
       footprintW: 1,
       footprintH: 2,
       isDesk: true,
-      sprite: desaturateSprite(raw),
+      sprite: raw,
       backgroundTiles: 1,
     })
   }
 
   // ── Trees v2 (192×128) — trees and bushes ─────────────────
-  // Trees are roughly 32×48 (2×3 tiles) or larger
+  // Layout: 12 cols × 8 rows (16px grid).
+  // Row 0-2: growth stages (seeds→saplings→trees). Row 3-4: fruit tree variants.
+  // Row 5-6: large fruit trees (32×48 each). Row 7: stumps.
+  // Bushes on right side of rows 1-3.
   const treePositions: Array<{ x: number; y: number; w: number; h: number; fw: number; fh: number; label: string; bg?: number }> = [
-    { x: 0, y: 0, w: 32, h: 48, fw: 2, fh: 3, label: 'Oak Tree', bg: 2 },
-    { x: 32, y: 0, w: 32, h: 48, fw: 2, fh: 3, label: 'Pine Tree', bg: 2 },
-    { x: 64, y: 0, w: 32, h: 48, fw: 2, fh: 3, label: 'Apple Tree', bg: 2 },
-    { x: 0, y: 80, w: 16, h: 32, fw: 1, fh: 2, label: 'Bush', bg: 1 },
-    { x: 16, y: 80, w: 16, h: 32, fw: 1, fh: 2, label: 'Berry Bush', bg: 1 },
-    { x: 32, y: 80, w: 16, h: 16, fw: 1, fh: 1, label: 'Stump' },
+    { x: 0,   y: 80, w: 32, h: 48, fw: 2, fh: 3, label: 'Oak Tree', bg: 2 },    // fruit tree (apple)
+    { x: 32,  y: 80, w: 32, h: 48, fw: 2, fh: 3, label: 'Pine Tree', bg: 2 },   // fruit tree (orange)
+    { x: 64,  y: 80, w: 32, h: 48, fw: 2, fh: 3, label: 'Apple Tree', bg: 2 },  // fruit tree (pear)
+    { x: 144, y: 16, w: 16, h: 32, fw: 1, fh: 2, label: 'Bush', bg: 1 },        // small bush (right side)
+    { x: 160, y: 16, w: 16, h: 32, fw: 1, fh: 2, label: 'Berry Bush', bg: 1 },  // berry bush
+    { x: 0,   y: 112, w: 16, h: 16, fw: 1, fh: 1, label: 'Stump' },             // tree stump (bottom row)
   ]
 
   for (const tree of treePositions) {
@@ -91,22 +95,24 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
       footprintW: tree.fw,
       footprintH: tree.fh,
       isDesk: false,
-      sprite: desaturateSprite(raw),
+      sprite: raw,
       backgroundTiles: tree.bg,
     })
   }
 
   // ── Grass Biom Things (144×80) — nature decor ─────────────────
-  // Small 16×16 items: flowers, mushrooms, stones
+  // Layout: 9 cols × 5 rows (16px grid).
+  // Row 0: tree tops + mushrooms. Row 1: tree trunks + grass + stones.
+  // Row 2: fruits + flowers. Row 3: bushes + flowers. Row 4: bushes + rocks.
   const naturePositions: Array<{ x: number; y: number; label: string }> = [
-    { x: 0, y: 0, label: 'Flower Red' },
-    { x: 16, y: 0, label: 'Flower Blue' },
-    { x: 32, y: 0, label: 'Flower Yellow' },
-    { x: 48, y: 0, label: 'Mushroom' },
-    { x: 64, y: 0, label: 'Stone Small' },
-    { x: 80, y: 0, label: 'Grass Tuft' },
-    { x: 0, y: 16, label: 'Stone Large' },
-    { x: 16, y: 16, label: 'Rock Pile' },
+    { x: 48, y: 0,  label: 'Flower Red' },     // pink mushroom (row 0, col 3)
+    { x: 80, y: 48, label: 'Flower Blue' },     // blue flower (row 3, col 5)
+    { x: 96, y: 48, label: 'Flower Yellow' },   // pink flower (row 3, col 6)
+    { x: 64, y: 0,  label: 'Mushroom' },        // brown mushroom (row 0, col 4)
+    { x: 112, y: 16, label: 'Stone Small' },    // small gray stone (row 1, col 7)
+    { x: 64, y: 16, label: 'Grass Tuft' },      // grass blades (row 1, col 4)
+    { x: 80, y: 64, label: 'Stone Large' },     // rock (row 4, col 5)
+    { x: 96, y: 64, label: 'Rock Pile' },       // rock/grass (row 4, col 6)
   ]
 
   for (const nature of naturePositions) {
@@ -118,17 +124,19 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
       footprintW: 1,
       footprintH: 1,
       isDesk: false,
-      sprite: desaturateSprite(raw),
+      sprite: raw,
     })
   }
 
   // ── Chest (240×96) — chests and barrels ─────────────────
-  // 16×16 items, 15×6 grid
+  // Items are on a 48×48 grid (5 cols × 2 rows), 16×16 sprites centered in each cell.
+  // Row 0: chests (closed, variant, opening, open, open variant)
+  // Row 1: barrel, barrel variant, coin animations
   const chestPositions: Array<{ x: number; y: number; label: string }> = [
-    { x: 0, y: 0, label: 'Chest' },
-    { x: 16, y: 0, label: 'Chest Open' },
-    { x: 32, y: 0, label: 'Barrel' },
-    { x: 48, y: 0, label: 'Crate' },
+    { x: 16, y: 16, label: 'Chest' },       // closed chest
+    { x: 112, y: 16, label: 'Chest Open' },  // open chest
+    { x: 16, y: 64, label: 'Barrel' },       // barrel
+    { x: 64, y: 64, label: 'Crate' },        // barrel variant
   ]
 
   for (const chest of chestPositions) {
@@ -140,7 +148,7 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
       footprintW: 1,
       footprintH: 1,
       isDesk: false,
-      sprite: desaturateSprite(raw),
+      sprite: raw,
     })
   }
 
@@ -161,7 +169,7 @@ export async function loadSproutFurniture(): Promise<LoadedAssetData> {
       footprintW: furn.fw,
       footprintH: furn.fh,
       isDesk: furn.desk,
-      sprite: desaturateSprite(raw),
+      sprite: raw,
     })
   }
 

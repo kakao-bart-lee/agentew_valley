@@ -55,13 +55,20 @@ export function getAllFloorSprites(): SpriteData[] {
 }
 
 /**
+ * Check if a FloorColor is neutral (no color transformation needed).
+ * Neutral means the original sprite colors should be used as-is.
+ */
+function isNeutralColor(color: FloorColor): boolean {
+  return color.h === 0 && color.s === 0 && color.b === 0 && color.c === 0
+}
+
+/**
  * Get a colorized version of a floor sprite.
- * Uses Photoshop-style Colorize: grayscale -> HSL with given hue/saturation,
- * then brightness/contrast adjustment.
+ * If color is neutral {h:0,s:0,b:0,c:0}, returns the original sprite as-is
+ * (preserving PNG's native colors like Sprout Lands grass textures).
+ * Otherwise uses Photoshop-style Colorize: grayscale -> HSL with given hue/saturation.
  */
 export function getColorizedFloorSprite(patternIndex: number, color: FloorColor): SpriteData {
-  const key = `floor-${patternIndex}-${color.h}-${color.s}-${color.b}-${color.c}`
-
   const base = getFloorSprite(patternIndex)
   if (!base) {
     // Return a 16x16 magenta error tile
@@ -69,6 +76,11 @@ export function getColorizedFloorSprite(patternIndex: number, color: FloorColor)
     return err
   }
 
-  // Floor tiles are always colorized (grayscale patterns need Photoshop-style Colorize)
+  // Neutral color: return original sprite without colorization
+  if (isNeutralColor(color)) {
+    return base
+  }
+
+  const key = `floor-${patternIndex}-${color.h}-${color.s}-${color.b}-${color.c}`
   return getColorizedSprite(key, base, { ...color, colorize: true })
 }

@@ -7,7 +7,7 @@
  */
 
 import type { SpriteData } from '../types'
-import { loadImage, extractRegionToSpriteData, desaturateSprite } from './spriteSheetLoader'
+import { loadImage, extractRegionToSpriteData } from './spriteSheetLoader'
 import { setFloorSprites } from '../floorTiles'
 
 const GRASS_URL = '/sprites/sprout/tilesets/grass.png'
@@ -41,7 +41,7 @@ export async function loadSproutFloor(): Promise<SpriteData[]> {
   const img = await loadImage(GRASS_URL)
   const sprites: SpriteData[] = GRASS_PICKS.map(([col, row]) => {
     const raw = extractRegionToSpriteData(img, col * TILE, row * TILE, TILE, TILE)
-    return desaturateSprite(raw)
+    return raw
   })
   setFloorSprites(sprites)
   return sprites
