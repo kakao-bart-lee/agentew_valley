@@ -71,6 +71,9 @@ export class StateManager {
       case 'metrics.usage':
         this.handleMetricsUsage(event);
         break;
+      case 'llm.end':
+        this.handleLlmEnd(event);
+        break;
       default:
         break;
     }
@@ -82,6 +85,20 @@ export class StateManager {
   }
 
   private handleSessionStart(event: UAEPEvent): void {
+    const existing = this.agents.get(event.agent_id);
+
+    // 이미 존재하는 에이전트라면 model_id 등 누락된 필드만 보완 (데이터 유실 방지)
+    if (existing) {
+      if (!existing.model_id && event.model_id) {
+        existing.model_id = event.model_id;
+      }
+      if (!existing.model_id && event.data?.['model_id']) {
+        existing.model_id = event.data['model_id'] as string;
+      }
+      this.notifyChange(existing);
+      return;
+    }
+
     const state: AgentLiveState = {
       agent_id: event.agent_id,
       agent_name: event.agent_name ?? event.agent_id,
@@ -92,10 +109,17 @@ export class StateManager {
       last_activity: event.ts,
       session_id: event.session_id,
       session_start: event.ts,
+      model_id: event.model_id ?? (event.data?.['model_id'] as string | undefined),
+      total_input_tokens: 0,
+      total_output_tokens: 0,
       total_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
       total_cost_usd: 0,
       total_tool_calls: 0,
       total_errors: 0,
+      llm_response_count: 0,
+      llm_total_text_length: 0,
       tool_distribution: emptyDistribution(),
       child_agent_ids: [],
     };
@@ -247,11 +271,48 @@ export class StateManager {
     const agent = this.agents.get(event.agent_id);
     if (!agent) return;
 
+    if (typeof event.data?.['input_tokens'] === 'number') {
+      agent.total_input_tokens += event.data['input_tokens'] as number;
+    }
+    if (typeof event.data?.['output_tokens'] === 'number') {
+      agent.total_output_tokens += event.data['output_tokens'] as number;
+    }
     if (typeof event.data?.['tokens'] === 'number') {
       agent.total_tokens += event.data['tokens'] as number;
+    } else {
+      // tokens 필드가 없으면 input + output 합산
+      agent.total_tokens = agent.total_input_tokens + agent.total_output_tokens;
     }
     if (typeof event.data?.['cost'] === 'number') {
       agent.total_cost_usd += event.data['cost'] as number;
+    }
+    // 캐시 토큰 집계
+    if (typeof event.data?.['cache_creation_input_tokens'] === 'number') {
+      agent.cache_creation_tokens += event.data['cache_creation_input_tokens'] as number;
+    }
+    if (typeof event.data?.['cache_read_input_tokens'] === 'number') {
+      agent.cache_read_tokens += event.data['cache_read_input_tokens'] as number;
+    }
+    // 모델 정보가 이벤트에 포함된 경우 갱신
+    const modelId = event.model_id ?? (event.data?.['model_id'] as string | undefined);
+    if (modelId) {
+      agent.model_id = modelId;
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleLlmEnd(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    agent.llm_response_count++;
+    if (typeof event.data?.['text_length'] === 'number') {
+      agent.llm_total_text_length += event.data['text_length'] as number;
+    }
+    const modelId = event.model_id ?? (event.data?.['model_id'] as string | undefined);
+    if (modelId) {
+      agent.model_id = modelId;
     }
 
     this.notifyChange(agent);

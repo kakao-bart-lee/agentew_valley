@@ -10,11 +10,16 @@ import type Database from 'better-sqlite3';
 
 interface MinuteWindow {
   ts: string;
+  input_tokens: number;
+  output_tokens: number;
   tokens: number;
   cost: number;
   tool_calls: number;
   errors: number;
   active_agents: Set<string>;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  llm_responses: number;
 }
 
 const MAX_WINDOWS = 60;
@@ -28,12 +33,17 @@ function minuteKey(date: Date): string {
 export class MetricsAggregator {
   private windows: MinuteWindow[] = [];
   private totalToolCalls = 0;
+  private totalInputTokens = 0;
+  private totalOutputTokens = 0;
   private totalTokens = 0;
   private totalCost = 0;
   private totalErrors = 0;
   private totalSessions = 0;
   private toolDistribution: Record<string, number> = {};
   private sourceDistribution: Record<string, number> = {};
+  private modelDistribution: Record<string, { agent_count: number; token_count: number }> = {};
+  private totalCacheReadTokens = 0;
+  private totalCacheCreationTokens = 0;
   private stateManager?: StateManager;
   private db?: Database.Database;
 
@@ -52,6 +62,8 @@ export class MetricsAggregator {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS metrics_timeseries (
         ts TEXT PRIMARY KEY,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
         tokens INTEGER DEFAULT 0,
         cost REAL DEFAULT 0,
         tool_calls INTEGER DEFAULT 0,
@@ -60,6 +72,14 @@ export class MetricsAggregator {
       );
       CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_timeseries(ts);
     `);
+    // 기존 테이블에 새 컬럼 추가 (이미 존재하면 무시)
+    for (const col of ['input_tokens INTEGER DEFAULT 0', 'output_tokens INTEGER DEFAULT 0']) {
+      try {
+        this.db.exec(`ALTER TABLE metrics_timeseries ADD COLUMN ${col}`);
+      } catch {
+        // 컬럼이 이미 존재하는 경우 무시
+      }
+    }
   }
 
   handleEvent(event: UAEPEvent): void {
@@ -71,6 +91,12 @@ export class MetricsAggregator {
         this.totalSessions++;
         this.sourceDistribution[event.source] =
           (this.sourceDistribution[event.source] ?? 0) + 1;
+        // 모델 분포 집계 (session.start 이벤트에서 model_id 추출)
+        if (event.model_id) {
+          const entry = this.modelDistribution[event.model_id] ?? { agent_count: 0, token_count: 0 };
+          entry.agent_count++;
+          this.modelDistribution[event.model_id] = entry;
+        }
         break;
       case 'tool.start': {
         this.totalToolCalls++;
@@ -84,18 +110,51 @@ export class MetricsAggregator {
         this.totalErrors++;
         window.errors++;
         break;
-      case 'metrics.usage':
-        if (typeof event.data?.['tokens'] === 'number') {
-          const tokens = event.data['tokens'] as number;
-          this.totalTokens += tokens;
-          window.tokens += tokens;
-        }
+      case 'metrics.usage': {
+        const inputTokens = typeof event.data?.['input_tokens'] === 'number'
+          ? (event.data['input_tokens'] as number)
+          : 0;
+        const outputTokens = typeof event.data?.['output_tokens'] === 'number'
+          ? (event.data['output_tokens'] as number)
+          : 0;
+        const totalTokens = typeof event.data?.['tokens'] === 'number'
+          ? (event.data['tokens'] as number)
+          : inputTokens + outputTokens;
+
+        this.totalInputTokens += inputTokens;
+        this.totalOutputTokens += outputTokens;
+        this.totalTokens += totalTokens;
+        window.input_tokens += inputTokens;
+        window.output_tokens += outputTokens;
+        window.tokens += totalTokens;
+
         if (typeof event.data?.['cost'] === 'number') {
           const cost = event.data['cost'] as number;
           this.totalCost += cost;
           window.cost += cost;
         }
+        // 캐시 토큰 집계
+        const cacheRead = typeof event.data?.['cache_read_input_tokens'] === 'number'
+          ? (event.data['cache_read_input_tokens'] as number) : 0;
+        const cacheCreate = typeof event.data?.['cache_creation_input_tokens'] === 'number'
+          ? (event.data['cache_creation_input_tokens'] as number) : 0;
+        this.totalCacheReadTokens += cacheRead;
+        this.totalCacheCreationTokens += cacheCreate;
+        window.cache_read_tokens += cacheRead;
+        window.cache_creation_tokens += cacheCreate;
+        // 모델별 토큰 집계
+        const modelId = event.model_id ?? (event.data?.['model_id'] as string | undefined);
+        if (modelId) {
+          const entry = this.modelDistribution[modelId] ?? { agent_count: 0, token_count: 0 };
+          entry.token_count += totalTokens;
+          this.modelDistribution[modelId] = entry;
+        }
         break;
+      }
+      case 'llm.end': {
+        window.llm_responses++;
+        break;
+      }
       default:
         break;
     }
@@ -109,19 +168,28 @@ export class MetricsAggregator {
     const totalAgents = activeAgents;
 
     const timestamps: string[] = [];
+    const inputTokensPerMinute: number[] = [];
+    const outputTokensPerMinute: number[] = [];
     const tokensPerMinute: number[] = [];
     const costPerMinute: number[] = [];
     const activeAgentsTs: number[] = [];
     const toolCallsPerMinute: number[] = [];
     const errorCount: number[] = [];
+    const cacheHitRate: number[] = [];
+    const llmResponsesPerMinute: number[] = [];
 
     for (const w of this.windows) {
       timestamps.push(w.ts);
+      inputTokensPerMinute.push(w.input_tokens);
+      outputTokensPerMinute.push(w.output_tokens);
       tokensPerMinute.push(w.tokens);
       costPerMinute.push(w.cost);
       activeAgentsTs.push(w.active_agents.size);
       toolCallsPerMinute.push(w.tool_calls);
       errorCount.push(w.errors);
+      const totalIn = w.input_tokens + w.cache_read_tokens;
+      cacheHitRate.push(totalIn > 0 ? w.cache_read_tokens / totalIn : 0);
+      llmResponsesPerMinute.push(w.llm_responses);
     }
 
     const recentWindow = this.windows[this.windows.length - 1];
@@ -131,7 +199,7 @@ export class MetricsAggregator {
     const last5 = this.windows.slice(-5);
     const errorsLast5 = last5.reduce((s, w) => s + w.errors, 0);
     const totalCallsLast5 = last5.reduce((s, w) => s + w.tool_calls, 0);
-    const errorRate = totalCallsLast5 > 0 ? errorsLast5 / totalCallsLast5 : 0;
+    const toolErrorRate = totalCallsLast5 > 0 ? errorsLast5 / totalCallsLast5 : 0;
 
     const errorsLastHour = this.windows.reduce((s, w) => s + w.errors, 0);
     const costLastHour = this.windows.reduce((s, w) => s + w.cost, 0);
@@ -140,19 +208,36 @@ export class MetricsAggregator {
       timestamp: now.toISOString(),
       active_agents: activeAgents,
       total_agents: totalAgents,
+      total_sessions: this.totalSessions,
+      total_tool_calls: this.totalToolCalls,
+      total_input_tokens: this.totalInputTokens,
+      total_output_tokens: this.totalOutputTokens,
+      total_cost_usd: this.totalCost,
+      tool_error_rate: toolErrorRate,
       total_tokens_per_minute: tokensLastMin,
       total_cost_per_hour: costLastHour,
       total_errors_last_hour: errorsLastHour,
       total_tool_calls_per_minute: toolCallsLastMin,
       tool_distribution: { ...this.toolDistribution } as Record<ToolCategory, number>,
       source_distribution: { ...this.sourceDistribution } as Record<AgentSourceType, number>,
+      model_distribution: { ...this.modelDistribution },
+      cache_hit_rate: this.totalCacheReadTokens > 0
+        ? this.totalCacheReadTokens / (this.totalInputTokens + this.totalCacheReadTokens)
+        : 0,
+      cache_read_tokens: this.totalCacheReadTokens,
+      cache_creation_tokens: this.totalCacheCreationTokens,
+      llm_responses_per_minute: recentWindow?.llm_responses ?? 0,
       timeseries: {
         timestamps,
+        input_tokens_per_minute: inputTokensPerMinute,
+        output_tokens_per_minute: outputTokensPerMinute,
         tokens_per_minute: tokensPerMinute,
         cost_per_minute: costPerMinute,
         active_agents: activeAgentsTs,
         tool_calls_per_minute: toolCallsPerMinute,
         error_count: errorCount,
+        cache_hit_rate: cacheHitRate,
+        llm_responses_per_minute: llmResponsesPerMinute,
       },
     };
   }
@@ -291,11 +376,16 @@ export class MetricsAggregator {
 
     const window: MinuteWindow = {
       ts: key,
+      input_tokens: 0,
+      output_tokens: 0,
       tokens: 0,
       cost: 0,
       tool_calls: 0,
       errors: 0,
       active_agents: new Set(),
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      llm_responses: 0,
     };
 
     this.windows.push(window);
@@ -318,13 +408,23 @@ export class MetricsAggregator {
     if (!this.db || windows.length === 0) return;
 
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO metrics_timeseries (ts, tokens, cost, tool_calls, errors, active_agents)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO metrics_timeseries
+        (ts, input_tokens, output_tokens, tokens, cost, tool_calls, errors, active_agents)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertMany = this.db.transaction((ww: MinuteWindow[]) => {
       for (const w of ww) {
-        stmt.run(w.ts, w.tokens, w.cost, w.tool_calls, w.errors, w.active_agents.size);
+        stmt.run(
+          w.ts,
+          w.input_tokens,
+          w.output_tokens,
+          w.tokens,
+          w.cost,
+          w.tool_calls,
+          w.errors,
+          w.active_agents.size,
+        );
       }
     });
 

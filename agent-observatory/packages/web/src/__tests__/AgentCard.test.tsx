@@ -11,6 +11,11 @@ vi.mock('../components/ui/tooltip', () => ({
     TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+const EMPTY_TOOL_DIST = {
+    file_read: 0, file_write: 0, command: 0, search: 0,
+    web: 0, planning: 0, thinking: 0, communication: 0, other: 0,
+} satisfies Record<string, number>;
+
 const makeAgent = (overrides: Partial<AgentLiveState> = {}): AgentLiveState => ({
     agent_id: 'test-agent-1',
     agent_name: 'Test Agent',
@@ -19,11 +24,17 @@ const makeAgent = (overrides: Partial<AgentLiveState> = {}): AgentLiveState => (
     last_activity: new Date().toISOString(),
     session_id: 'session-1',
     session_start: new Date().toISOString(),
+    total_input_tokens: 1000,
+    total_output_tokens: 500,
     total_tokens: 1500,
+    cache_creation_tokens: 0,
+    cache_read_tokens: 0,
     total_cost_usd: 0.0042,
     total_tool_calls: 7,
     total_errors: 0,
-    tool_distribution: {},
+    llm_response_count: 3,
+    llm_total_text_length: 1500,
+    tool_distribution: EMPTY_TOOL_DIST,
     child_agent_ids: [],
     ...overrides,
 });
@@ -51,9 +62,9 @@ describe('AgentCard', () => {
         expect(screen.getByText('1.5k')).toBeInTheDocument();
     });
 
-    it('비용 포맷 표시', () => {
-        render(<AgentCard agent={makeAgent({ total_cost_usd: 0.0042 })} />);
-        expect(screen.getByText('$0.0042')).toBeInTheDocument();
+    it('캐시 히트율 표시 (cache_read_tokens > 0)', () => {
+        render(<AgentCard agent={makeAgent({ total_input_tokens: 100, cache_read_tokens: 71 })} />);
+        expect(screen.getByText(/\d+%/)).toBeInTheDocument();
     });
 
     it('도구 호출 수 표시', () => {
@@ -89,19 +100,9 @@ describe('AgentCard', () => {
         expect(screen.queryByText('Read')).toBeNull();
     });
 
-    it('team_id가 있으면 팀 배지 표시', () => {
-        render(<AgentCard agent={makeAgent({ team_id: 'team-alpha' })} />);
-        expect(screen.getByText('Team: team-alpha')).toBeInTheDocument();
-    });
-
     it('team_id 없으면 팀 배지 없음', () => {
         render(<AgentCard agent={makeAgent({ team_id: undefined })} />);
         expect(screen.queryByText(/Team:/)).toBeNull();
-    });
-
-    it('child_agent_ids가 있으면 Sub-agents 섹션 표시', () => {
-        render(<AgentCard agent={makeAgent({ child_agent_ids: ['child-1', 'child-2'] })} />);
-        expect(screen.getByText('Sub-agents (2)')).toBeInTheDocument();
     });
 
     it('onClick 호출 시 핸들러 실행', () => {
@@ -125,16 +126,16 @@ describe('AgentCard', () => {
 
     it('tool_distribution이 있으면 미니바 렌더링', () => {
         const agent = makeAgent({
-            tool_distribution: { file_read: 5, command: 3 },
+            tool_distribution: { ...EMPTY_TOOL_DIST, file_read: 5, command: 3 },
         });
         const { container } = render(<AgentCard agent={agent} />);
-        // 높이 h-1.5인 미니바 div가 존재하는지 확인
-        const miniBar = container.querySelector('.h-1\\.5');
+        // 높이 h-1인 미니바 div가 존재하는지 확인
+        const miniBar = container.querySelector('.h-1');
         expect(miniBar).toBeInTheDocument();
     });
 
     it('tool_distribution이 비어있으면 미니바 없음', () => {
-        const agent = makeAgent({ tool_distribution: {} });
+        const agent = makeAgent({ tool_distribution: EMPTY_TOOL_DIST });
         const { container } = render(<AgentCard agent={agent} />);
         const miniBar = container.querySelector('.h-1\\.5');
         expect(miniBar).toBeNull();

@@ -76,8 +76,23 @@ export interface AgentLiveState {
   /** 세션 시작 시각 (ISO-8601) */
   session_start: string;
 
-  /** 누적 토큰 수 */
+  /** 사용 중인 LLM 모델 ID (예: "claude-sonnet-4-6") */
+  model_id?: string;
+
+  /** 누적 입력 토큰 수 */
+  total_input_tokens: number;
+
+  /** 누적 출력 토큰 수 */
+  total_output_tokens: number;
+
+  /** 누적 토큰 수 (input + output) */
   total_tokens: number;
+
+  /** 캐시 생성에 사용된 토큰 수 (비용 발생) */
+  cache_creation_tokens: number;
+
+  /** 캐시에서 읽은 토큰 수 (비용 절감) */
+  cache_read_tokens: number;
 
   /** 누적 비용 (USD) */
   total_cost_usd: number;
@@ -87,6 +102,12 @@ export interface AgentLiveState {
 
   /** 누적 에러 수 */
   total_errors: number;
+
+  /** llm.end 이벤트 수 (LLM 응답 횟수) */
+  llm_response_count: number;
+
+  /** llm.end 기준 응답 텍스트 총 길이 */
+  llm_total_text_length: number;
 
   /** 도구 카테고리별 사용 횟수 분포 */
   tool_distribution: Record<ToolCategory, number>;

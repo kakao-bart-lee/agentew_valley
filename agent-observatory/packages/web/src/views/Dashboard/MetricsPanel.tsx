@@ -9,6 +9,8 @@ import { CostByAgentChart } from './charts/CostByAgentChart';
 import { CostByTeamChart } from './charts/CostByTeamChart';
 import { CostByToolChart } from './charts/CostByToolChart';
 import { TokensAnalyticsChart } from './charts/TokensAnalyticsChart';
+import { ModelDistributionChart } from './charts/ModelDistributionChart';
+import { CacheEfficiencyChart } from './charts/CacheEfficiencyChart';
 import type {
     CostByAgentResponse,
     CostByTeamResponse,
@@ -62,7 +64,11 @@ export function MetricsPanel() {
         tokens: snapshot.timeseries.tokens_per_minute[i],
         cost: snapshot.timeseries.cost_per_minute[i] * 60,
         active: snapshot.timeseries.active_agents[i],
+        cacheRate: snapshot.timeseries.cache_hit_rate?.[i] ?? 0,
+        llmResponses: snapshot.timeseries.llm_responses_per_minute?.[i] ?? 0,
     })) ?? [];
+
+    const modelDistribution = snapshot?.model_distribution ?? {};
 
     const toolData = Object.entries(snapshot?.tool_distribution ?? {})
         .filter(([_, v]) => v > 0)
@@ -97,6 +103,8 @@ export function MetricsPanel() {
                         <TokensChart data={timeseriesData} />
                         <CostChart data={timeseriesData} />
                         <ActiveAgentsChart data={timeseriesData} />
+                        <CacheEfficiencyChart data={timeseriesData} />
+                        <ModelDistributionChart data={modelDistribution} />
                         <ToolDistribution data={toolData} />
                         <SourceDistribution data={sourceData} />
                     </>

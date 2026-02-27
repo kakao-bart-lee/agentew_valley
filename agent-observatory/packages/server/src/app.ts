@@ -16,6 +16,7 @@ import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
 import { createCollectorGateway } from './delivery/collector-gateway.js';
 import type { CollectorGateway } from './delivery/collector-gateway.js';
+import { createHooksRouter } from './delivery/hooks.js';
 
 export interface AppConfig {
   watchPaths?: string[];
@@ -68,6 +69,7 @@ export function createApp(config?: AppConfig): AppInstance {
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
   app.use(createAnalyticsRouter(historyStore));
   app.use(createOpenApiRouter());
+  app.use(createHooksRouter(eventBus));
 
   // 4. HTTP + WebSocket
   const server = createServer(app);

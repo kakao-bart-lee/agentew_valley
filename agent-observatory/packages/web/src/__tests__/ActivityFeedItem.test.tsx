@@ -9,6 +9,7 @@ const makeEvent = (overrides: Partial<UAEPEvent> = {}): UAEPEvent => ({
     agent_id: 'agent-1',
     agent_name: 'Test Agent',
     source: 'claude_code',
+    session_id: 'session-1',
     ts: new Date('2024-01-01T12:30:45Z').toISOString(),
     data: {},
     ...overrides,

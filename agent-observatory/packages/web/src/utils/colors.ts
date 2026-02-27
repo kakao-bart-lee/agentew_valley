@@ -47,3 +47,25 @@ export const SOURCE_LABELS: Record<AgentSourceType, string> = {
     crewai: 'Crew',
     custom: '⚙️',
 };
+
+/** model_id → 뱃지 배경색 */
+export function getModelBadgeColor(modelId: string | undefined): string {
+    if (!modelId) return '#6b7280'; // gray
+    const id = modelId.toLowerCase();
+    if (id.includes('opus')) return '#f59e0b';   // amber
+    if (id.includes('sonnet')) return '#a855f7'; // purple
+    if (id.includes('haiku')) return '#14b8a6';  // teal
+    return '#6b7280'; // gray
+}
+
+/** model_id → 짧은 표시 이름 */
+export function getModelShortName(modelId: string | undefined): string {
+    if (!modelId) return '?';
+    const id = modelId.toLowerCase();
+    if (id.includes('opus')) return 'Opus';
+    if (id.includes('sonnet')) return 'Sonnet';
+    if (id.includes('haiku')) return 'Haiku';
+    // fallback: 첫 번째 "-" 이전 단어 또는 최대 8자
+    const parts = modelId.split('-');
+    return parts[0]?.slice(0, 8) ?? modelId.slice(0, 8);
+}
