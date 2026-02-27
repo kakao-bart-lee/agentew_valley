@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import type { UAEPEvent, CollectorRegistration } from '@agent-observatory/shared';
@@ -55,13 +55,14 @@ describe('WebSocketTransport', () => {
     });
   });
 
-  function createTransport(opts?: Partial<{ apiKey: string; batchIntervalMs: number; batchSize: number }>): WebSocketTransport {
+  function createTransport(opts?: Partial<{ apiKey: string; batchIntervalMs: number; batchSize: number; heartbeatIntervalMs: number }>): WebSocketTransport {
     transport = new WebSocketTransport({
       serverUrl: `http://localhost:${port}`,
       apiKey: opts?.apiKey,
       registration: makeRegistration(),
       batchSize: opts?.batchSize ?? 50,
       batchIntervalMs: opts?.batchIntervalMs ?? 100,
+      heartbeatIntervalMs: opts?.heartbeatIntervalMs ?? 30_000,
     });
     return transport;
   }
@@ -87,7 +88,7 @@ describe('WebSocketTransport', () => {
 
     // Wait for registered callback
     await new Promise((r) => setTimeout(r, 100));
-    expect(t.isRegistered).toBe(true);
+    expect(t.bufferedCount).toBe(0);
   });
 
   it('should send events in batches', async () => {
@@ -123,16 +124,16 @@ describe('WebSocketTransport', () => {
     expect(totalEvents).toBe(3);
   });
 
-  it('should buffer events when disconnected', async () => {
-    // Don't set up server namespace — transport will fail to connect
+  it('should buffer events when not yet registered', async () => {
+    // No namespace handler set up — connection succeeds but registered never fires
     const t = createTransport({ batchIntervalMs: 50 });
+    t.connect(); // starts timers; socket connects but stays unregistered
 
-    // Send events without connecting
     t.send(makeEvent('a'));
     t.send(makeEvent('b'));
 
-    // Wait for flush attempt (will buffer since not connected)
-    await new Promise((r) => setTimeout(r, 150));
+    // Flush runs: connected=true, registered=false → events go to buffer
+    await new Promise((r) => setTimeout(r, 200));
 
     expect(t.bufferedCount).toBeGreaterThanOrEqual(2);
   });
@@ -150,14 +151,14 @@ describe('WebSocketTransport', () => {
       });
     });
 
-    // Create transport — heartbeat is 30s by default, but we test the mechanism
-    const t = createTransport();
+    // Use short heartbeat interval to verify actual heartbeat emission
+    const t = createTransport({ heartbeatIntervalMs: 100 });
     t.connect();
 
-    await new Promise((r) => setTimeout(r, 200));
+    // Wait for registration + multiple heartbeat ticks
+    await new Promise((r) => setTimeout(r, 500));
 
-    // The heartbeat timer fires every 30s, so in a short test we just verify the connection works
-    expect(t.isConnected).toBe(true);
+    expect(heartbeatCount).toBeGreaterThanOrEqual(2);
   });
 
   it('should flush remaining queue to buffer on close', async () => {

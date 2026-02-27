@@ -17,7 +17,7 @@
 import { Command } from 'commander';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import type { UAEPEvent, AgentSourceType, CollectorRegistration } from '@agent-observatory/shared';
+import type { UAEPEvent, CollectorRegistration } from '@agent-observatory/shared';
 import { ClaudeCodeCollector, OpenClawCollector } from '@agent-observatory/collectors';
 import type { Collector } from '@agent-observatory/collectors';
 import { WebSocketTransport } from './transport.js';
@@ -29,11 +29,6 @@ const DEFAULT_WATCH_PATHS: Record<string, string> = {
   openclaw: '~/.openclaw/agents',
 };
 
-const SOURCE_TYPE_MAP: Record<string, AgentSourceType> = {
-  'claude-code': 'claude_code',
-  openclaw: 'openclaw',
-};
-
 function createCollector(source: string, watchPaths: string[], tailOnly: boolean): Collector {
   switch (source) {
     case 'claude-code':
@@ -43,6 +38,15 @@ function createCollector(source: string, watchPaths: string[], tailOnly: boolean
     default:
       throw new Error(`Unknown source: ${source}. Supported: claude-code, openclaw`);
   }
+}
+
+function parsePositiveInt(value: string, name: string): number {
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n <= 0) {
+    console.error(`[collector-cli] Invalid ${name}: ${value} (must be a positive integer)`);
+    process.exit(1);
+  }
+  return n;
 }
 
 const program = new Command();
@@ -73,7 +77,6 @@ program
   )
   .option('--tail-only', 'Skip existing files, collect new content only', true)
   .option('--no-tail-only', 'Process existing file content')
-  .option('--buffer-path <path>', 'Offline buffer file path', process.env.OBSERVATORY_BUFFER_PATH)
   .option('--batch-size <n>', 'Batch transmission size', '50')
   .option('--batch-interval <ms>', 'Batch transmission interval in ms', '1000')
   .action(async (opts) => {
@@ -81,18 +84,20 @@ program
     const serverUrl: string = opts.server;
     const apiKey: string | undefined = opts.apiKey;
     const tailOnly: boolean = opts.tailOnly;
-    const bufferPath: string | undefined = opts.bufferPath;
-    const batchSize = parseInt(opts.batchSize, 10);
-    const batchIntervalMs = parseInt(opts.batchInterval, 10);
+    const batchSize = parsePositiveInt(opts.batchSize as string, '--batch-size');
+    const batchIntervalMs = parsePositiveInt(opts.batchInterval as string, '--batch-interval');
 
     // Resolve watch paths
     const watchPaths = opts.watch
-      ? opts.watch.split(',').map((p: string) => p.trim())
+      ? (opts.watch as string).split(',').map((p: string) => p.trim())
       : [DEFAULT_WATCH_PATHS[source] ?? '.'];
 
-    const sourceType = SOURCE_TYPE_MAP[source];
-    if (!sourceType) {
-      console.error(`Unknown source: ${source}. Supported: claude-code, openclaw`);
+    // Create collector first to validate source and obtain sourceType
+    let collector: Collector;
+    try {
+      collector = createCollector(source, watchPaths, tailOnly);
+    } catch (err) {
+      console.error(`[collector-cli] ${(err as Error).message}`);
       process.exit(1);
     }
 
@@ -100,7 +105,7 @@ program
     const registration: CollectorRegistration = {
       collector_id: collectorId,
       name: source,
-      source_type: sourceType,
+      source_type: collector.sourceType,
       machine_id: hostname(),
       watch_paths: watchPaths,
       version: VERSION,
@@ -119,11 +124,7 @@ program
       registration,
       batchSize,
       batchIntervalMs,
-      bufferPath,
     });
-
-    // Create collector
-    const collector = createCollector(source, watchPaths, tailOnly);
 
     // Wire collector events to transport
     collector.onEvent((event: UAEPEvent) => {

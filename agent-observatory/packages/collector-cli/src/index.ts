@@ -6,4 +6,3 @@
 
 export { WebSocketTransport } from './transport.js';
 export type { TransportOptions } from './transport.js';
-export { EventBuffer } from './buffer.js';

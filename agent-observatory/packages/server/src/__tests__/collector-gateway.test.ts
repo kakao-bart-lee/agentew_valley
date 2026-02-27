@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { io as ioc, type Socket as ClientSocket } from 'socket.io-client';
 import { createApp } from '../app.js';
 import type { AppInstance } from '../app.js';
@@ -103,6 +103,17 @@ describe('Collector WebSocket Gateway', () => {
     expect(data.collector_id).toBe('coll-001');
   });
 
+  it('should reject invalid registration payload', async () => {
+    const socket = connectCollector('test-key-1');
+    await waitFor(socket, 'connect');
+
+    const errorPromise = waitFor<{ code: string; message: string }>(socket, 'collector:error');
+    socket.emit('collector:register', { invalid: true });
+
+    const err = await errorPromise;
+    expect(err.code).toBe('INVALID_REGISTRATION');
+  });
+
   it('should track connected collectors', async () => {
     const socket = connectCollector('test-key-1');
     await waitFor(socket, 'connect');
@@ -140,19 +151,18 @@ describe('Collector WebSocket Gateway', () => {
     });
 
     const ackCount = await ackPromise;
+    // Server always ACKs the full batch length
     expect(ackCount).toBe(2);
 
     // Events should be published
-    // Note: eventBus.subscribe includes historyStore/stateManager/metrics handlers from createApp
-    // Our handler is the 4th subscriber, but all get called synchronously
     expect(published.length).toBeGreaterThanOrEqual(2);
 
-    // Collector events_received should be updated
+    // Collector events_received should reflect only valid events
     const collectors = instance.collectorGateway.getConnectedCollectors();
     expect(collectors[0].events_received).toBe(2);
   });
 
-  it('should ACK only valid events', async () => {
+  it('should ACK full batch length even when some events are invalid', async () => {
     const socket = connectCollector('test-key-1');
     await waitFor(socket, 'connect');
 
@@ -172,8 +182,13 @@ describe('Collector WebSocket Gateway', () => {
       socket.emit('collector:events', events, (count: number) => resolve(count));
     });
 
+    // ACK returns full batch length (3), not just valid count (2)
     const ackCount = await ackPromise;
-    expect(ackCount).toBe(2); // Only 2 valid events
+    expect(ackCount).toBe(3);
+
+    // But only 2 valid events are counted in events_received
+    const collectors = instance.collectorGateway.getConnectedCollectors();
+    expect(collectors[0].events_received).toBe(2);
   });
 
   it('should remove collector on disconnect', async () => {
@@ -239,31 +254,6 @@ describe('Collector WebSocket Gateway', () => {
     await waitFor(client, 'connect');
     expect(client.connected).toBe(true);
   });
-});
-
-describe('GET /api/v1/collectors', () => {
-  let instance: AppInstance;
-  let client: ClientSocket;
-  let port: number;
-
-  beforeEach(async () => {
-    instance = createApp({ collectorApiKeys: ['test-key'] });
-    await new Promise<void>((resolve) => {
-      instance.server.listen(0, () => {
-        const addr = instance.server.address();
-        port = typeof addr === 'object' && addr ? addr.port : 0;
-        resolve();
-      });
-    });
-  });
-
-  afterEach(async () => {
-    if (client?.connected) client.disconnect();
-    await new Promise<void>((resolve) => {
-      instance.io.close(() => resolve());
-    });
-    instance.close();
-  });
 
   it('should return empty list when no collectors connected', async () => {
     const res = await fetch(`http://localhost:${port}/api/v1/collectors`);
@@ -273,12 +263,12 @@ describe('GET /api/v1/collectors', () => {
     expect(body.total).toBe(0);
   });
 
-  it('should return connected collectors', async () => {
+  it('should return connected collectors via REST API', async () => {
     // Connect a collector
     client = ioc(`http://localhost:${port}/collectors`, {
       transports: ['websocket'],
       forceNew: true,
-      auth: { apiKey: 'test-key' },
+      auth: { apiKey: 'test-key-1' },
     });
     await waitFor(client, 'connect');
 
