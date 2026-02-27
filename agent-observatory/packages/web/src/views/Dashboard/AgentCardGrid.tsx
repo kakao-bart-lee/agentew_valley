@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { AgentCard } from './AgentCard';
 import { sortAgents } from '../../utils/sorting';
@@ -14,6 +14,23 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
     const { agents, sourceFilter, statusFilter, teamFilter } = useAgentStore();
     const [groupByTeam, setGroupByTeam] = useState(false);
     const [sortMode, setSortMode] = useState<'status' | 'name' | 'activity' | 'cost'>('status');
+
+    // Store server-side team classifications
+    const [serverTeams, setServerTeams] = useState<Array<{ team_id: string, agents: AgentLiveState[] }>>([]);
+
+    // Fetch team groupings when toggle is on
+    useEffect(() => {
+        if (groupByTeam && import.meta.env?.VITE_MOCK !== 'true') {
+            fetch('http://localhost:3000/api/v1/agents/by-team')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.teams) {
+                        setServerTeams(data.teams);
+                    }
+                })
+                .catch(err => console.error('Failed to fetch teams grouping:', err));
+        }
+    }, [groupByTeam]);
 
     const filteredAndSortedAgents = useMemo(() => {
         let list = Array.from(agents.values());
@@ -55,21 +72,40 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
 
     let content;
     if (groupByTeam) {
-        const teamMap = new Map<string, AgentLiveState[]>();
-        filteredAndSortedAgents.forEach(agent => {
-            const team = agent.team_id || 'Ungrouped';
-            if (!teamMap.has(team)) teamMap.set(team, []);
-            teamMap.get(team)!.push(agent);
-        });
+        // Use server-provided groupings if available, otherwise fallback to local map
+        let groupedTeams = serverTeams;
 
-        content = Array.from(teamMap.entries()).sort().map(([teamName, teamAgents]) => (
-            <div key={teamName} className="mb-6 bg-slate-900/40 p-3 rounded-lg border border-slate-800/80">
-                <h3 className="text-sm font-semibold text-slate-300 mb-3 px-1 border-b border-slate-800 pb-2">
-                    Team: {teamName} <span className="text-slate-500 text-xs font-normal ml-2">({teamAgents.length} agents)</span>
-                </h3>
-                {renderGrid(teamAgents)}
-            </div>
-        ));
+        if (serverTeams.length === 0 && import.meta.env?.VITE_MOCK === 'true') {
+            // Mock fallback
+            const teamMap = new Map<string, AgentLiveState[]>();
+            filteredAndSortedAgents.forEach(agent => {
+                const team = agent.team_id || 'Ungrouped';
+                if (!teamMap.has(team)) teamMap.set(team, []);
+                teamMap.get(team)!.push(agent);
+            });
+            groupedTeams = Array.from(teamMap.entries()).map(([team_id, team_agents]) => ({ team_id, agents: team_agents }));
+        }
+
+        content = [...groupedTeams].sort((a, b) => a.team_id.localeCompare(b.team_id)).map(({ team_id, agents: teamAgents }) => {
+            // Apply current filters to the team's agents
+            let localFiltered = teamAgents;
+            if (sourceFilter.length > 0) localFiltered = localFiltered.filter(a => sourceFilter.includes(a.source));
+            if (statusFilter.length > 0) localFiltered = localFiltered.filter(a => statusFilter.includes(a.status));
+
+            // Sort them using our local sort utility
+            const sortedLocal = sortAgents(localFiltered, sortMode);
+
+            if (sortedLocal.length === 0) return null; // Don't show empty teams after filtering
+
+            return (
+                <div key={team_id} className="mb-6 bg-slate-900/40 p-3 rounded-lg border border-slate-800/80">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-3 px-1 border-b border-slate-800 pb-2">
+                        Team: {team_id} <span className="text-slate-500 text-xs font-normal ml-2">({sortedLocal.length} agents)</span>
+                    </h3>
+                    {renderGrid(sortedLocal)}
+                </div>
+            );
+        });
     } else {
         content = renderGrid(filteredAndSortedAgents);
     }

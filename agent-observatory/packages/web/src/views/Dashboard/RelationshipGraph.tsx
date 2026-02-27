@@ -1,5 +1,6 @@
 import { useAgentStore } from '../../stores/agentStore';
-import type { AgentLiveState } from '../../types/agent';
+import { useEffect, useState } from 'react';
+import type { AgentLiveState, AgentHierarchyNode } from '../../types/agent';
 
 interface RelationshipGraphProps {
     selectedAgentId?: string | null;
@@ -8,38 +9,57 @@ interface RelationshipGraphProps {
 
 export function RelationshipGraph({ selectedAgentId, onSelectAgent }: RelationshipGraphProps) {
     const { agents } = useAgentStore();
-    const agentList = Array.from(agents.values());
+    const [hierarchyTeams, setHierarchyTeams] = useState<AgentHierarchyNode[]>([]);
 
-    const tops = agentList.filter(a => !a.parent_agent_id);
+    useEffect(() => {
+        if (import.meta.env?.VITE_MOCK !== 'true') {
+            fetch('http://localhost:3000/api/v1/agents/hierarchy')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.hierarchy) {
+                        setHierarchyTeams(data.hierarchy);
+                    }
+                })
+                .catch(err => console.error("Failed to load hierarchy:", err));
+        }
+    }, [agents]); // Re-fetch or re-evaluate when agent states flow in
 
-    if (agentList.length === 0) {
+    // Local fallback for Mock mode
+    const tops = Array.from(agents.values()).filter(a => !a.parent_agent_id);
+
+    if (agents.size === 0) {
         return <div className="text-slate-500 pt-8 text-center text-sm">No active agents</div>;
     }
 
     // Recursive render for simple trees
-    const renderTree = (agent: AgentLiveState) => {
-        const children = agentList.filter(a => a.parent_agent_id === agent.agent_id);
+    const renderNode = (node: AgentHierarchyNode | AgentLiveState, mockChildren: AgentLiveState[] = []) => {
+        const isMock = !('children' in node);
+        const agent = isMock ? (node as AgentLiveState) : (node as AgentHierarchyNode).agent;
+
+        // Merge latest live state from store if available to animate status changes, fallback to passed node agent
+        const liveAgent = agents.get(agent.agent_id) || agent;
+        const children = isMock ? mockChildren : (node as AgentHierarchyNode).children;
 
         return (
-            <div key={agent.agent_id} className="flex flex-col items-center mb-4">
+            <div key={liveAgent.agent_id} className="flex flex-col items-center mb-4">
                 {/* Node */}
                 <div
                     onClick={() => onSelectAgent?.(agent.agent_id)}
                     className={`px-3 py-1.5 border rounded-md text-sm font-medium whitespace-nowrap z-10 relative cursor-pointer transition-all
-          ${agent.agent_id === selectedAgentId ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20 ' : ''}
-          ${agent.status === 'error' ? 'border-red-500/50 bg-red-900/20 text-red-400' :
-                            agent.status === 'idle' ? 'border-slate-700 bg-slate-800 text-slate-400' :
+          ${liveAgent.agent_id === selectedAgentId ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20 ' : ''}
+          ${liveAgent.status === 'error' ? 'border-red-500/50 bg-red-900/20 text-red-400' :
+                            liveAgent.status === 'idle' ? 'border-slate-700 bg-slate-800 text-slate-400' :
                                 'border-emerald-500/50 bg-emerald-900/20 text-emerald-400'}`}
                 >
-                    {agent.agent_name}
+                    {liveAgent.agent_name}
                 </div>
 
-                {/* Edges & Children - children wrapper must be positioned relative to draw horizontal lines correctly without overlapping team boundaries */}
+                {/* Edges & Children */}
                 {children.length > 0 && (
                     <div className="flex flex-col items-center mt-2 relative z-0">
                         <div className="w-px h-6 bg-slate-600 -mt-2"></div>
                         <div className="flex gap-4 border-t border-slate-600 pt-2 px-2">
-                            {children.map(child => renderTree(child))}
+                            {children.map((child: any) => renderNode(child as AgentHierarchyNode, isMock ? Array.from(agents.values()).filter(a => a.parent_agent_id === (child as AgentLiveState).agent_id) : []))}
                         </div>
                     </div>
                 )}
@@ -48,12 +68,22 @@ export function RelationshipGraph({ selectedAgentId, onSelectAgent }: Relationsh
     };
 
     // Group top-level agents by team
-    const teamMap = new Map<string, AgentLiveState[]>();
-    tops.forEach(agent => {
-        const team = agent.team_id || 'Ungrouped';
-        if (!teamMap.has(team)) teamMap.set(team, []);
-        teamMap.get(team)!.push(agent);
-    });
+    const teamMap = new Map<string, Array<AgentHierarchyNode | AgentLiveState>>();
+
+    if (hierarchyTeams.length > 0) {
+        hierarchyTeams.forEach(node => {
+            const team = node.agent.team_id || 'Ungrouped';
+            if (!teamMap.has(team)) teamMap.set(team, []);
+            teamMap.get(team)!.push(node);
+        });
+    } else {
+        // Fallback mock rendering using local agents map
+        tops.forEach(agent => {
+            const team = agent.team_id || 'Ungrouped';
+            if (!teamMap.has(team)) teamMap.set(team, []);
+            teamMap.get(team)!.push(agent);
+        });
+    }
 
     const teams = Array.from(teamMap.entries()).sort();
 
@@ -68,7 +98,7 @@ export function RelationshipGraph({ selectedAgentId, onSelectAgent }: Relationsh
                         Team: {teamName}
                     </div>
                     <div className="flex justify-around items-start gap-8 pt-2">
-                        {teamAgents.map(topAgent => renderTree(topAgent))}
+                        {teamAgents.map(topAgent => renderNode(topAgent, !('children' in topAgent) ? Array.from(agents.values()).filter(a => a.parent_agent_id === (topAgent as AgentLiveState).agent_id) : []))}
                     </div>
                 </div>
             ))}

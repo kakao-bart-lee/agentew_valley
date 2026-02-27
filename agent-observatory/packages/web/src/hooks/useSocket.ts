@@ -46,7 +46,7 @@ export function useSocket(): UseSocketReturn {
         if (refCount === 1) {
             socket.on('connect', () => {
                 setConnectionStatus(true, false);
-                socket.emit('set_view', { view: 'dashboard' });
+                socket.emit('set_view', 'dashboard');
             });
 
             socket.on('disconnect', () => {
@@ -85,19 +85,19 @@ export function useSocket(): UseSocketReturn {
 
     const subscribe = (agentId: string) => {
         if (socketInstance?.connected) {
-            socketInstance.emit('subscribe', { agent_id: agentId });
+            socketInstance.emit('subscribe', agentId);
         }
     };
 
     const unsubscribe = (agentId: string) => {
         if (socketInstance?.connected) {
-            socketInstance.emit('unsubscribe', { agent_id: agentId });
+            socketInstance.emit('unsubscribe', agentId);
         }
     };
 
     const setView = (viewName: 'dashboard' | 'pixel' | 'timeline') => {
         if (socketInstance?.connected) {
-            socketInstance.emit('set_view', { view: viewName });
+            socketInstance.emit('set_view', viewName);
         }
     };
 

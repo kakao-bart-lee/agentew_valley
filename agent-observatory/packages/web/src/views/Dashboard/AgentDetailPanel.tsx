@@ -40,8 +40,8 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     useEffect(() => {
         if (!agentId || !socket) return;
 
-        // Mock sub for now until BE implements explicitly
-        // socket.emit('subscribe', { agent_id: agentId });
+        // Subscribe for specific events for this agent
+        socket.emit('subscribe', agentId);
 
         const handleEvent = (event: UAEPEvent) => {
             if (event.agent_id === agentId) {
@@ -53,7 +53,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
 
         return () => {
             socket.off('event', handleEvent);
-            // socket.emit('unsubscribe', { agent_id: agentId });
+            socket.emit('unsubscribe', agentId);
         };
     }, [agentId, socket]);
 
