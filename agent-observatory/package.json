@@ -1,0 +1,20 @@
+{
+  "name": "agent-observatory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real-time agent activity observation and pixel visualization web service",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:server": "pnpm --filter @agent-observatory/server dev",
+    "dev:web": "pnpm --filter @agent-observatory/web dev",
+    "build": "pnpm -r build",
+    "build:shared": "pnpm --filter @agent-observatory/shared build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

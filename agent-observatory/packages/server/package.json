@@ -1,0 +1,29 @@
+{
+  "name": "@agent-observatory/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/app.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/app.ts",
+    "start": "node dist/app.js",
+    "test": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agent-observatory/shared": "workspace:*",
+    "@agent-observatory/collectors": "workspace:*",
+    "express": "^5.0.0",
+    "socket.io": "^4.8.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.17"
+  }
+}
