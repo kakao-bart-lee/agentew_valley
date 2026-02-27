@@ -304,9 +304,9 @@ export function PixelCanvasView() {
   }, [handleLayoutChange, tickEditor])
 
   return (
-    <div className="flex-1 w-full h-[calc(100vh-3rem)] overflow-hidden bg-[#1E1E2E] flex flex-col relative">
+    <div className="flex-1 w-full min-h-0 overflow-hidden bg-[#1E1E2E] flex flex-col relative">
       {/* 캔버스 영역 */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-h-0">
         <PixelOfficeCanvas
           officeState={officeStateRef.current}
           onClick={() => {}}
@@ -322,7 +322,6 @@ export function PixelCanvasView() {
           zoom={zoom}
           onZoomChange={setZoom}
           panRef={panRef}
-          onLayoutChange={handleLayoutChange}
         />
 
         {/* 줌 컨트롤 */}

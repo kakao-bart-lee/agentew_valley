@@ -712,9 +712,8 @@ export function PixelOfficeCanvas({
     <div
       ref={containerRef}
       style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
+        position: 'absolute',
+        inset: 0,
         overflow: 'hidden',
         background: '#1E1E2E',
       }}
