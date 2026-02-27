@@ -6,7 +6,7 @@ import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../uti
 import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle, Users } from 'lucide-react';
 
-export function AgentCard({ agent }: { agent: AgentLiveState }) {
+export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
     const {
         agent_name, status, source, total_tokens, total_cost_usd,
         total_tool_calls, total_errors, current_tool, current_tool_category,
@@ -14,7 +14,13 @@ export function AgentCard({ agent }: { agent: AgentLiveState }) {
     } = agent;
 
     return (
-        <Card className={`relative bg-slate-800 border-slate-700 hover:border-slate-500 transition-colors cursor-pointer group`}>
+        <Card
+            className={`relative bg-slate-800 transition-colors cursor-pointer group ${isSelected
+                ? 'border-indigo-500 ring-1 ring-indigo-500 bg-slate-800/80 shadow-lg shadow-indigo-500/10'
+                : 'border-slate-700 hover:border-slate-500'
+                }`}
+            onClick={onClick}
+        >
             <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
                 <div className="flex flex-col gap-1.5 w-full pr-2">
                     <div className="flex items-center gap-2">
@@ -83,7 +89,7 @@ export function AgentCard({ agent }: { agent: AgentLiveState }) {
                                 <span>Sub-agents ({child_agent_ids.length})</span>
                             </div>
                             <div className="flex flex-wrap gap-1">
-                                {child_agent_ids.map(childId => (
+                                {child_agent_ids.map((childId: string) => (
                                     <span key={childId} className="px-1.5 py-0.5 bg-slate-700/50 border border-slate-600 rounded text-[10px] text-slate-300 truncate max-w-[100px]" title={childId}>
                                         {childId.slice(0, 8)}...
                                     </span>

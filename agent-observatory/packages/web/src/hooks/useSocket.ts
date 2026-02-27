@@ -21,12 +21,19 @@ function getSocket(): Socket {
     return socketInstance;
 }
 
+interface UseSocketReturn {
+    socket: Socket | null;
+    subscribe: (agentId: string) => void;
+    unsubscribe: (agentId: string) => void;
+    setView: (viewName: 'dashboard' | 'pixel' | 'timeline') => void;
+}
+
 /**
  * Socket.IO 연결을 관리하는 훅.
  * 여러 컴포넌트에서 호출해도 하나의 소켓 인스턴스를 공유합니다.
  * 스토어 바인딩은 최초 마운트 시 1회만 등록됩니다.
  */
-export function useSocket(): Socket | null {
+export function useSocket(): UseSocketReturn {
     const { setConnectionStatus, initSession, setAgent, removeAgent } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
 

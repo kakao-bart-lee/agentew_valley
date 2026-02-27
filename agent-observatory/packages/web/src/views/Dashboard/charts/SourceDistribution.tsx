@@ -7,13 +7,13 @@ interface SourceDistributionProps {
 
 export function SourceDistribution({ data }: SourceDistributionProps) {
     return (
-        <div className="h-40 mt-2 flex flex-col items-center">
+        <div className="h-48 mt-2 flex flex-col items-center">
             <h3 className="text-sm font-medium text-slate-400 mb-2 self-start">Agent Sources</h3>
             <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                     <Pie
                         data={data}
-                        cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={2} dataKey="value"
+                        cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" paddingAngle={2} dataKey="value"
                     >
                         {data.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={SOURCE_COLORS[entry.name as keyof typeof SOURCE_COLORS] || '#9ca3af'} />

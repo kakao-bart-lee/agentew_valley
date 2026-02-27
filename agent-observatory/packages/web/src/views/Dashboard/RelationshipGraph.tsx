@@ -1,7 +1,12 @@
 import { useAgentStore } from '../../stores/agentStore';
 import type { AgentLiveState } from '../../types/agent';
 
-export function RelationshipGraph() {
+interface RelationshipGraphProps {
+    selectedAgentId?: string | null;
+    onSelectAgent?: (id: string) => void;
+}
+
+export function RelationshipGraph({ selectedAgentId, onSelectAgent }: RelationshipGraphProps) {
     const { agents } = useAgentStore();
     const agentList = Array.from(agents.values());
 
@@ -18,10 +23,13 @@ export function RelationshipGraph() {
         return (
             <div key={agent.agent_id} className="flex flex-col items-center mb-4">
                 {/* Node */}
-                <div className={`px-3 py-1.5 border rounded-md text-sm font-medium whitespace-nowrap z-10 relative
+                <div
+                    onClick={() => onSelectAgent?.(agent.agent_id)}
+                    className={`px-3 py-1.5 border rounded-md text-sm font-medium whitespace-nowrap z-10 relative cursor-pointer transition-all
+          ${agent.agent_id === selectedAgentId ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20 ' : ''}
           ${agent.status === 'error' ? 'border-red-500/50 bg-red-900/20 text-red-400' :
-                        agent.status === 'idle' ? 'border-slate-700 bg-slate-800 text-slate-400' :
-                            'border-emerald-500/50 bg-emerald-900/20 text-emerald-400'}`}
+                            agent.status === 'idle' ? 'border-slate-700 bg-slate-800 text-slate-400' :
+                                'border-emerald-500/50 bg-emerald-900/20 text-emerald-400'}`}
                 >
                     {agent.agent_name}
                 </div>

@@ -3,7 +3,7 @@ import { UAEPEvent, UAEPEventType } from '../types/uaep';
 import { useSocket } from './useSocket';
 
 export function useActivityFeed() {
-    const socket = useSocket();
+    const { socket } = useSocket();
     const [events, setEvents] = useState<UAEPEvent[]>([]);
     const [isPaused, setIsPaused] = useState(false);
     const [agentFilter, setAgentFilter] = useState<string | null>(null);

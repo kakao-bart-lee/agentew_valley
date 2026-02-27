@@ -5,7 +5,12 @@ import { sortAgents } from '../../utils/sorting';
 import { AgentCardFilters } from './AgentCardFilters';
 import { AgentLiveState } from '../../types/agent';
 
-export function AgentCardGrid() {
+interface AgentCardGridProps {
+    selectedAgentId?: string | null;
+    onSelectAgent?: (id: string) => void;
+}
+
+export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridProps) {
     const { agents, sourceFilter, statusFilter, teamFilter } = useAgentStore();
     const [groupByTeam, setGroupByTeam] = useState(false);
     const [sortMode, setSortMode] = useState<'status' | 'name' | 'activity' | 'cost'>('status');
@@ -36,9 +41,14 @@ export function AgentCardGrid() {
     }
 
     const renderGrid = (agentList: AgentLiveState[]) => (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
             {agentList.map(agent => (
-                <AgentCard key={agent.agent_id} agent={agent} />
+                <AgentCard
+                    key={agent.agent_id}
+                    agent={agent}
+                    isSelected={agent.agent_id === selectedAgentId}
+                    onClick={() => onSelectAgent?.(agent.agent_id)}
+                />
             ))}
         </div>
     );

@@ -4,7 +4,7 @@ import { ActivityFeedFilters } from './ActivityFeedFilters';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { Button } from '../../components/ui/button';
 import { Pause, Play, Trash2, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
 
 export function ActivityFeed() {
@@ -21,6 +21,18 @@ export function ActivityFeed() {
 
     const [filtersOpen, setFiltersOpen] = useState(false);
     const activeFilterCount = (agentFilter ? 1 : 0) + (typeFilters.length > 0 ? 1 : 0);
+
+    // 화면 바탕 스크롤 시 필터 팝업 모달이 화면을 따라다니는 문제 해결
+    useEffect(() => {
+        if (!filtersOpen) return;
+        const handleScroll = (e: Event) => {
+            // 팝업 내부의 스크롤은 무시
+            if (e.target instanceof Element && e.target.closest('[data-radix-popper-content-wrapper]')) return;
+            setFiltersOpen(false);
+        };
+        window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+        return () => window.removeEventListener('scroll', handleScroll, { capture: true });
+    }, [filtersOpen]);
 
     return (
         <div className="flex flex-col h-full overflow-hidden relative">
