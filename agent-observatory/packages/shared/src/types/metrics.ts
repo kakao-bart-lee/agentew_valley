@@ -60,8 +60,23 @@ export interface MetricsSnapshot {
   /** 에이전트 소스별 분포 */
   source_distribution: Record<AgentSourceType, number>;
 
-  /** LLM 모델별 세션 수 분포 (예: { "claude-sonnet-4-6": 3, "claude-opus-4-6": 1 }) */
-  model_distribution: Record<string, number>;
+  /**
+   * LLM 모델별 집계 (에이전트 수 + 토큰 수).
+   * 키: model_id (예: "claude-sonnet-4-6")
+   */
+  model_distribution: Record<string, { agent_count: number; token_count: number }>;
+
+  /** 전체 캐시 히트율: cache_read / (input + cache_read), 0~1 */
+  cache_hit_rate: number;
+
+  /** 누적 캐시 읽기 토큰 수 */
+  cache_read_tokens: number;
+
+  /** 누적 캐시 생성 토큰 수 */
+  cache_creation_tokens: number;
+
+  /** 분당 LLM 응답 수 (최근 1분) */
+  llm_responses_per_minute: number;
 
   /** 시계열 데이터 (슬라이딩 윈도우) */
   timeseries: MetricsTimeseries;
@@ -97,4 +112,10 @@ export interface MetricsTimeseries {
 
   /** 에러 발생 수 */
   error_count: number[];
+
+  /** 분당 캐시 히트율 (0~1) */
+  cache_hit_rate: number[];
+
+  /** 분당 LLM 응답 수 */
+  llm_responses_per_minute: number[];
 }

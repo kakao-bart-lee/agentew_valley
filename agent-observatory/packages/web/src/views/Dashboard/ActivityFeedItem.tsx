@@ -40,12 +40,31 @@ export function ActivityFeedItem({ event }: { event: UAEPEvent }) {
                         {Boolean(data?.output_summary) && <div className="text-slate-400 text-xs mt-0.5 truncate max-w-sm">{str(data?.output_summary)}</div>}
                     </div>
                 );
-            case 'tool.error':
+            case 'tool.error': {
+                const isInterrupt = Boolean(data?.is_interrupt);
                 return (
-                    <div className="text-red-400">
-                        <span>✗</span> {str(data?.tool_name, 'unknown')}: {data?.error_message ? str(data.error_message) : 'Error occurred'}
+                    <div className={isInterrupt ? 'text-amber-400' : 'text-red-400'}>
+                        <span>{isInterrupt ? '⚡' : '✗'}</span>{' '}
+                        {str(data?.tool_name, 'unknown')}
+                        {isInterrupt
+                            ? <span className="text-xs text-amber-500 ml-1">(interrupted)</span>
+                            : <span>: {data?.error_message ? str(data.error_message) : 'Error occurred'}</span>
+                        }
                     </div>
                 );
+            }
+            case 'llm.end': {
+                const modelId = str(event.model_id ?? data?.model_id);
+                const textLen = typeof data?.text_length === 'number' ? data.text_length : null;
+                return (
+                    <div className="flex items-center gap-1.5 text-slate-400">
+                        <span className="text-indigo-400">◆</span>
+                        <span className="text-xs">LLM response</span>
+                        {modelId && <span className="text-[10px] text-slate-500 bg-slate-700 px-1 rounded">{modelId}</span>}
+                        {textLen !== null && <span className="text-xs text-slate-500 ml-auto">{textLen.toLocaleString()} chars</span>}
+                    </div>
+                );
+            }
             case 'agent.status':
                 return <div className="text-amber-400">⚡ Status: {str(data?.status)}</div>;
             case 'user.input':

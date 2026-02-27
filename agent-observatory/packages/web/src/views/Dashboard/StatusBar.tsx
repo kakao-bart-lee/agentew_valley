@@ -1,9 +1,12 @@
+import { useMemo } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
 import { useSocket } from '../../hooks/useSocket';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { getModelBadgeColor, getModelShortName } from '../../utils/colors';
 
 export function StatusBar() {
     const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
@@ -19,6 +22,18 @@ export function StatusBar() {
     const tpm = snapshot?.total_tokens_per_minute || 0;
     const cph = snapshot?.total_cost_per_hour || 0;
     const errors = snapshot?.total_errors_last_hour || 0;
+
+    // 모델 분포: 에이전트 수 기준 상위 3개만 표시
+    const modelChips = useMemo(() => {
+        if (!snapshot?.model_distribution) return [];
+        return Object.entries(snapshot.model_distribution)
+            .filter(([, v]) => v.agent_count > 0)
+            .sort(([, a], [, b]) => b.agent_count - a.agent_count)
+            .slice(0, 3);
+    }, [snapshot?.model_distribution]);
+
+    const cacheHitRate = snapshot?.cache_hit_rate ?? 0;
+    const showCache = cacheHitRate > 0 || (snapshot?.cache_read_tokens ?? 0) > 0;
 
     return (
         <Card className="flex flex-row items-center justify-between p-3 mx-4 mt-4 bg-slate-800 border-slate-700 text-slate-50">
@@ -86,6 +101,44 @@ export function StatusBar() {
                             {errors}
                         </Badge>
                     </div>
+
+                    {showCache && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="pl-4 flex items-center gap-2 cursor-default">
+                                    <span className="text-slate-400">Cache:</span>
+                                    <span className={`font-semibold ${cacheHitRate >= 0.5 ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                        {Math.round(cacheHitRate * 100)}%
+                                    </span>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Cache hit rate: {Math.round(cacheHitRate * 100)}% of input tokens read from prompt cache</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
+
+                    {modelChips.length > 0 && (
+                        <div className="pl-4 flex items-center gap-1.5">
+                            <span className="text-slate-400 text-sm mr-1">Models:</span>
+                            {modelChips.map(([modelId, dist]) => (
+                                <Tooltip key={modelId}>
+                                    <TooltipTrigger asChild>
+                                        <span
+                                            className="text-white text-[10px] px-1.5 py-0.5 rounded font-medium cursor-default"
+                                            style={{ backgroundColor: getModelBadgeColor(modelId) }}
+                                        >
+                                            {getModelShortName(modelId)}
+                                            {dist.agent_count > 1 && <span className="ml-1 opacity-80">×{dist.agent_count}</span>}
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>{modelId}: {dist.agent_count} agent{dist.agent_count > 1 ? 's' : ''}, {dist.token_count.toLocaleString()} tokens</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </Card>

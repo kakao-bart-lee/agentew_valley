@@ -17,6 +17,9 @@ interface MinuteWindow {
   tool_calls: number;
   errors: number;
   active_agents: Set<string>;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  llm_responses: number;
 }
 
 const MAX_WINDOWS = 60;
@@ -38,7 +41,9 @@ export class MetricsAggregator {
   private totalSessions = 0;
   private toolDistribution: Record<string, number> = {};
   private sourceDistribution: Record<string, number> = {};
-  private modelDistribution: Record<string, number> = {};
+  private modelDistribution: Record<string, { agent_count: number; token_count: number }> = {};
+  private totalCacheReadTokens = 0;
+  private totalCacheCreationTokens = 0;
   private stateManager?: StateManager;
   private db?: Database.Database;
 
@@ -88,8 +93,9 @@ export class MetricsAggregator {
           (this.sourceDistribution[event.source] ?? 0) + 1;
         // 모델 분포 집계 (session.start 이벤트에서 model_id 추출)
         if (event.model_id) {
-          this.modelDistribution[event.model_id] =
-            (this.modelDistribution[event.model_id] ?? 0) + 1;
+          const entry = this.modelDistribution[event.model_id] ?? { agent_count: 0, token_count: 0 };
+          entry.agent_count++;
+          this.modelDistribution[event.model_id] = entry;
         }
         break;
       case 'tool.start': {
@@ -127,12 +133,26 @@ export class MetricsAggregator {
           this.totalCost += cost;
           window.cost += cost;
         }
-        // metrics.usage 이벤트에서도 모델 분포 집계 (model_id 있을 때)
+        // 캐시 토큰 집계
+        const cacheRead = typeof event.data?.['cache_read_input_tokens'] === 'number'
+          ? (event.data['cache_read_input_tokens'] as number) : 0;
+        const cacheCreate = typeof event.data?.['cache_creation_input_tokens'] === 'number'
+          ? (event.data['cache_creation_input_tokens'] as number) : 0;
+        this.totalCacheReadTokens += cacheRead;
+        this.totalCacheCreationTokens += cacheCreate;
+        window.cache_read_tokens += cacheRead;
+        window.cache_creation_tokens += cacheCreate;
+        // 모델별 토큰 집계
         const modelId = event.model_id ?? (event.data?.['model_id'] as string | undefined);
-        if (modelId && !this.modelDistribution[modelId]) {
-          // session.start에서 이미 집계되지 않은 경우에만 보완
-          // (중복 방지 - 이 방식은 새 모델 등장 시만 추가)
+        if (modelId) {
+          const entry = this.modelDistribution[modelId] ?? { agent_count: 0, token_count: 0 };
+          entry.token_count += totalTokens;
+          this.modelDistribution[modelId] = entry;
         }
+        break;
+      }
+      case 'llm.end': {
+        window.llm_responses++;
         break;
       }
       default:
@@ -155,6 +175,8 @@ export class MetricsAggregator {
     const activeAgentsTs: number[] = [];
     const toolCallsPerMinute: number[] = [];
     const errorCount: number[] = [];
+    const cacheHitRate: number[] = [];
+    const llmResponsesPerMinute: number[] = [];
 
     for (const w of this.windows) {
       timestamps.push(w.ts);
@@ -165,6 +187,9 @@ export class MetricsAggregator {
       activeAgentsTs.push(w.active_agents.size);
       toolCallsPerMinute.push(w.tool_calls);
       errorCount.push(w.errors);
+      const totalIn = w.input_tokens + w.cache_read_tokens;
+      cacheHitRate.push(totalIn > 0 ? w.cache_read_tokens / totalIn : 0);
+      llmResponsesPerMinute.push(w.llm_responses);
     }
 
     const recentWindow = this.windows[this.windows.length - 1];
@@ -196,6 +221,12 @@ export class MetricsAggregator {
       tool_distribution: { ...this.toolDistribution } as Record<ToolCategory, number>,
       source_distribution: { ...this.sourceDistribution } as Record<AgentSourceType, number>,
       model_distribution: { ...this.modelDistribution },
+      cache_hit_rate: this.totalCacheReadTokens > 0
+        ? this.totalCacheReadTokens / (this.totalInputTokens + this.totalCacheReadTokens)
+        : 0,
+      cache_read_tokens: this.totalCacheReadTokens,
+      cache_creation_tokens: this.totalCacheCreationTokens,
+      llm_responses_per_minute: recentWindow?.llm_responses ?? 0,
       timeseries: {
         timestamps,
         input_tokens_per_minute: inputTokensPerMinute,
@@ -205,6 +236,8 @@ export class MetricsAggregator {
         active_agents: activeAgentsTs,
         tool_calls_per_minute: toolCallsPerMinute,
         error_count: errorCount,
+        cache_hit_rate: cacheHitRate,
+        llm_responses_per_minute: llmResponsesPerMinute,
       },
     };
   }
@@ -350,6 +383,9 @@ export class MetricsAggregator {
       tool_calls: 0,
       errors: 0,
       active_agents: new Set(),
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      llm_responses: 0,
     };
 
     this.windows.push(window);

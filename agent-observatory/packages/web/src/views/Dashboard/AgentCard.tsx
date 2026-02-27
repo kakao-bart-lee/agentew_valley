@@ -3,16 +3,22 @@ import type { AgentLiveState } from '../../types/agent';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
-import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
-import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS } from '../../utils/colors';
+import { formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
+import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS, getModelBadgeColor, getModelShortName } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle } from 'lucide-react';
 
 export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
     const {
-        agent_name, status, source, total_tokens, total_cost_usd,
-        total_tool_calls, total_errors, current_tool,
-        last_activity, session_start,
+        agent_name, status, source, total_tokens, total_tool_calls, total_errors,
+        current_tool, last_activity, session_start, model_id,
+        cache_read_tokens, total_input_tokens,
     } = agent;
+
+    const cacheRate = useMemo(() => {
+        const total = (total_input_tokens ?? 0) + (cache_read_tokens ?? 0);
+        if (total === 0) return null;
+        return Math.round((cache_read_tokens ?? 0) / total * 100);
+    }, [total_input_tokens, cache_read_tokens]);
 
     const sortedToolEntries = useMemo(() => {
         const entries = Object.entries(agent.tool_distribution ?? {}).filter(([, v]) => v > 0);
@@ -42,6 +48,20 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                     >
                         {SOURCE_LABELS[source] || 'Custom'}
                     </Badge>
+                    {model_id && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Badge
+                                    variant="outline"
+                                    className="text-white border-transparent text-[10px] px-1.5 py-0 h-4 shrink-0"
+                                    style={{ backgroundColor: getModelBadgeColor(model_id) }}
+                                >
+                                    {getModelShortName(model_id)}
+                                </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent><p>{model_id}</p></TooltipContent>
+                        </Tooltip>
+                    )}
                     <CardTitle className="text-xs font-medium text-slate-100 truncate" title={agent_name}>
                         {agent_name}
                     </CardTitle>
@@ -79,7 +99,21 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                 {/* Stats */}
                 <div className="flex items-center gap-x-3 text-xs text-slate-400 mb-1.5">
                     <span><span className="text-slate-500">Tok:</span> <span className="font-mono text-slate-300">{formatLargeNumber(total_tokens)}</span></span>
-                    <span><span className="text-slate-500">Cost:</span> <span className="font-mono text-slate-300">{formatCurrency(total_cost_usd)}</span></span>
+                    {cacheRate !== null ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span className="cursor-default">
+                                    <span className="text-slate-500">Cache:</span>{' '}
+                                    <span className={`font-mono ${cacheRate >= 50 ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                        {cacheRate}%
+                                    </span>
+                                </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Cache hit rate: {cache_read_tokens?.toLocaleString()} / {((total_input_tokens ?? 0) + (cache_read_tokens ?? 0)).toLocaleString()} tokens read from cache</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    ) : null}
                     <span><span className="text-slate-500">Tools:</span> <span className="font-mono text-slate-300">{total_tool_calls}</span></span>
                 </div>
 
