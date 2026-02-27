@@ -17,7 +17,9 @@
     "better-sqlite3": "^12.6.2",
     "cors": "^2.8.5",
     "express": "^5.0.0",
-    "socket.io": "^4.8.0"
+    "socket.io": "^4.8.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-dist": "^5.32.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -25,6 +27,8 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/supertest": "^7.2.0",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-dist": "^3.30.6",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "tsx": "^4.19.0",

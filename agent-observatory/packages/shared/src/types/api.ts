@@ -85,6 +85,113 @@ export interface ObservatoryConfig {
   timeseries_retention_minutes: number;
 }
 
+// ─── Session Replay ───
+
+/** 재생용 이벤트 (gap/offset 포함) */
+export interface ReplayEvent {
+  event: UAEPEvent;
+  /** 이전 이벤트와의 간격 (ms) */
+  gap_ms: number;
+  /** 세션 시작으로부터 경과 (ms) */
+  offset_ms: number;
+}
+
+/** 세션 재생 요약 정보 */
+export interface SessionReplaySummary {
+  agent_id: string;
+  agent_name: string;
+  source: string;
+  team_id?: string;
+  start_time: string;
+  end_time?: string;
+  duration_ms: number;
+  total_events: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  total_tool_calls: number;
+  event_type_counts: Record<string, number>;
+}
+
+/** GET /api/v1/sessions/:id/replay 응답 */
+export interface SessionReplayResponse {
+  session_id: string;
+  summary: SessionReplaySummary;
+  events: ReplayEvent[];
+  total_events: number;
+  time_range?: { from: string; to: string };
+}
+
+// ─── Cost/Token Analytics ───
+
+/** GET /api/v1/analytics/cost 응답 */
+export interface CostAnalyticsResponse {
+  time_range: { from: string; to: string };
+  total_cost_usd: number;
+  total_tokens: number;
+  total_sessions: number;
+  cost_timeseries: { ts: string; cost: number; tokens: number }[];
+}
+
+/** 에이전트별 비용 항목 */
+export interface AgentCostEntry {
+  agent_id: string;
+  agent_name: string;
+  source: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  session_count: number;
+  cost_percentage: number;
+}
+
+/** GET /api/v1/analytics/cost/by-agent 응답 */
+export interface CostByAgentResponse {
+  time_range: { from: string; to: string };
+  agents: AgentCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+/** 팀별 비용 항목 */
+export interface TeamCostEntry {
+  team_id: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  agent_count: number;
+  session_count: number;
+  cost_percentage: number;
+}
+
+/** GET /api/v1/analytics/cost/by-team 응답 */
+export interface CostByTeamResponse {
+  time_range: { from: string; to: string };
+  teams: TeamCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+/** 도구별 비용 항목 */
+export interface ToolCostEntry {
+  tool_category: string;
+  call_count: number;
+  estimated_cost_usd: number;
+  cost_percentage: number;
+}
+
+/** GET /api/v1/analytics/cost/by-tool 응답 */
+export interface CostByToolResponse {
+  time_range: { from: string; to: string };
+  tools: ToolCostEntry[];
+  total_cost_usd: number;
+}
+
+/** GET /api/v1/analytics/tokens 응답 */
+export interface TokenAnalyticsResponse {
+  time_range: { from: string; to: string };
+  total_tokens: number;
+  tokens_timeseries: { ts: string; tokens: number }[];
+  by_agent: { agent_id: string; agent_name: string; total_tokens: number }[];
+}
+
 // ─── WebSocket 이벤트 페이로드 타입 ───
 
 /** WebSocket 초기 연결 시 전달되는 상태 (socket.emit('init')) */
