@@ -23,6 +23,8 @@ export interface OCWatcherConfig {
   watchPaths: string[];
   /** 폴링 사용 여부 */
   usePolling?: boolean;
+  /** true면 기존 파일은 끝 위치만 기록하고 건너뜀. 새 append분만 수집. 기본 false. */
+  tailOnly?: boolean;
 }
 
 /**
@@ -60,7 +62,11 @@ export class OpenClawWatcher {
     });
 
     this.watcher.on('add', (filePath: string) => {
-      void this.handleFile(filePath, true);
+      if (this.config.tailOnly) {
+        void this.skipToEnd(filePath);
+      } else {
+        void this.handleFile(filePath, true);
+      }
     });
 
     this.watcher.on('change', (filePath: string) => {
@@ -79,6 +85,18 @@ export class OpenClawWatcher {
       this.watcher = null;
     }
     this.offsets.clear();
+  }
+
+  /**
+   * 기존 파일의 끝 위치만 기록하고 내용은 읽지 않는다.
+   */
+  private async skipToEnd(filePath: string): Promise<void> {
+    try {
+      const fileStat = await stat(filePath);
+      this.offsets.set(filePath, fileStat.size);
+    } catch {
+      // 파일 접근 실패 무시
+    }
   }
 
   /**

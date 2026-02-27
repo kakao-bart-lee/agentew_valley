@@ -10,6 +10,8 @@ import type { UAEPEvent, AgentSourceType } from '@agent-observatory/shared';
 export interface CollectorConfig {
   /** 감시할 디렉토리/파일 경로 목록 */
   watchPaths: string[];
+  /** true면 기존 파일은 건너뛰고 새로 추가되는 내용만 수집. 기본 false. */
+  tailOnly?: boolean;
 }
 
 /** 소스별 Collector가 구현하는 인터페이스 */

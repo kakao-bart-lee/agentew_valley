@@ -49,6 +49,7 @@ export class ClaudeCodeCollector implements Collector {
     this.config = config;
     this.watcher = new ClaudeCodeWatcher({
       watchPaths: config.watchPaths,
+      tailOnly: config.tailOnly,
     });
 
     this.watcher.onRecords((filePath, records, isNewFile) => {

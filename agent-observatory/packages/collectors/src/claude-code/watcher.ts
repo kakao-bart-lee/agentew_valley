@@ -25,6 +25,8 @@ export interface WatcherConfig {
   watchPaths: string[];
   /** 폴링 사용 여부 (NFS 등에서만 true) */
   usePolling?: boolean;
+  /** true면 기존 파일은 끝 위치만 기록하고 건너뜀. 새 append분만 수집. 기본 false. */
+  tailOnly?: boolean;
 }
 
 /**
@@ -62,7 +64,11 @@ export class ClaudeCodeWatcher {
     });
 
     this.watcher.on('add', (filePath: string) => {
-      void this.handleFile(filePath, true);
+      if (this.config.tailOnly) {
+        void this.skipToEnd(filePath);
+      } else {
+        void this.handleFile(filePath, true);
+      }
     });
 
     this.watcher.on('change', (filePath: string) => {
@@ -81,6 +87,19 @@ export class ClaudeCodeWatcher {
       this.watcher = null;
     }
     this.offsets.clear();
+  }
+
+  /**
+   * 기존 파일의 끝 위치만 기록하고 내용은 읽지 않는다.
+   * 이후 change 이벤트에서 새 append분만 처리된다.
+   */
+  private async skipToEnd(filePath: string): Promise<void> {
+    try {
+      const fileStat = await stat(filePath);
+      this.offsets.set(filePath, fileStat.size);
+    } catch {
+      // 파일 접근 실패 무시
+    }
   }
 
   /**
