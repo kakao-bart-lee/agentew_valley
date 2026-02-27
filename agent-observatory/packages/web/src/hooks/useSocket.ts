@@ -30,6 +30,7 @@ export function useSocket(): Socket | null {
     const { setConnectionStatus, initSession, setAgent, removeAgent } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
 
+    // 연결/해제 로직은 동일하게 유지
     useEffect(() => {
         const socket = getSocket();
         refCount++;
@@ -75,5 +76,28 @@ export function useSocket(): Socket | null {
         };
     }, [setConnectionStatus, initSession, setAgent, removeAgent, setSnapshot]);
 
-    return socketInstance;
+    const subscribe = (agentId: string) => {
+        if (socketInstance?.connected) {
+            socketInstance.emit('subscribe', { agent_id: agentId });
+        }
+    };
+
+    const unsubscribe = (agentId: string) => {
+        if (socketInstance?.connected) {
+            socketInstance.emit('unsubscribe', { agent_id: agentId });
+        }
+    };
+
+    const setView = (viewName: 'dashboard' | 'pixel' | 'timeline') => {
+        if (socketInstance?.connected) {
+            socketInstance.emit('set_view', { view: viewName });
+        }
+    };
+
+    return {
+        socket: socketInstance,
+        subscribe,
+        unsubscribe,
+        setView
+    };
 }

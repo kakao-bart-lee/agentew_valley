@@ -1,6 +1,9 @@
 import { useMetricsStore } from '../../stores/metricsStore';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
-import { CATEGORY_COLORS, SOURCE_COLORS } from '../../utils/colors';
+import { TokensChart } from './charts/TokensChart';
+import { ToolDistribution } from './charts/ToolDistribution';
+import { SourceDistribution } from './charts/SourceDistribution';
+import { CostChart } from './charts/CostChart';
+import { ActiveAgentsChart } from './charts/ActiveAgentsChart';
 
 export function MetricsPanel() {
     const { snapshot } = useMetricsStore();
@@ -16,6 +19,7 @@ export function MetricsPanel() {
             time: timeLabel,
             tokens: snapshot.timeseries.tokens_per_minute[i],
             cost: snapshot.timeseries.cost_per_minute[i] * 60, // Per hour estimate
+            active: snapshot.timeseries.active_agents[i],
         };
     });
 
@@ -24,56 +28,17 @@ export function MetricsPanel() {
         .map(([key, value]) => ({ name: key, value }))
         .sort((a, b) => b.value - a.value); // highest first
 
+    const sourceData = Object.entries(snapshot.source_distribution)
+        .filter(([_, value]) => value > 0)
+        .map(([key, value]) => ({ name: key, value }));
+
     return (
-        <div className="flex flex-col gap-6 h-full overflow-y-auto pr-2 custom-scrollbar">
-
-            {/* 1. Tokens per minute line chart */}
-            <div className="h-44">
-                <h3 className="text-sm font-medium text-slate-400 mb-2">Tokens / Minute (Last 60m)</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={timeseriesData}>
-                        <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }} />
-                        <Line type="monotone" dataKey="tokens" stroke="#8b5cf6" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* 2. Tool Distribution horizontal bar chart */}
-            <div className="h-48 mt-2">
-                <h3 className="text-sm font-medium text-slate-400 mb-2">Tool Category Distribution</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={toolData} layout="vertical" margin={{ left: 20 }}>
-                        <XAxis type="number" hide />
-                        <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={11} axisLine={false} tickLine={false} width={80} />
-                        <Tooltip cursor={{ fill: '#334155' }} contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
-                        <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                            {toolData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name as keyof typeof CATEGORY_COLORS] || '#9ca3af'} />
-                            ))}
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* 3. Source Distribution Pie Chart */}
-            <div className="h-40 mt-2 flex flex-col items-center">
-                <h3 className="text-sm font-medium text-slate-400 mb-2 self-start">Agent Sources</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={Object.entries(snapshot.source_distribution).filter(([_, v]) => v > 0).map(([k, v]) => ({ name: k, value: v }))}
-                            cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={2} dataKey="value"
-                        >
-                            {Object.entries(snapshot.source_distribution).map(([k], index) => (
-                                <Cell key={`cell-${index}`} fill={SOURCE_COLORS[k as keyof typeof SOURCE_COLORS] || '#9ca3af'} />
-                            ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
-                    </PieChart>
-                </ResponsiveContainer>
-            </div>
+        <div className="flex flex-col gap-6 h-full overflow-y-auto pr-2 custom-scrollbar pb-4">
+            <TokensChart data={timeseriesData} />
+            <CostChart data={timeseriesData} />
+            <ActiveAgentsChart data={timeseriesData} />
+            <ToolDistribution data={toolData} />
+            <SourceDistribution data={sourceData} />
         </div>
     );
 }
