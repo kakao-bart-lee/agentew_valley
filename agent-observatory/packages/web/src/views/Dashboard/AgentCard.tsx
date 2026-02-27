@@ -7,14 +7,13 @@ import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../uti
 import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle } from 'lucide-react';
 
-export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick, isSubagent }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void, isSubagent?: boolean }) {
+export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
     const {
         agent_name, status, source, total_tokens, total_cost_usd,
-        total_tool_calls, total_errors, current_tool, current_tool_category,
-        last_activity, session_start, team_id,
+        total_tool_calls, total_errors, current_tool,
+        last_activity, session_start,
     } = agent;
 
-    // 정렬 한 번만 수행 — TooltipTrigger와 TooltipContent에서 같은 배열 재사용
     const sortedToolEntries = useMemo(() => {
         const entries = Object.entries(agent.tool_distribution ?? {}).filter(([, v]) => v > 0);
         entries.sort(([, a], [, b]) => b - a);
@@ -28,40 +27,29 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick, i
 
     return (
         <Card
-            className={`relative bg-slate-800 transition-all duration-300 cursor-pointer group animate-in fade-in slide-in-from-bottom-2 ${isSubagent ? 'border-l-2 border-l-violet-500/60' : ''} ${isSelected
+            className={`relative bg-slate-800 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isSelected
                 ? 'border-indigo-500 ring-1 ring-indigo-500 bg-slate-800/80 shadow-lg shadow-indigo-500/10'
-                : isSubagent ? 'border-slate-700/60 hover:border-violet-500/40' : 'border-slate-700 hover:border-slate-500'
+                : 'border-slate-700 hover:border-slate-500'
                 }`}
             onClick={onClick}
         >
-            <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-                <div className="flex flex-col gap-1.5 w-full pr-2">
-                    <div className="flex items-center gap-2">
-                        {isSubagent && (
-                            <span className="text-violet-400 text-[10px] font-medium">↳ Sub-agent</span>
-                        )}
-                        <Badge
-                            variant="outline"
-                            className="text-white border-transparent text-[10px] px-1.5 py-0 h-4"
-                            style={{ backgroundColor: SOURCE_COLORS[source] || '#9ca3af' }}
-                        >
-                            {SOURCE_LABELS[source] || 'Custom'}
-                        </Badge>
-                        {!isSubagent && team_id && (
-                            <Badge variant="outline" className="border-slate-600 text-slate-300 text-[10px] px-1.5 py-0 h-4 bg-slate-700/50">
-                                Team: {team_id}
-                            </Badge>
-                        )}
-                    </div>
-                    <CardTitle className="text-base font-medium text-slate-100 truncate w-full" title={agent_name}>
+            <CardHeader className="p-2.5 pb-1 flex flex-row items-center justify-between space-y-0 gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <Badge
+                        variant="outline"
+                        className="text-white border-transparent text-[10px] px-1.5 py-0 h-4 shrink-0"
+                        style={{ backgroundColor: SOURCE_COLORS[source] || '#9ca3af' }}
+                    >
+                        {SOURCE_LABELS[source] || 'Custom'}
+                    </Badge>
+                    <CardTitle className="text-xs font-medium text-slate-100 truncate" title={agent_name}>
                         {agent_name}
                     </CardTitle>
                 </div>
 
-                {/* Status Indicator */}
                 <Tooltip>
-                    <TooltipTrigger className="shrink-0 mt-1">
-                        <div className={`w-3 h-3 rounded-full ${bgSTATUS_COLORS[status] || 'bg-gray-400'}`} />
+                    <TooltipTrigger className="shrink-0">
+                        <div className={`w-2 h-2 rounded-full ${bgSTATUS_COLORS[status] || 'bg-gray-400'}`} />
                     </TooltipTrigger>
                     <TooltipContent>
                         <p className="capitalize">{status}</p>
@@ -69,41 +57,37 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick, i
                 </Tooltip>
             </CardHeader>
 
-            <CardContent className="p-4 pt-2">
-
-                <div className="flex flex-col gap-1.5 mb-3">
-                    <div className="flex items-center gap-2 text-sm">
-                        <Activity className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span className={`capitalize font-medium truncate ${STATUS_COLORS[status] || 'text-slate-400'}`}>
-                            {status}
-                        </span>
-                    </div>
-
+            <CardContent className="p-2.5 pt-1">
+                {/* Status + current tool */}
+                <div className="flex items-center gap-1.5 text-xs mb-1.5">
+                    <Activity className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className={`capitalize font-medium ${STATUS_COLORS[status] || 'text-slate-400'}`}>{status}</span>
                     {(status === 'acting' && current_tool) && (
-                        <div className="flex items-center gap-2 text-sm text-slate-300">
-                            <TerminalSquare className="w-4 h-4 text-slate-400 shrink-0" />
-                            <span className="truncate">{current_tool} <span className="text-slate-500 text-xs">({current_tool_category})</span></span>
-                        </div>
+                        <>
+                            <span className="text-slate-600">·</span>
+                            <TerminalSquare className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate text-slate-300">{current_tool}</span>
+                        </>
                     )}
+                    {total_errors > 0 && (
+                        <span className="ml-auto flex items-center gap-0.5 text-red-400 font-medium shrink-0">
+                            <AlertCircle className="w-3 h-3" /> {total_errors}
+                        </span>
+                    )}
+                </div>
 
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-2">
-                        <div><span className="text-slate-500">Tokens:</span> <span className="font-mono text-slate-300">{formatLargeNumber(total_tokens)}</span></div>
-                        <div><span className="text-slate-500">Cost:</span> <span className="font-mono text-slate-300">{formatCurrency(total_cost_usd)}</span></div>
-                        <div><span className="text-slate-500">Tools:</span> <span className="font-mono text-slate-300">{total_tool_calls}</span></div>
-                        {total_errors > 0 && (
-                            <div className="flex items-center gap-1 text-red-400 font-medium">
-                                <AlertCircle className="w-3 h-3 shrink-0" /> {total_errors}
-                            </div>
-                        )}
-                    </div>
-
+                {/* Stats */}
+                <div className="flex items-center gap-x-3 text-xs text-slate-400 mb-1.5">
+                    <span><span className="text-slate-500">Tok:</span> <span className="font-mono text-slate-300">{formatLargeNumber(total_tokens)}</span></span>
+                    <span><span className="text-slate-500">Cost:</span> <span className="font-mono text-slate-300">{formatCurrency(total_cost_usd)}</span></span>
+                    <span><span className="text-slate-500">Tools:</span> <span className="font-mono text-slate-300">{total_tool_calls}</span></span>
                 </div>
 
                 {/* Tool distribution mini bar */}
                 {toolTotal > 0 && (
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <div className="flex h-1.5 w-full rounded-full overflow-hidden gap-px cursor-default mt-1 mb-1">
+                            <div className="flex h-1 w-full rounded-full overflow-hidden gap-px cursor-default mb-1.5">
                                 {sortedToolEntries.map(([cat, count]) => (
                                     <div
                                         key={cat}
@@ -132,12 +116,10 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick, i
                     </Tooltip>
                 )}
 
-                <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-700/50 pt-3">
-                    <div className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 shrink-0" />
-                        <span>Started {formatRelativeTime(session_start)}</span>
-                    </div>
-                    <span>Seen {formatRelativeTime(last_activity)}</span>
+                <div className="flex items-center gap-1 text-[10px] text-slate-600 border-t border-slate-700/40 pt-1.5">
+                    <Clock className="w-2.5 h-2.5 shrink-0" />
+                    <span>{formatRelativeTime(session_start)}</span>
+                    <span className="ml-auto">{formatRelativeTime(last_activity)}</span>
                 </div>
             </CardContent>
         </Card>

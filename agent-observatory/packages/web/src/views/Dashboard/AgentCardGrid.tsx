@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { AgentCard } from './AgentCard';
+import { SubAgentCard } from './SubAgentCard';
 import { sortAgents } from '../../utils/sorting';
 import { AgentCardFilters } from './AgentCardFilters';
 import { AgentCardSkeleton } from '../../components/ui/skeleton';
@@ -97,37 +98,30 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
     }
 
     const renderAgentGroup = (agentList: AgentLiveState[]) => (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
             {agentList.map(agent => {
                 const children = childrenMap.get(agent.agent_id) ?? [];
                 return (
-                    <div key={agent.agent_id} className="flex flex-col gap-3">
+                    <div key={agent.agent_id} className="flex flex-wrap items-start gap-2">
                         {/* 루트 에이전트 카드 */}
-                        <AgentCard
-                            agent={agent}
-                            isSelected={agent.agent_id === selectedAgentId}
-                            onClick={() => onSelectAgent?.(agent.agent_id)}
-                        />
+                        <div className="w-72 shrink-0">
+                            <AgentCard
+                                agent={agent}
+                                isSelected={agent.agent_id === selectedAgentId}
+                                onClick={() => onSelectAgent?.(agent.agent_id)}
+                            />
+                        </div>
 
-                        {/* 서브에이전트 그룹 */}
-                        {children.length > 0 && (
-                            <div className="ml-6 pl-4 border-l-2 border-violet-500/30 flex flex-col gap-3">
-                                <span className="text-[11px] text-violet-400/70 font-medium -mb-1">
-                                    {children.length} sub-agent{children.length > 1 ? 's' : ''}
-                                </span>
-                                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
-                                    {children.map(child => (
-                                        <AgentCard
-                                            key={child.agent_id}
-                                            agent={child}
-                                            isSubagent
-                                            isSelected={child.agent_id === selectedAgentId}
-                                            onClick={() => onSelectAgent?.(child.agent_id)}
-                                        />
-                                    ))}
-                                </div>
+                        {/* 서브에이전트 — 루트와 같은 줄에 가로 배치 */}
+                        {children.map(child => (
+                            <div key={child.agent_id} className="w-72 shrink-0">
+                                <SubAgentCard
+                                    agent={child}
+                                    isSelected={child.agent_id === selectedAgentId}
+                                    onClick={() => onSelectAgent?.(child.agent_id)}
+                                />
                             </div>
-                        )}
+                        ))}
                     </div>
                 );
             })}
