@@ -17,6 +17,9 @@ export type OCWatcherCallback = (
   isNewFile: boolean,
 ) => void;
 
+/** 파일 삭제 시 콜백 */
+export type OCRemoveCallback = (filePath: string) => void;
+
 /** Watcher 설정 */
 export interface OCWatcherConfig {
   /** 감시할 경로 목록 */
@@ -34,6 +37,7 @@ export class OpenClawWatcher {
   private watcher: FSWatcher | null = null;
   private offsets = new Map<string, number>();
   private callback: OCWatcherCallback | null = null;
+  private removeCallback: OCRemoveCallback | null = null;
   private readonly config: OCWatcherConfig;
 
   constructor(config: OCWatcherConfig) {
@@ -43,6 +47,11 @@ export class OpenClawWatcher {
   /** 파일 변경 콜백 등록 */
   onRecords(cb: OCWatcherCallback): void {
     this.callback = cb;
+  }
+
+  /** 파일 삭제 콜백 등록 */
+  onFileRemoved(cb: OCRemoveCallback): void {
+    this.removeCallback = cb;
   }
 
   /** 감시 시작 */
@@ -75,6 +84,7 @@ export class OpenClawWatcher {
 
     this.watcher.on('unlink', (filePath: string) => {
       this.offsets.delete(filePath);
+      this.removeCallback?.(filePath);
     });
   }
 

@@ -53,6 +53,10 @@ export class OpenClawCollector implements Collector {
     this.watcher.onRecords((filePath, records, isNewFile) => {
       this.handleRecords(filePath, records, isNewFile);
     });
+
+    this.watcher.onFileRemoved((filePath) => {
+      this.handleFileRemoved(filePath);
+    });
   }
 
   /** 이벤트 핸들러 등록 */
@@ -77,6 +81,29 @@ export class OpenClawCollector implements Collector {
     for (const handler of this.handlers) {
       handler(event);
     }
+  }
+
+  /**
+   * 파일 삭제 시 session.end 이벤트를 발행한다.
+   */
+  private handleFileRemoved(filePath: string): void {
+    const ctx = this.contexts.get(filePath);
+    if (!ctx) return;
+
+    this.emit({
+      ts: new Date().toISOString(),
+      event_id: generateEventId(),
+      source: 'openclaw',
+      agent_id: ctx.agentId,
+      agent_name: ctx.agentName,
+      session_id: ctx.sessionId,
+      ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
+      ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
+      type: 'session.end',
+      data: { reason: 'file_removed' },
+    });
+
+    this.contexts.delete(filePath);
   }
 
   /**
@@ -153,6 +180,14 @@ export class OpenClawCollector implements Collector {
 }
 
 export { parseLine, parseLines } from './parser.js';
-export type { OCParsedRecord, OCSessionHeader, OCToolCall, OCToolResult, OCUserInput } from './parser.js';
+export type {
+  OCParsedRecord,
+  OCSessionHeader,
+  OCToolCall,
+  OCToolResult,
+  OCUserInput,
+  OCAssistantMessage,
+  OCTokenUsage,
+} from './parser.js';
 export { normalize, normalizeAll, createContext, buildAgentId } from './normalizer.js';
 export type { OCNormalizerContext } from './normalizer.js';

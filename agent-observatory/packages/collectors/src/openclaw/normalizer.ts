@@ -1,5 +1,5 @@
 /**
- * OpenClaw 파서 레코드 -> UAEPEvent 변환기.
+ * OpenClaw 파서 레코드 → UAEPEvent 변환기.
  *
  * 변환 규칙:
  *   - agent_id: "oc-{agentId 앞 8자}"
@@ -7,6 +7,7 @@
  *   - session_id: OpenClaw의 sessionId
  *   - source: "openclaw"
  *   - 도구명 매핑: getToolCategory() (알 수 없으면 "other")
+ *   - model_id: assistant_message에서 추출, 이후 이벤트에 전파
  */
 
 import type { UAEPEvent } from '@agent-observatory/shared';
@@ -23,10 +24,12 @@ export interface OCNormalizerContext {
   agentName: string;
   /** 시퀀스 카운터 */
   seq: number;
-  /** 활성 도구 시작 시각 (id -> ISO timestamp) */
+  /** 활성 도구 시작 시각 (id → ISO timestamp) */
   activeToolTimestamps: Map<string, string>;
   /** 프로젝트 ID (세션 헤더의 cwd) */
   projectId?: string;
+  /** 현재 세션에서 확인된 LLM 모델 ID */
+  modelId?: string;
 }
 
 /**
@@ -61,6 +64,9 @@ export function updateContextFromHeader(
 ): void {
   ctx.sessionId = header.sessionId;
   ctx.projectId = header.cwd; // 세션 헤더의 cwd를 프로젝트 ID로 사용
+  if (header.model) {
+    ctx.modelId = header.model;
+  }
 }
 
 /** 현재 시각을 ISO-8601로 반환 */
@@ -85,6 +91,7 @@ function makeEvent(
     agent_name: ctx.agentName,
     session_id: ctx.sessionId,
     ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
+    ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
     type,
     ...extra,
   };
@@ -138,6 +145,7 @@ export function normalize(
             tool_name: record.name,
             tool_category: category,
             input_summary: summary,
+            input_keys: Object.keys(record.input),
           },
         }),
       ];
@@ -169,6 +177,7 @@ export function normalize(
           span_id: record.toolCallId,
           data: {
             duration_ms: durationMs,
+            response_length: record.content?.length ?? 0,
           },
         }),
       ];
@@ -182,6 +191,53 @@ export function normalize(
           },
         }),
       ];
+    }
+
+    case 'assistant_message': {
+      const events: UAEPEvent[] = [];
+
+      // 모델 정보 업데이트 (이후 이벤트에 전파)
+      if (record.model) {
+        ctx.modelId = record.model;
+      }
+
+      // 텍스트 응답이 있으면 llm.end 이벤트 발행
+      if (record.textLength > 0) {
+        events.push(
+          makeEvent(ctx, 'llm.end', ts, {
+            data: {
+              text_length: record.textLength,
+              model_id: record.model ?? ctx.modelId,
+            },
+          }),
+        );
+      }
+
+      // 토큰 사용량이 있으면 metrics.usage 이벤트 발행
+      if (record.usage) {
+        const { input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens } =
+          record.usage;
+        const totalTokens = input_tokens + output_tokens;
+
+        events.push(
+          makeEvent(ctx, 'metrics.usage', ts, {
+            data: {
+              input_tokens,
+              output_tokens,
+              tokens: totalTokens,
+              ...(cache_creation_input_tokens !== undefined
+                ? { cache_creation_input_tokens }
+                : {}),
+              ...(cache_read_input_tokens !== undefined
+                ? { cache_read_input_tokens }
+                : {}),
+              model_id: record.model ?? ctx.modelId,
+            },
+          }),
+        );
+      }
+
+      return events;
     }
 
     default:
