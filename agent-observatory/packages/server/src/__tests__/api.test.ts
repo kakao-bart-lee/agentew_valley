@@ -112,6 +112,37 @@ describe('REST API', () => {
     });
   });
 
+  describe('PUT /api/v1/config', () => {
+    it('should update config fields', async () => {
+      const res = await request(instance.app)
+        .put('/api/v1/config')
+        .send({ watch_paths: ['/tmp/test'], metrics_interval_ms: 10000 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.config.watch_paths).toEqual(['/tmp/test']);
+      expect(res.body.config.metrics_interval_ms).toBe(10000);
+    });
+
+    it('should persist changes to subsequent GET', async () => {
+      await request(instance.app)
+        .put('/api/v1/config')
+        .send({ timeseries_retention_minutes: 120 });
+
+      const res = await request(instance.app).get('/api/v1/config');
+      expect(res.body.config.timeseries_retention_minutes).toBe(120);
+    });
+
+    it('should ignore invalid fields', async () => {
+      const before = await request(instance.app).get('/api/v1/config');
+      const res = await request(instance.app)
+        .put('/api/v1/config')
+        .send({ metrics_interval_ms: -1, unknown_field: 'ignored' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.config.metrics_interval_ms).toBe(before.body.config.metrics_interval_ms);
+    });
+  });
+
   describe('POST /api/v1/events', () => {
     it('should accept and publish a valid event', async () => {
       const event = makeEvent({ type: 'session.start' });

@@ -5,6 +5,28 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./claude-code/parser": {
+      "types": "./dist/claude-code/parser.d.ts",
+      "default": "./dist/claude-code/parser.js"
+    },
+    "./claude-code/normalizer": {
+      "types": "./dist/claude-code/normalizer.d.ts",
+      "default": "./dist/claude-code/normalizer.js"
+    },
+    "./openclaw/parser": {
+      "types": "./dist/openclaw/parser.d.ts",
+      "default": "./dist/openclaw/parser.js"
+    },
+    "./openclaw/normalizer": {
+      "types": "./dist/openclaw/normalizer.d.ts",
+      "default": "./dist/openclaw/normalizer.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

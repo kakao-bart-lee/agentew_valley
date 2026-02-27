@@ -107,6 +107,33 @@ export function createApiRouter(
     });
   });
 
+  // PUT /api/v1/config
+  router.put('/api/v1/config', (req, res) => {
+    const body = req.body as Record<string, unknown>;
+    if (!body || typeof body !== 'object') {
+      res.status(400).json({ error: 'Invalid config body', code: 'INVALID_CONFIG' });
+      return;
+    }
+
+    if (Array.isArray(body.watch_paths)) {
+      config.watchPaths = body.watch_paths as string[];
+    }
+    if (typeof body.metrics_interval_ms === 'number' && body.metrics_interval_ms > 0) {
+      config.metricsIntervalMs = body.metrics_interval_ms;
+    }
+    if (typeof body.timeseries_retention_minutes === 'number' && body.timeseries_retention_minutes > 0) {
+      config.timeseriesRetentionMinutes = body.timeseries_retention_minutes;
+    }
+
+    res.json({
+      config: {
+        watch_paths: config.watchPaths,
+        metrics_interval_ms: config.metricsIntervalMs,
+        timeseries_retention_minutes: config.timeseriesRetentionMinutes,
+      },
+    });
+  });
+
   // POST /api/v1/events
   router.post('/api/v1/events', (req, res) => {
     const event = req.body as UAEPEvent;

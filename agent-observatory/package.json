@@ -4,12 +4,14 @@
   "private": true,
   "description": "Real-time agent activity observation and pixel visualization web service",
   "scripts": {
+    "start": "pnpm --filter @agent-observatory/server start",
     "dev": "pnpm -r --parallel dev",
     "dev:server": "pnpm --filter @agent-observatory/server dev",
     "dev:web": "pnpm --filter @agent-observatory/web dev",
     "build": "pnpm -r build",
     "build:shared": "pnpm --filter @agent-observatory/shared build",
     "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @agent-observatory/server test -- --testPathPattern=e2e",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r clean"
   },
