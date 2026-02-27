@@ -14,7 +14,8 @@
     "test:e2e": "pnpm --filter @agent-observatory/server test -- --testPathPattern=e2e",
     "lint": "pnpm -r lint",
     "start:collector": "pnpm --filter @agent-observatory/collector-cli start",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "smoke-test": "./scripts/smoke-test.sh"
   },
   "engines": {
     "node": ">=20.0.0",
