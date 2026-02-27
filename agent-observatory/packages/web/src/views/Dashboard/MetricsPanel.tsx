@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMetricsStore } from '../../stores/metricsStore';
 import { TokensChart } from './charts/TokensChart';
 import { ToolDistribution } from './charts/ToolDistribution';
@@ -9,12 +9,48 @@ import { CostByAgentChart } from './charts/CostByAgentChart';
 import { CostByTeamChart } from './charts/CostByTeamChart';
 import { CostByToolChart } from './charts/CostByToolChart';
 import { TokensAnalyticsChart } from './charts/TokensAnalyticsChart';
+import type {
+    CostByAgentResponse,
+    CostByTeamResponse,
+    CostByToolResponse,
+    TokenAnalyticsResponse,
+} from '@agent-observatory/shared';
+
+const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
 
 type MetricsTab = 'live' | 'analytics';
+
+interface AnalyticsData {
+    byAgent: CostByAgentResponse | null;
+    byTeam: CostByTeamResponse | null;
+    byTool: CostByToolResponse | null;
+    tokens: TokenAnalyticsResponse | null;
+}
 
 export function MetricsPanel() {
     const { snapshot } = useMetricsStore();
     const [tab, setTab] = useState<MetricsTab>('live');
+    const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+    const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
+    // analytics 탭 진입 시 4개 요청을 병렬로 실행 (최초 1회)
+    useEffect(() => {
+        if (tab !== 'analytics' || analytics !== null) return;
+
+        setAnalyticsError(null);
+        Promise.all([
+            fetch(`${BASE_URL}/api/v1/analytics/cost/by-agent`).then(r => r.json()) as Promise<CostByAgentResponse>,
+            fetch(`${BASE_URL}/api/v1/analytics/cost/by-team`).then(r => r.json()) as Promise<CostByTeamResponse>,
+            fetch(`${BASE_URL}/api/v1/analytics/cost/by-tool`).then(r => r.json()) as Promise<CostByToolResponse>,
+            fetch(`${BASE_URL}/api/v1/analytics/tokens`).then(r => r.json()) as Promise<TokenAnalyticsResponse>,
+        ])
+            .then(([byAgent, byTeam, byTool, tokens]) => {
+                setAnalytics({ byAgent, byTeam, byTool, tokens });
+            })
+            .catch(err => {
+                setAnalyticsError(err instanceof Error ? err.message : 'Failed to load analytics');
+            });
+    }, [tab, analytics]);
 
     if (!snapshot && tab === 'live') {
         return <div className="flex h-full items-center justify-center text-slate-500">Waiting for metrics...</div>;
@@ -64,12 +100,16 @@ export function MetricsPanel() {
                         <ToolDistribution data={toolData} />
                         <SourceDistribution data={sourceData} />
                     </>
+                ) : analyticsError ? (
+                    <div className="flex h-full items-center justify-center text-red-400 text-sm">
+                        {analyticsError}
+                    </div>
                 ) : (
                     <>
-                        <TokensAnalyticsChart />
-                        <CostByAgentChart />
-                        <CostByTeamChart />
-                        <CostByToolChart />
+                        <TokensAnalyticsChart data={analytics?.tokens ?? null} />
+                        <CostByAgentChart data={analytics?.byAgent ?? null} />
+                        <CostByTeamChart data={analytics?.byTeam ?? null} />
+                        <CostByToolChart data={analytics?.byTool ?? null} />
                     </>
                 )}
             </div>

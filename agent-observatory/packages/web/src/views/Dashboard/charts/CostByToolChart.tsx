@@ -1,21 +1,13 @@
-import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import type { CostByToolResponse } from '@agent-observatory/shared';
 import { formatCurrency } from '../../../utils/formatters';
 import { CATEGORY_COLORS } from '../../../utils/colors';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+interface Props {
+    data: CostByToolResponse | null;
+}
 
-export function CostByToolChart() {
-    const [data, setData] = useState<CostByToolResponse | null>(null);
-
-    useEffect(() => {
-        fetch(`${BASE_URL}/api/v1/analytics/cost/by-tool`)
-            .then(res => res.json())
-            .then(setData)
-            .catch(() => null);
-    }, []);
-
+export function CostByToolChart({ data }: Props) {
     if (!data || data.tools.length === 0) {
         return (
             <div className="h-44 mt-2 flex items-center justify-center text-slate-600 text-sm">

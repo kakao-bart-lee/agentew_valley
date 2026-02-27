@@ -21,7 +21,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
 
     // Fetch existing history via REST API when agentId changes
     useEffect(() => {
-        if (!agentId || import.meta.env?.VITE_MOCK !== 'false') return;
+        if (!agentId || import.meta.env?.VITE_MOCK === 'true') return;
 
         setLoading(true);
         const apiBase = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';

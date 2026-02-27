@@ -1,20 +1,12 @@
-import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TokenAnalyticsResponse } from '@agent-observatory/shared';
 import { formatLargeNumber } from '../../../utils/formatters';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+interface Props {
+    data: TokenAnalyticsResponse | null;
+}
 
-export function TokensAnalyticsChart() {
-    const [data, setData] = useState<TokenAnalyticsResponse | null>(null);
-
-    useEffect(() => {
-        fetch(`${BASE_URL}/api/v1/analytics/tokens`)
-            .then(res => res.json())
-            .then(setData)
-            .catch(() => null);
-    }, []);
-
+export function TokensAnalyticsChart({ data }: Props) {
     if (!data || data.tokens_timeseries.length === 0) {
         return (
             <div className="h-36 mt-2 flex items-center justify-center text-slate-600 text-sm">

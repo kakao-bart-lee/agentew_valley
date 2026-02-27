@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { UAEPEvent, UAEPEventType } from '../types/uaep';
 import { useSocket } from './useSocket';
 
@@ -6,15 +6,21 @@ export function useActivityFeed() {
     const { socket } = useSocket();
     const [events, setEvents] = useState<UAEPEvent[]>([]);
     const [isPaused, setIsPaused] = useState(false);
+    // ref로 관리해 리스너 재등록 없이 항상 최신 isPaused 값을 읽음
+    const isPausedRef = useRef(isPaused);
     const [agentFilter, setAgentFilter] = useState<string | null>(null);
     const [typeFilters, setTypeFilters] = useState<UAEPEventType[]>([]);
 
-    // Function to listen for incoming events
+    useEffect(() => {
+        isPausedRef.current = isPaused;
+    }, [isPaused]);
+
+    // 소켓이 교체될 때만 리스너 재등록 — isPaused 변경 시 재등록 불필요
     useEffect(() => {
         if (!socket) return;
 
         const handleNewEvent = (newEvent: UAEPEvent) => {
-            if (isPaused) return;
+            if (isPausedRef.current) return;
 
             setEvents((prev) => {
                 const buffered = [newEvent, ...prev];
@@ -30,7 +36,7 @@ export function useActivityFeed() {
         return () => {
             socket.off('event', handleNewEvent);
         };
-    }, [socket, isPaused]);
+    }, [socket]);
 
     // Derived filtered events
     const filteredEvents = events.filter((e) => {

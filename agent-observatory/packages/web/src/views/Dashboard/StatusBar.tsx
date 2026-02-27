@@ -6,12 +6,15 @@ import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
 
 export function StatusBar() {
-    const { connected, reconnecting, agents, activeView, setView: setStoreView } = useAgentStore();
+    const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
     const { snapshot } = useMetricsStore();
     const { setView: setSocketView } = useSocket();
 
-    const activeAgents = Array.from(agents.values()).filter(a => a.status !== 'idle').length;
-    const totalAgents = agents.size;
+    // selector로 파생값 구독 — 동일 값 반환 시 리렌더 건너뜀
+    const activeAgents = useAgentStore(
+        state => Array.from(state.agents.values()).filter(a => a.status !== 'idle').length,
+    );
+    const totalAgents = useAgentStore(state => state.agents.size);
 
     const tpm = snapshot?.total_tokens_per_minute || 0;
     const cph = snapshot?.total_cost_per_hour || 0;

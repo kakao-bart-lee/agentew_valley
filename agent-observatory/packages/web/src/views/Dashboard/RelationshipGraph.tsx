@@ -9,6 +9,8 @@ interface RelationshipGraphProps {
 
 export function RelationshipGraph({ selectedAgentId, onSelectAgent }: RelationshipGraphProps) {
     const { agents } = useAgentStore();
+    // agents.size(primitive)를 별도 selector로 구독 — 에이전트 수 변경 시에만 hierarchy 재fetch
+    const agentCount = useAgentStore(state => state.agents.size);
     const [hierarchyTeams, setHierarchyTeams] = useState<AgentHierarchyNode[]>([]);
 
     useEffect(() => {
@@ -22,7 +24,7 @@ export function RelationshipGraph({ selectedAgentId, onSelectAgent }: Relationsh
                 })
                 .catch(err => console.error("Failed to load hierarchy:", err));
         }
-    }, [agents]); // Re-fetch or re-evaluate when agent states flow in
+    }, [agentCount]); // 에이전트 수 변경 시에만 재fetch (상태 업데이트는 무시)
 
     // Local fallback for Mock mode
     const tops = Array.from(agents.values()).filter(a => !a.parent_agent_id);

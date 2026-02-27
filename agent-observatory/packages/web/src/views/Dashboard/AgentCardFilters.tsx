@@ -1,29 +1,13 @@
 import { useAgentStore } from '../../stores/agentStore';
 import { Button } from '../../components/ui/button';
 import type { AgentSourceType, AgentStatus } from '../../types/agent';
-import { useEffect, useState } from 'react';
 
-export function AgentCardFilters() {
+interface AgentCardFiltersProps {
+    availableTeams: string[];
+}
+
+export function AgentCardFilters({ availableTeams }: AgentCardFiltersProps) {
     const { sourceFilter, statusFilter, teamFilter, setFilters } = useAgentStore();
-    const [availableTeams, setAvailableTeams] = useState<string[]>([]);
-
-    // Fetch available teams from API
-    useEffect(() => {
-        if (import.meta.env?.VITE_MOCK === 'true') {
-            // Mock behavior: just assume empty or basic list for now if in mock mode
-            setAvailableTeams(['team-alpha']);
-            return;
-        }
-
-        fetch('http://localhost:3000/api/v1/agents/by-team')
-            .then(res => res.json())
-            .then(data => {
-                if (data.teams) {
-                    setAvailableTeams(data.teams.map((t: any) => t.team_id).filter(Boolean));
-                }
-            })
-            .catch(err => console.error('Failed to fetch teams:', err));
-    }, []);
 
     const toggleSource = (source: AgentSourceType) => {
         if (sourceFilter.includes(source)) setFilters({ sourceFilter: sourceFilter.filter(s => s !== source) });

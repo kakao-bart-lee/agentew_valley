@@ -1,22 +1,15 @@
-import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import type { CostByAgentResponse } from '@agent-observatory/shared';
 import { formatCurrency } from '../../../utils/formatters';
 import { SOURCE_COLORS } from '../../../utils/colors';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
 const PALETTE = ['#6366f1', '#f97316', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
 
-export function CostByAgentChart() {
-    const [data, setData] = useState<CostByAgentResponse | null>(null);
+interface Props {
+    data: CostByAgentResponse | null;
+}
 
-    useEffect(() => {
-        fetch(`${BASE_URL}/api/v1/analytics/cost/by-agent`)
-            .then(res => res.json())
-            .then(setData)
-            .catch(() => null);
-    }, []);
-
+export function CostByAgentChart({ data }: Props) {
     if (!data || data.agents.length === 0) {
         return (
             <div className="h-44 mt-2 flex items-center justify-center text-slate-600 text-sm">

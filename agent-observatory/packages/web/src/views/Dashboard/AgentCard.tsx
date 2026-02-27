@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { AgentLiveState } from '../../types/agent';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -6,12 +7,24 @@ import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../uti
 import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle, Users } from 'lucide-react';
 
-export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
+export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
     const {
         agent_name, status, source, total_tokens, total_cost_usd,
         total_tool_calls, total_errors, current_tool, current_tool_category,
         last_activity, session_start, team_id, child_agent_ids
     } = agent;
+
+    // 정렬 한 번만 수행 — TooltipTrigger와 TooltipContent에서 같은 배열 재사용
+    const sortedToolEntries = useMemo(() => {
+        const entries = Object.entries(agent.tool_distribution ?? {}).filter(([, v]) => v > 0);
+        entries.sort(([, a], [, b]) => b - a);
+        return entries;
+    }, [agent.tool_distribution]);
+
+    const toolTotal = useMemo(
+        () => sortedToolEntries.reduce((sum, [, v]) => sum + v, 0),
+        [sortedToolEntries],
+    );
 
     return (
         <Card
@@ -100,42 +113,37 @@ export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveStat
                 </div>
 
                 {/* Tool distribution mini bar */}
-                {(() => {
-                    const entries = Object.entries(agent.tool_distribution ?? {}).filter(([, v]) => v > 0);
-                    const total = entries.reduce((sum, [, v]) => sum + v, 0);
-                    if (total === 0) return null;
-                    return (
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex h-1.5 w-full rounded-full overflow-hidden gap-px cursor-default mt-1 mb-1">
-                                    {entries.sort(([, a], [, b]) => b - a).map(([cat, count]) => (
-                                        <div
-                                            key={cat}
-                                            style={{
-                                                width: `${(count / total) * 100}%`,
-                                                backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af',
-                                            }}
+                {toolTotal > 0 && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <div className="flex h-1.5 w-full rounded-full overflow-hidden gap-px cursor-default mt-1 mb-1">
+                                {sortedToolEntries.map(([cat, count]) => (
+                                    <div
+                                        key={cat}
+                                        style={{
+                                            width: `${(count / toolTotal) * 100}%`,
+                                            backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af',
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="text-xs">
+                            <div className="flex flex-col gap-1">
+                                {sortedToolEntries.map(([cat, count]) => (
+                                    <div key={cat} className="flex items-center gap-2">
+                                        <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af' }}
                                         />
-                                    ))}
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">
-                                <div className="flex flex-col gap-1">
-                                    {entries.sort(([, a], [, b]) => b - a).map(([cat, count]) => (
-                                        <div key={cat} className="flex items-center gap-2">
-                                            <span
-                                                className="w-2 h-2 rounded-full shrink-0"
-                                                style={{ backgroundColor: CATEGORY_COLORS[cat as keyof typeof CATEGORY_COLORS] ?? '#9ca3af' }}
-                                            />
-                                            <span className="text-slate-300 capitalize">{cat.replace('_', ' ')}</span>
-                                            <span className="text-slate-500 ml-auto">{count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
-                    );
-                })()}
+                                        <span className="text-slate-300 capitalize">{cat.replace('_', ' ')}</span>
+                                        <span className="text-slate-500 ml-auto">{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </TooltipContent>
+                    </Tooltip>
+                )}
 
                 <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-700/50 pt-3">
                     <div className="flex items-center gap-1">
@@ -147,4 +155,4 @@ export function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveStat
             </CardContent>
         </Card>
     );
-}
+});

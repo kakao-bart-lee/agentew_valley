@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useSocket } from '../../hooks/useSocket';
 import { AgentCardGrid } from './AgentCardGrid';
 import { RelationshipGraph } from './RelationshipGraph';
 import { MetricsPanel } from './MetricsPanel';
@@ -14,7 +13,6 @@ import { useMetricsStore } from '../../stores/metricsStore';
 const USE_MOCK = import.meta.env?.VITE_MOCK === 'true';
 
 export function DashboardView() {
-    useSocket(); // Initialize WebSocket connection
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
     const { initSession, setConnectionStatus, connected } = useAgentStore();

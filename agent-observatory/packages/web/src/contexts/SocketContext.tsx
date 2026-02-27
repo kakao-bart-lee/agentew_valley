@@ -1,0 +1,112 @@
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ReactNode,
+} from 'react';
+import { io, type Socket } from 'socket.io-client';
+import { useAgentStore } from '../stores/agentStore';
+import { useMetricsStore } from '../stores/metricsStore';
+import type { AgentLiveState } from '../types/agent';
+import type { MetricsSnapshot } from '../types/metrics';
+
+const SOCKET_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+
+export interface SocketContextValue {
+    socket: Socket | null;
+    subscribe: (agentId: string) => void;
+    unsubscribe: (agentId: string) => void;
+    setView: (viewName: 'dashboard' | 'pixel' | 'timeline') => void;
+}
+
+const SocketContext = createContext<SocketContextValue>({
+    socket: null,
+    subscribe: () => {},
+    unsubscribe: () => {},
+    setView: () => {},
+});
+
+/**
+ * 앱 전체에서 Socket.IO 연결을 단일 인스턴스로 관리하는 Provider.
+ * StrictMode 안전: useEffect 의존성 없이 단일 소켓 생명주기를 보장합니다.
+ */
+export function SocketProvider({ children }: { children: ReactNode }) {
+    const [socket, setSocket] = useState<Socket | null>(null);
+    const socketRef = useRef<Socket | null>(null);
+
+    // zustand 액션은 stable 참조 — 소켓 초기화에 안전하게 사용
+    const { setConnectionStatus, initSession, setAgent, removeAgent } = useAgentStore();
+    const { setSnapshot } = useMetricsStore();
+
+    useEffect(() => {
+        const s = io(SOCKET_URL, {
+            reconnectionDelayMax: 10000,
+            autoConnect: false,
+        });
+        socketRef.current = s;
+
+        s.on('connect', () => {
+            setConnectionStatus(true, false);
+            s.emit('set_view', useAgentStore.getState().activeView);
+        });
+
+        s.on('disconnect', () => {
+            setConnectionStatus(false, true);
+        });
+
+        s.on('init', (data: { agents: AgentLiveState[]; metrics: MetricsSnapshot }) => {
+            initSession(data.agents || []);
+            if (data.metrics) setSnapshot(data.metrics);
+        });
+
+        s.on('agent:state', (state: AgentLiveState) => {
+            setAgent(state);
+        });
+
+        s.on('agent:remove', (data: { agent_id: string }) => {
+            removeAgent(data.agent_id);
+        });
+
+        s.on('metrics:snapshot', (metrics: MetricsSnapshot) => {
+            setSnapshot(metrics);
+        });
+
+        s.connect();
+        setSocket(s);
+
+        return () => {
+            s.removeAllListeners();
+            s.disconnect();
+            socketRef.current = null;
+            setSocket(null);
+        };
+    }, [setConnectionStatus, initSession, setAgent, removeAgent, setSnapshot]);
+
+    // socketRef 기반으로 안정적인(stable) 콜백 제공
+    const subscribe = useCallback((agentId: string) => {
+        if (socketRef.current?.connected) socketRef.current.emit('subscribe', agentId);
+    }, []);
+
+    const unsubscribe = useCallback((agentId: string) => {
+        if (socketRef.current?.connected) socketRef.current.emit('unsubscribe', agentId);
+    }, []);
+
+    const setView = useCallback((viewName: 'dashboard' | 'pixel' | 'timeline') => {
+        if (socketRef.current?.connected) socketRef.current.emit('set_view', viewName);
+    }, []);
+
+    const value = useMemo(
+        () => ({ socket, subscribe, unsubscribe, setView }),
+        [socket, subscribe, unsubscribe, setView],
+    );
+
+    return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
+}
+
+export function useSocket(): SocketContextValue {
+    return useContext(SocketContext);
+}

@@ -88,7 +88,11 @@ export function SessionReplayView({ sessionId, onBack }: SessionReplayViewProps)
             .finally(() => setLoading(false));
     }, [sessionId]);
 
-    // Playback loop
+    // currentIndex를 ref로도 유지 — 재생 시작 시 최신값을 읽기 위해 (effect 의존성에서 제외)
+    const currentIndexRef = useRef(currentIndex);
+    currentIndexRef.current = currentIndex;
+
+    // Playback loop: scheduleNext는 재귀적으로 다음 스텝을 예약
     const scheduleNext = useCallback((idx: number, evts: ReplayEvent[]) => {
         if (idx >= evts.length - 1) {
             setIsPlaying(false);
@@ -105,13 +109,14 @@ export function SessionReplayView({ sessionId, onBack }: SessionReplayViewProps)
         }, delay);
     }, [speed]);
 
+    // isPlaying/speed 변경 시에만 effect 재실행 — currentIndex 변경은 무시
     useEffect(() => {
         if (timerRef.current) clearTimeout(timerRef.current);
         if (isPlaying && events.length > 0) {
-            scheduleNext(currentIndex, events);
+            scheduleNext(currentIndexRef.current, events);
         }
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-    }, [isPlaying, currentIndex, events, scheduleNext]);
+    }, [isPlaying, events, scheduleNext]); // currentIndex 의존성 제거
 
     const handlePlayPause = () => {
         if (currentIndex >= events.length - 1) {

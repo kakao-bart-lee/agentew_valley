@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAgentStore } from '../../stores/agentStore';
 import { AgentCard } from './AgentCard';
 import { sortAgents } from '../../utils/sorting';
@@ -21,22 +21,22 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
     }, [agents.size]);
     const [sortMode, setSortMode] = useState<'status' | 'name' | 'activity' | 'cost'>('status');
 
-    // Store server-side team classifications
+    // 팀 데이터를 마운트 시 한 번만 fetch — AgentCardFilters에도 동일한 데이터를 props로 전달
     const [serverTeams, setServerTeams] = useState<Array<{ team_id: string, agents: AgentLiveState[] }>>([]);
 
-    // Fetch team groupings when toggle is on
     useEffect(() => {
-        if (groupByTeam && import.meta.env?.VITE_MOCK !== 'true') {
-            fetch('http://localhost:3000/api/v1/agents/by-team')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.teams) {
-                        setServerTeams(data.teams);
-                    }
-                })
-                .catch(err => console.error('Failed to fetch teams grouping:', err));
+        if (import.meta.env?.VITE_MOCK === 'true') {
+            return;
         }
-    }, [groupByTeam]);
+        fetch('http://localhost:3000/api/v1/agents/by-team')
+            .then(res => res.json())
+            .then(data => {
+                if (data.teams) {
+                    setServerTeams(data.teams);
+                }
+            })
+            .catch(err => console.error('Failed to fetch teams:', err));
+    }, []);
 
     const filteredAndSortedAgents = useMemo(() => {
         let list = Array.from(agents.values());
@@ -128,7 +128,13 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
     return (
         <div className="flex flex-col gap-4 h-full">
             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-                <AgentCardFilters />
+                <AgentCardFilters
+                    availableTeams={
+                        import.meta.env?.VITE_MOCK === 'true'
+                            ? ['team-alpha']
+                            : serverTeams.map(t => t.team_id).filter(Boolean)
+                    }
+                />
 
                 <div className="flex items-center gap-4 bg-slate-900/50 p-1.5 rounded-md border border-slate-700/50 shrink-0">
                     <div className="flex items-center space-x-2 px-2">
@@ -146,7 +152,7 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
                         <label className="text-xs text-slate-400">Sort by:</label>
                         <select
                             value={sortMode}
-                            onChange={(e: any) => setSortMode(e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSortMode(e.target.value as typeof sortMode)}
                             className="bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
                         >
                             <option value="status">Status</option>
