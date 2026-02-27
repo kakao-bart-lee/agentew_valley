@@ -2,12 +2,8 @@ import { useAgentStore } from '../../stores/agentStore';
 import { Button } from '../../components/ui/button';
 import type { AgentSourceType, AgentStatus } from '../../types/agent';
 
-interface AgentCardFiltersProps {
-    availableTeams: string[];
-}
-
-export function AgentCardFilters({ availableTeams }: AgentCardFiltersProps) {
-    const { sourceFilter, statusFilter, teamFilter, setFilters } = useAgentStore();
+export function AgentCardFilters() {
+    const { sourceFilter, statusFilter, setFilters } = useAgentStore();
 
     const toggleSource = (source: AgentSourceType) => {
         if (sourceFilter.includes(source)) setFilters({ sourceFilter: sourceFilter.filter(s => s !== source) });
@@ -17,11 +13,6 @@ export function AgentCardFilters({ availableTeams }: AgentCardFiltersProps) {
     const toggleStatus = (status: AgentStatus) => {
         if (statusFilter.includes(status)) setFilters({ statusFilter: statusFilter.filter(s => s !== status) });
         else setFilters({ statusFilter: [...statusFilter, status] });
-    };
-
-    const toggleTeam = (teamId: string) => {
-        if (teamFilter.includes(teamId)) setFilters({ teamFilter: teamFilter.filter(t => t !== teamId) });
-        else setFilters({ teamFilter: [...teamFilter, teamId] });
     };
 
     return (
@@ -49,27 +40,6 @@ export function AgentCardFilters({ availableTeams }: AgentCardFiltersProps) {
                 <Button variant="ghost" size="sm" className={`h-7 px-2 text-xs ${statusFilter.includes('acting') ? 'bg-slate-700 text-slate-200' : 'text-slate-400'}`} onClick={() => toggleStatus('acting')}>Active</Button>
                 <Button variant="ghost" size="sm" className={`h-7 px-2 text-xs ${statusFilter.includes('error') ? 'bg-slate-700 text-red-400' : 'text-slate-400'}`} onClick={() => toggleStatus('error')}>Error</Button>
             </div>
-
-            {availableTeams.length > 0 && (
-                <div className="flex flex-wrap bg-slate-900/50 p-1 rounded-md border border-slate-700/50">
-                    <Button
-                        variant="ghost" size="sm"
-                        className={`h-7 px-2 text-xs ${teamFilter.length === 0 ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' : 'text-slate-400'}`}
-                        onClick={() => setFilters({ teamFilter: [] })}>
-                        All Teams
-                    </Button>
-                    {availableTeams.map(teamId => (
-                        <Button
-                            key={teamId}
-                            variant="ghost" size="sm"
-                            className={`h-7 px-2 text-xs ${teamFilter.includes(teamId) ? 'bg-slate-700 text-slate-200' : 'text-slate-400'}`}
-                            onClick={() => toggleTeam(teamId)}
-                        >
-                            {teamId}
-                        </Button>
-                    ))}
-                </div>
-            )}
         </div>
     );
 }

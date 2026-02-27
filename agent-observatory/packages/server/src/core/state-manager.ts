@@ -87,6 +87,7 @@ export class StateManager {
       agent_name: event.agent_name ?? event.agent_id,
       source: event.source,
       team_id: event.team_id,
+      project_id: event.project_id,
       status: 'idle',
       last_activity: event.ts,
       session_id: event.session_id,

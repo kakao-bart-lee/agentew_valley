@@ -94,6 +94,7 @@ export class HTTPCollector implements Collector {
       const sessionId = (body.session_id as string) ?? generateEventId();
       const source = (body.source as string) ?? 'custom';
       const teamId = body.team_id as string | undefined;
+      const projectId = body.project_id as string | undefined;
 
       const event: UAEPEvent = {
         ts: new Date().toISOString(),
@@ -103,6 +104,7 @@ export class HTTPCollector implements Collector {
         agent_name: agentName,
         session_id: sessionId,
         team_id: teamId,
+        project_id: projectId,
         type: 'session.start',
         data: {
           parent_agent_id: body.parent_agent_id as string | undefined,

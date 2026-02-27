@@ -68,6 +68,9 @@ export interface UAEPEvent {
   /** 스웜/팀 묶음 식별자 */
   team_id?: string;
 
+  /** 프로젝트/작업 디렉토리 식별자 */
+  project_id?: string;
+
   /** 이벤트 종류 */
   type: UAEPEventType;
 

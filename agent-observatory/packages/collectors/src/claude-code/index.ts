@@ -114,6 +114,7 @@ export class ClaudeCodeCollector implements Collector {
         agent_id: ctx.agentId,
         agent_name: ctx.agentName,
         session_id: sessionId,
+        ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
         type: 'session.start',
         data: {
           file_path: filePath,
@@ -133,5 +134,5 @@ export class ClaudeCodeCollector implements Collector {
 
 export { parseLine, parseLines } from './parser.js';
 export type { CCParsedRecord, CCToolUse, CCToolResult, CCTurnDuration, CCUserInput, CCSubagentProgress } from './parser.js';
-export { normalize, normalizeAll, createContext, extractSessionId, buildAgentId } from './normalizer.js';
+export { normalize, normalizeAll, createContext, extractSessionId, extractProjectId, buildAgentId } from './normalizer.js';
 export type { NormalizerContext } from './normalizer.js';

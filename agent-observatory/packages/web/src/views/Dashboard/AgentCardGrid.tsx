@@ -11,48 +11,72 @@ interface AgentCardGridProps {
     onSelectAgent?: (id: string) => void;
 }
 
+/**
+ * project_id를 사람이 읽기 좋은 표시 이름으로 변환한다.
+ *
+ * Claude Code: "-Users-joy-workspace-my-repo" → "my-repo"
+ *   (슬래시를 대시로 치환한 경로 → 마지막 세그먼트)
+ * OpenClaw:   "/Users/joy/workspace/my-repo" → "my-repo"
+ *   (실제 절대 경로 → basename)
+ */
+function projectDisplayName(projectId: string): string {
+    if (projectId.startsWith('/')) {
+        // OpenClaw: 실제 절대 경로
+        return projectId.split('/').filter(Boolean).pop() ?? projectId;
+    }
+    // Claude Code: 대시 인코딩된 경로 → 마지막 세그먼트
+    const segments = projectId.split('-').filter(Boolean);
+    return segments.pop() ?? projectId;
+}
+
 export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridProps) {
-    const { agents, sourceFilter, statusFilter, teamFilter, connected } = useAgentStore();
-    const [groupByTeam, setGroupByTeam] = useState(false);
-    // Show skeleton while waiting for initial connection + data
+    const { agents, sourceFilter, statusFilter, connected } = useAgentStore();
     const [hasReceivedData, setHasReceivedData] = useState(agents.size > 0);
     useEffect(() => {
         if (agents.size > 0) setHasReceivedData(true);
     }, [agents.size]);
     const [sortMode, setSortMode] = useState<'status' | 'name' | 'activity' | 'cost'>('status');
 
-    // 팀 데이터를 마운트 시 한 번만 fetch — AgentCardFilters에도 동일한 데이터를 props로 전달
-    const [serverTeams, setServerTeams] = useState<Array<{ team_id: string, agents: AgentLiveState[] }>>([]);
-
-    useEffect(() => {
-        if (import.meta.env?.VITE_MOCK === 'true') {
-            return;
-        }
-        fetch('http://localhost:3000/api/v1/agents/by-team')
-            .then(res => res.json())
-            .then(data => {
-                if (data.teams) {
-                    setServerTeams(data.teams);
-                }
-            })
-            .catch(err => console.error('Failed to fetch teams:', err));
-    }, []);
-
-    const filteredAndSortedAgents = useMemo(() => {
+    const filteredAgents = useMemo(() => {
         let list = Array.from(agents.values());
+        if (sourceFilter.length > 0) list = list.filter(a => sourceFilter.includes(a.source));
+        if (statusFilter.length > 0) list = list.filter(a => statusFilter.includes(a.status));
+        return list;
+    }, [agents, sourceFilter, statusFilter]);
 
-        if (sourceFilter.length > 0) {
-            list = list.filter(a => sourceFilter.includes(a.source));
-        }
-        if (statusFilter.length > 0) {
-            list = list.filter(a => statusFilter.includes(a.status));
-        }
-        if (teamFilter.length > 0) {
-            list = list.filter(a => a.team_id && teamFilter.includes(a.team_id));
-        }
+    // 부모 ID → 자식 에이전트 목록 맵 (필터 미적용 — 자식은 항상 표시)
+    const childrenMap = useMemo(() => {
+        const map = new Map<string, AgentLiveState[]>();
+        Array.from(agents.values()).forEach(a => {
+            if (a.parent_agent_id) {
+                if (!map.has(a.parent_agent_id)) map.set(a.parent_agent_id, []);
+                map.get(a.parent_agent_id)!.push(a);
+            }
+        });
+        return map;
+    }, [agents]);
 
-        return sortAgents(list, sortMode);
-    }, [agents, sourceFilter, statusFilter, teamFilter, sortMode]);
+    // 루트 에이전트(parent 없음)만 추출 후 정렬
+    const rootAgents = useMemo(() => {
+        const roots = filteredAgents.filter(a => !a.parent_agent_id);
+        return sortAgents(roots, sortMode);
+    }, [filteredAgents, sortMode]);
+
+    // project_id 기준으로 루트 에이전트 그루핑
+    const projectGroups = useMemo(() => {
+        const map = new Map<string, AgentLiveState[]>();
+        rootAgents.forEach(agent => {
+            const key = agent.project_id ?? '__none__';
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(agent);
+        });
+        // project 있는 그룹 먼저, 없는 그룹('__none__') 마지막
+        return Array.from(map.entries()).sort(([a], [b]) => {
+            if (a === '__none__') return 1;
+            if (b === '__none__') return -1;
+            return a.localeCompare(b);
+        });
+    }, [rootAgents]);
 
     // Skeleton: connected but no data yet
     if (connected && !hasReceivedData) {
@@ -72,94 +96,50 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
         );
     }
 
-    const renderGrid = (agentList: AgentLiveState[]) => (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
-            {agentList.map(agent => (
-                <AgentCard
-                    key={agent.agent_id}
-                    agent={agent}
-                    isSelected={agent.agent_id === selectedAgentId}
-                    onClick={() => onSelectAgent?.(agent.agent_id)}
-                />
-            ))}
-        </div>
-    );
-
-    let content;
-    if (groupByTeam) {
-        // Use server-provided groupings if available, otherwise fallback to local map
-        let groupedTeams = serverTeams;
-
-        if (serverTeams.length === 0 && import.meta.env?.VITE_MOCK === 'true') {
-            // Mock fallback
-            const teamMap = new Map<string, AgentLiveState[]>();
-            filteredAndSortedAgents.forEach(agent => {
-                const team = agent.team_id || 'Ungrouped';
-                if (!teamMap.has(team)) teamMap.set(team, []);
-                teamMap.get(team)!.push(agent);
-            });
-            groupedTeams = Array.from(teamMap.entries()).map(([team_id, team_agents]) => ({ team_id, agents: team_agents }));
-        }
-
-        content = [...groupedTeams]
-            .sort((a, b) => {
-                if (a.team_id === 'Ungrouped') return 1;
-                if (b.team_id === 'Ungrouped') return -1;
-                return a.team_id.localeCompare(b.team_id);
-            })
-            .map(({ team_id, agents: teamAgents }) => {
-                // Apply current filters to the team's agents
-                let localFiltered = teamAgents;
-                if (sourceFilter.length > 0) localFiltered = localFiltered.filter(a => sourceFilter.includes(a.source));
-                if (statusFilter.length > 0) localFiltered = localFiltered.filter(a => statusFilter.includes(a.status));
-
-                // Sort them using our local sort utility
-                const sortedLocal = sortAgents(localFiltered, sortMode);
-
-                if (sortedLocal.length === 0) return null; // Don't show empty teams after filtering
-
-                const isUngrouped = team_id === 'Ungrouped';
+    const renderAgentGroup = (agentList: AgentLiveState[]) => (
+        <div className="flex flex-col gap-4">
+            {agentList.map(agent => {
+                const children = childrenMap.get(agent.agent_id) ?? [];
                 return (
-                    <div key={team_id} className={`mb-6 p-3 rounded-lg border ${isUngrouped ? 'bg-slate-900/20 border-slate-800/40' : 'bg-slate-900/40 border-slate-800/80'}`}>
-                        <h3 className="text-sm font-semibold text-slate-300 mb-3 px-1 border-b border-slate-800 pb-2">
-                            {isUngrouped ? (
-                                <span className="text-slate-400">Ungrouped</span>
-                            ) : (
-                                <>Team: {team_id}</>
-                            )}
-                            <span className="text-slate-500 text-xs font-normal ml-2">({sortedLocal.length} agents)</span>
-                        </h3>
-                        {renderGrid(sortedLocal)}
+                    <div key={agent.agent_id} className="flex flex-col gap-3">
+                        {/* 루트 에이전트 카드 */}
+                        <AgentCard
+                            agent={agent}
+                            isSelected={agent.agent_id === selectedAgentId}
+                            onClick={() => onSelectAgent?.(agent.agent_id)}
+                        />
+
+                        {/* 서브에이전트 그룹 */}
+                        {children.length > 0 && (
+                            <div className="ml-6 pl-4 border-l-2 border-violet-500/30 flex flex-col gap-3">
+                                <span className="text-[11px] text-violet-400/70 font-medium -mb-1">
+                                    {children.length} sub-agent{children.length > 1 ? 's' : ''}
+                                </span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
+                                    {children.map(child => (
+                                        <AgentCard
+                                            key={child.agent_id}
+                                            agent={child}
+                                            isSubagent
+                                            isSelected={child.agent_id === selectedAgentId}
+                                            onClick={() => onSelectAgent?.(child.agent_id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
-            });
-    } else {
-        content = renderGrid(filteredAndSortedAgents);
-    }
+            })}
+        </div>
+    );
 
     return (
         <div className="flex flex-col gap-4 h-full">
             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-                <AgentCardFilters
-                    availableTeams={
-                        import.meta.env?.VITE_MOCK === 'true'
-                            ? ['team-alpha']
-                            : serverTeams.map(t => t.team_id).filter(Boolean)
-                    }
-                />
+                <AgentCardFilters />
 
                 <div className="flex items-center gap-4 bg-slate-900/50 p-1.5 rounded-md border border-slate-700/50 shrink-0">
-                    <div className="flex items-center space-x-2 px-2">
-                        <input
-                            type="checkbox"
-                            id="group-team"
-                            checked={groupByTeam}
-                            onChange={(e) => setGroupByTeam(e.target.checked)}
-                            className="bg-slate-800 border-slate-700 rounded cursor-pointer"
-                        />
-                        <label htmlFor="group-team" className="text-xs text-slate-300 cursor-pointer">Group by Team</label>
-                    </div>
-                    <div className="w-px h-4 bg-slate-700"></div>
                     <div className="flex items-center space-x-2 px-2">
                         <label className="text-xs text-slate-400">Sort by:</label>
                         <select
@@ -177,9 +157,31 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
             </div>
 
             <div className="overflow-y-auto pb-4 custom-scrollbar">
-                {filteredAndSortedAgents.length === 0 ? (
+                {rootAgents.length === 0 ? (
                     <div className="text-center p-8 text-slate-500">No agents match the current filters.</div>
-                ) : content}
+                ) : projectGroups.length === 1 && projectGroups[0][0] === '__none__' ? (
+                    /* project_id 없는 에이전트만 있을 때 — 그루핑 헤더 없이 표시 */
+                    renderAgentGroup(projectGroups[0][1])
+                ) : (
+                    /* project 기준 그루핑 */
+                    <div className="flex flex-col gap-8">
+                        {projectGroups.map(([projectId, projectAgents]) => (
+                            <div key={projectId} className="flex flex-col gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-mono text-slate-400 bg-slate-800/60 border border-slate-700/60 rounded px-2 py-0.5"
+                                        title={projectId !== '__none__' ? projectId : undefined}>
+                                        {projectId !== '__none__'
+                                            ? `📁 ${projectDisplayName(projectId)}`
+                                            : '📁 Unknown project'}
+                                    </span>
+                                    <div className="flex-1 h-px bg-slate-700/40" />
+                                    <span className="text-[11px] text-slate-500">{projectAgents.length} agent{projectAgents.length > 1 ? 's' : ''}</span>
+                                </div>
+                                {renderAgentGroup(projectAgents)}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

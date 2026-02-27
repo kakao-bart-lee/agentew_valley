@@ -25,6 +25,8 @@ export interface OCNormalizerContext {
   seq: number;
   /** 활성 도구 시작 시각 (id -> ISO timestamp) */
   activeToolTimestamps: Map<string, string>;
+  /** 프로젝트 ID (세션 헤더의 cwd) */
+  projectId?: string;
 }
 
 /**
@@ -58,6 +60,7 @@ export function updateContextFromHeader(
   header: OCSessionHeader,
 ): void {
   ctx.sessionId = header.sessionId;
+  ctx.projectId = header.cwd; // 세션 헤더의 cwd를 프로젝트 ID로 사용
 }
 
 /** 현재 시각을 ISO-8601로 반환 */
@@ -81,6 +84,7 @@ function makeEvent(
     agent_id: ctx.agentId,
     agent_name: ctx.agentName,
     session_id: ctx.sessionId,
+    ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
     type,
     ...extra,
   };

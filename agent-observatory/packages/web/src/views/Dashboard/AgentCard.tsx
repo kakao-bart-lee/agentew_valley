@@ -5,13 +5,13 @@ import { Badge } from '../../components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
 import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS } from '../../utils/colors';
-import { Activity, Clock, TerminalSquare, AlertCircle, Users } from 'lucide-react';
+import { Activity, Clock, TerminalSquare, AlertCircle } from 'lucide-react';
 
-export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void }) {
+export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick, isSubagent }: { agent: AgentLiveState, isSelected?: boolean, onClick?: () => void, isSubagent?: boolean }) {
     const {
         agent_name, status, source, total_tokens, total_cost_usd,
         total_tool_calls, total_errors, current_tool, current_tool_category,
-        last_activity, session_start, team_id, child_agent_ids
+        last_activity, session_start, team_id,
     } = agent;
 
     // 정렬 한 번만 수행 — TooltipTrigger와 TooltipContent에서 같은 배열 재사용
@@ -28,15 +28,18 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
 
     return (
         <Card
-            className={`relative bg-slate-800 transition-all duration-300 cursor-pointer group animate-in fade-in slide-in-from-bottom-2 ${isSelected
+            className={`relative bg-slate-800 transition-all duration-300 cursor-pointer group animate-in fade-in slide-in-from-bottom-2 ${isSubagent ? 'border-l-2 border-l-violet-500/60' : ''} ${isSelected
                 ? 'border-indigo-500 ring-1 ring-indigo-500 bg-slate-800/80 shadow-lg shadow-indigo-500/10'
-                : 'border-slate-700 hover:border-slate-500'
+                : isSubagent ? 'border-slate-700/60 hover:border-violet-500/40' : 'border-slate-700 hover:border-slate-500'
                 }`}
             onClick={onClick}
         >
             <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
                 <div className="flex flex-col gap-1.5 w-full pr-2">
                     <div className="flex items-center gap-2">
+                        {isSubagent && (
+                            <span className="text-violet-400 text-[10px] font-medium">↳ Sub-agent</span>
+                        )}
                         <Badge
                             variant="outline"
                             className="text-white border-transparent text-[10px] px-1.5 py-0 h-4"
@@ -44,7 +47,7 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                         >
                             {SOURCE_LABELS[source] || 'Custom'}
                         </Badge>
-                        {team_id && (
+                        {!isSubagent && team_id && (
                             <Badge variant="outline" className="border-slate-600 text-slate-300 text-[10px] px-1.5 py-0 h-4 bg-slate-700/50">
                                 Team: {team_id}
                             </Badge>
@@ -94,22 +97,6 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                         )}
                     </div>
 
-                    {/* Sub-agents / Children */}
-                    {child_agent_ids && child_agent_ids.length > 0 && (
-                        <div className="mt-2 text-xs">
-                            <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-                                <Users className="w-3.5 h-3.5" />
-                                <span>Sub-agents ({child_agent_ids.length})</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1">
-                                {child_agent_ids.map((childId: string) => (
-                                    <span key={childId} className="px-1.5 py-0.5 bg-slate-700/50 border border-slate-600 rounded text-[10px] text-slate-300 truncate max-w-[100px]" title={childId}>
-                                        {childId.slice(0, 8)}...
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* Tool distribution mini bar */}

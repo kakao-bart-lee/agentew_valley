@@ -33,6 +33,8 @@ export interface NormalizerContext {
    * session.start/subagent.spawn이 중복 발행되지 않도록 한다.
    */
   subContexts: Map<string, NormalizerContext>;
+  /** 프로젝트 ID (JSONL 파일 경로의 projects/ 하위 디렉토리명) */
+  projectId?: string;
 }
 
 /**
@@ -42,6 +44,25 @@ export interface NormalizerContext {
 export function extractSessionId(filePath: string): string {
   const fileName = filePath.split('/').pop() ?? filePath;
   return fileName.replace(/\.jsonl$/i, '');
+}
+
+/**
+ * JSONL 파일 경로에서 프로젝트 ID를 추출한다.
+ *
+ * Claude Code는 ~/.claude/projects/{project-dir}/{session-uuid}.jsonl 구조를 사용.
+ * {project-dir}은 작업 디렉토리의 절대 경로에서 `/`를 `-`로 치환한 값이다.
+ *
+ * 예: /Users/joy/.claude/projects/-Users-joy-workspace-my-repo/abc.jsonl
+ *     → "-Users-joy-workspace-my-repo"
+ */
+export function extractProjectId(filePath: string): string | undefined {
+  const parts = filePath.split('/');
+  const projectsIdx = parts.lastIndexOf('projects');
+  if (projectsIdx >= 0 && parts[projectsIdx + 1]) {
+    return parts[projectsIdx + 1];
+  }
+  // fallback: parent directory name
+  return parts.length >= 2 ? parts[parts.length - 2] : undefined;
 }
 
 /**
@@ -67,6 +88,7 @@ export function createContext(
     seq: 0,
     activeToolTimestamps: new Map(),
     subContexts: new Map(),
+    projectId: extractProjectId(filePath),
   };
 }
 
@@ -91,6 +113,7 @@ function makeEvent(
     agent_id: ctx.agentId,
     agent_name: ctx.agentName,
     session_id: ctx.sessionId,
+    ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
     type,
     ...extra,
   };
@@ -234,6 +257,7 @@ export function normalize(
           seq: 0,
           activeToolTimestamps: new Map(),
           subContexts: new Map(),
+          projectId: ctx.projectId, // 부모 프로젝트 상속
         };
         ctx.subContexts.set(record.parentToolUseId, subCtx);
 
