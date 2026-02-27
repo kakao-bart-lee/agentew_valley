@@ -24,7 +24,8 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
         if (!agentId || import.meta.env?.VITE_MOCK !== 'false') return;
 
         setLoading(true);
-        fetch(`http://localhost:3000/api/v1/agents/${agentId}/events?limit=100`)
+        const apiBase = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+        fetch(`${apiBase}/api/v1/agents/${agentId}/events?limit=100`)
             .then(res => res.json())
             .then(data => {
                 if (data.events) {
