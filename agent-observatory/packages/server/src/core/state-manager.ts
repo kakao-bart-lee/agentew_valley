@@ -1,0 +1,295 @@
+import type {
+  AgentLiveState,
+  UAEPEvent,
+  AgentSourceType,
+  ToolCategory,
+} from '@agent-observatory/shared';
+import { getToolCategory } from '@agent-observatory/shared';
+
+interface ActiveTool {
+  tool_name: string;
+  category: ToolCategory;
+  start_ts: string;
+}
+
+type ChangeHandler = (state: AgentLiveState) => void;
+type RemoveHandler = (agentId: string) => void;
+
+function emptyDistribution(): Record<ToolCategory, number> {
+  return {
+    file_read: 0,
+    file_write: 0,
+    command: 0,
+    search: 0,
+    web: 0,
+    planning: 0,
+    thinking: 0,
+    communication: 0,
+    other: 0,
+  };
+}
+
+export class StateManager {
+  private agents = new Map<string, AgentLiveState>();
+  private activeTools = new Map<string, Map<string, ActiveTool>>();
+  private changeHandlers: ChangeHandler[] = [];
+  private removeHandlers: RemoveHandler[] = [];
+
+  handleEvent(event: UAEPEvent): void {
+    switch (event.type) {
+      case 'session.start':
+        this.handleSessionStart(event);
+        break;
+      case 'session.end':
+        this.handleSessionEnd(event);
+        break;
+      case 'tool.start':
+        this.handleToolStart(event);
+        break;
+      case 'tool.end':
+        this.handleToolEnd(event);
+        break;
+      case 'tool.error':
+        this.handleToolError(event);
+        break;
+      case 'agent.status':
+        this.handleAgentStatus(event);
+        break;
+      case 'user.input':
+        this.handleUserInput(event);
+        break;
+      case 'user.permission':
+        this.handleUserPermission(event);
+        break;
+      case 'subagent.spawn':
+        this.handleSubagentSpawn(event);
+        break;
+      case 'subagent.end':
+        this.handleSubagentEnd(event);
+        break;
+      case 'metrics.usage':
+        this.handleMetricsUsage(event);
+        break;
+      default:
+        break;
+    }
+
+    const agent = this.agents.get(event.agent_id);
+    if (agent) {
+      agent.last_activity = event.ts;
+    }
+  }
+
+  private handleSessionStart(event: UAEPEvent): void {
+    const state: AgentLiveState = {
+      agent_id: event.agent_id,
+      agent_name: event.agent_name ?? event.agent_id,
+      source: event.source,
+      team_id: event.team_id,
+      status: 'idle',
+      last_activity: event.ts,
+      session_id: event.session_id,
+      session_start: event.ts,
+      total_tokens: 0,
+      total_cost_usd: 0,
+      total_tool_calls: 0,
+      total_errors: 0,
+      tool_distribution: emptyDistribution(),
+      child_agent_ids: [],
+    };
+
+    if (event.data?.['parent_agent_id']) {
+      state.parent_agent_id = event.data['parent_agent_id'] as string;
+    }
+
+    this.agents.set(event.agent_id, state);
+    this.activeTools.set(event.agent_id, new Map());
+    this.notifyChange(state);
+  }
+
+  private handleSessionEnd(event: UAEPEvent): void {
+    const agentId = event.agent_id;
+    this.agents.delete(agentId);
+    this.activeTools.delete(agentId);
+    this.notifyRemove(agentId);
+  }
+
+  private handleToolStart(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    const toolName = (event.data?.['tool_name'] as string) ?? 'unknown';
+    const toolId = (event.span_id ?? event.event_id);
+    const category = getToolCategory(toolName);
+
+    let agentTools = this.activeTools.get(event.agent_id);
+    if (!agentTools) {
+      agentTools = new Map();
+      this.activeTools.set(event.agent_id, agentTools);
+    }
+    agentTools.set(toolId, { tool_name: toolName, category, start_ts: event.ts });
+
+    agent.status = 'acting';
+    agent.current_tool = toolName;
+    agent.current_tool_category = category;
+    agent.total_tool_calls++;
+
+    if (event.data?.['status_detail']) {
+      agent.status_detail = event.data['status_detail'] as string;
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleToolEnd(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    const toolId = (event.span_id ?? event.event_id);
+    const agentTools = this.activeTools.get(event.agent_id);
+
+    let category: ToolCategory = 'other';
+    if (agentTools) {
+      const tool = agentTools.get(toolId);
+      if (tool) {
+        category = tool.category;
+        agentTools.delete(toolId);
+      }
+    }
+
+    agent.tool_distribution[category] = (agent.tool_distribution[category] ?? 0) + 1;
+
+    if (!agentTools || agentTools.size === 0) {
+      agent.status = 'idle';
+      agent.current_tool = undefined;
+      agent.current_tool_category = undefined;
+      agent.status_detail = undefined;
+    } else {
+      const remaining = Array.from(agentTools.values());
+      const last = remaining[remaining.length - 1]!;
+      agent.current_tool = last.tool_name;
+      agent.current_tool_category = last.category;
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleToolError(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    agent.total_errors++;
+    if (event.data?.['error']) {
+      agent.status_detail = String(event.data['error']).slice(0, 200);
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleAgentStatus(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    const status = event.data?.['status'] as AgentLiveState['status'] | undefined;
+    if (status) {
+      agent.status = status;
+    }
+    if (event.data?.['status_detail'] !== undefined) {
+      agent.status_detail = event.data['status_detail'] as string;
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleUserInput(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    agent.status = 'thinking';
+    this.notifyChange(agent);
+  }
+
+  private handleUserPermission(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    agent.status = 'waiting_permission';
+    this.notifyChange(agent);
+  }
+
+  private handleSubagentSpawn(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    const childId = event.data?.['child_agent_id'] as string | undefined;
+    if (childId && !agent.child_agent_ids.includes(childId)) {
+      agent.child_agent_ids.push(childId);
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleSubagentEnd(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    const childId = event.data?.['child_agent_id'] as string | undefined;
+    if (childId) {
+      agent.child_agent_ids = agent.child_agent_ids.filter((id) => id !== childId);
+    }
+
+    this.notifyChange(agent);
+  }
+
+  private handleMetricsUsage(event: UAEPEvent): void {
+    const agent = this.agents.get(event.agent_id);
+    if (!agent) return;
+
+    if (typeof event.data?.['tokens'] === 'number') {
+      agent.total_tokens += event.data['tokens'] as number;
+    }
+    if (typeof event.data?.['cost'] === 'number') {
+      agent.total_cost_usd += event.data['cost'] as number;
+    }
+
+    this.notifyChange(agent);
+  }
+
+  getAgent(agentId: string): AgentLiveState | undefined {
+    return this.agents.get(agentId);
+  }
+
+  getAllAgents(): AgentLiveState[] {
+    return Array.from(this.agents.values());
+  }
+
+  getAgentsByTeam(teamId: string): AgentLiveState[] {
+    return this.getAllAgents().filter((a) => a.team_id === teamId);
+  }
+
+  onChange(handler: ChangeHandler): () => void {
+    this.changeHandlers.push(handler);
+    return () => {
+      this.changeHandlers = this.changeHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  onRemove(handler: RemoveHandler): () => void {
+    this.removeHandlers.push(handler);
+    return () => {
+      this.removeHandlers = this.removeHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  private notifyChange(state: AgentLiveState): void {
+    for (const handler of this.changeHandlers) {
+      handler(state);
+    }
+  }
+
+  private notifyRemove(agentId: string): void {
+    for (const handler of this.removeHandlers) {
+      handler(agentId);
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{"type":"session","version":7,"id":"oc-session-abc123","timestamp":"2026-02-27T12:00:00.000Z","cwd":"/home/user/project"}
+{"type":"message","id":"m1","parentId":null,"timestamp":"2026-02-27T12:00:01.000Z","message":{"role":"user","content":"Explain the codebase"}}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-02-27T12:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Let me analyze the code structure."}]}}
+{"type":"message","id":"m3","parentId":"m1","timestamp":"2026-02-27T12:00:06.000Z","message":{"role":"user","content":"Thanks, can you also check tests?"}}
+{"type":"compaction","id":"c1","parentId":null,"timestamp":"2026-02-27T12:00:10.000Z","summary":"User asked about codebase"}
+{"type":"custom","id":"x1","parentId":null,"timestamp":"2026-02-27T12:00:11.000Z","data":{"custom":"state"}}
+not valid json

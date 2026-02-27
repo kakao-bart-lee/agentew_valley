@@ -6,7 +6,6 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../shared" },
-    { "path": "../collectors" }
+    { "path": "../shared" }
   ]
 }

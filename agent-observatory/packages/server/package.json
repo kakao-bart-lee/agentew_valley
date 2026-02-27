@@ -12,18 +12,21 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agent-observatory/shared": "workspace:*",
     "@agent-observatory/collectors": "workspace:*",
+    "@agent-observatory/shared": "workspace:*",
+    "cors": "^2.8.5",
     "express": "^5.0.0",
-    "socket.io": "^4.8.0",
-    "cors": "^2.8.5"
+    "socket.io": "^4.8.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "tsx": "^4.19.0",
-    "vitest": "^3.0.0",
-    "@types/node": "^22.0.0",
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/cors": "^2.8.17"
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^7.2.0",
+    "socket.io-client": "^4.8.3",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }

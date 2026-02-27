@@ -1,0 +1,9 @@
+{"type":"session","version":7,"id":"oc-session-def456","timestamp":"2026-02-27T13:00:00.000Z","cwd":"/home/user/project2"}
+{"type":"message","id":"m1","parentId":null,"timestamp":"2026-02-27T13:00:01.000Z","message":{"role":"user","content":"Fix the login bug"}}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-02-27T13:00:02.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"tc1","name":"Read","input":{"file_path":"/src/auth.ts"}},{"type":"toolCall","id":"tc2","name":"Grep","input":{"pattern":"login","path":"/src"}}]}}
+{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-02-27T13:00:03.000Z","message":{"role":"toolResult","toolCallId":"tc1","content":"export function login() { ... }"}}
+{"type":"message","id":"m4","parentId":"m2","timestamp":"2026-02-27T13:00:04.000Z","message":{"role":"toolResult","toolCallId":"tc2","content":"src/auth.ts:5: login()"}}
+{"type":"message","id":"m5","parentId":"m1","timestamp":"2026-02-27T13:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolUse","id":"tu1","name":"Edit","input":{"file_path":"/src/auth.ts","old":"login()","new":"loginV2()"}}]}}
+{"type":"message","id":"m6","parentId":"m5","timestamp":"2026-02-27T13:00:06.000Z","message":{"role":"toolResult","toolUseId":"tu1","content":"File edited","isError":false}}
+{"type":"message","id":"m7","parentId":"m1","timestamp":"2026-02-27T13:00:07.000Z","message":{"role":"assistant","content":[{"type":"functionCall","id":"fc1","function":{"name":"Bash","arguments":{"command":"npm test"}}}]}}
+{"type":"message","id":"m8","parentId":"m7","timestamp":"2026-02-27T13:00:12.000Z","message":{"role":"toolResult","toolCallId":"fc1","content":"1 test failed","isError":true}}

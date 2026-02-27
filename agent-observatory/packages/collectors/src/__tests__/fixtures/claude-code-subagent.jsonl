@@ -1,0 +1,7 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Refactor the utils module"}]},"timestamp":"2026-02-27T11:00:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_task1","name":"Task","input":{"description":"Research utility patterns"}}]},"timestamp":"2026-02-27T11:00:01.000Z"}
+{"type":"progress","parentToolUseID":"toolu_task1","data":{"type":"agent_progress","message":{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_sub_read1","name":"Read","input":{"file_path":"/src/utils.ts"}}]}}},"timestamp":"2026-02-27T11:00:02.000Z"}
+{"type":"progress","parentToolUseID":"toolu_task1","data":{"type":"agent_progress","message":{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_sub_grep1","name":"Grep","input":{"pattern":"export"}}]}}},"timestamp":"2026-02-27T11:00:03.000Z"}
+{"type":"progress","parentToolUseID":"toolu_task1","data":{"type":"bash_progress","output":"running tests..."}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_task1","content":[{"type":"text","text":"Task completed"}]}]},"timestamp":"2026-02-27T11:00:10.000Z"}
+{"type":"system","subtype":"turn_duration","duration_ms":10000,"timestamp":"2026-02-27T11:00:10.500Z"}
