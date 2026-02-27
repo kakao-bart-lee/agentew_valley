@@ -1,8 +1,8 @@
-# FE 에이전트 팀 핸드오프 — 2026-02-27 (v4)
+# FE 에이전트 팀 핸드오프 — 2026-02-27 (v5)
 
 > 백엔드 팀(본체)에서 FE 에이전트 팀에 전달하는 작업 현황 및 다음 단계 가이드.
 >
-> **v4 업데이트**: Phase 3 백엔드 구현 완료 반영 — 세션 재생 API, 비용/토큰 분석 API 5종, OpenAPI 문서 자동 생성(Swagger UI), 테스트 255개 통과.
+> **v5 업데이트**: 규약 검증 완료 — 6건의 CRITICAL 불일치 수정 (WebSocket payload 형식, Sessions API 데이터소스, metrics 주기).
 
 ---
 
@@ -24,6 +24,8 @@
 | v1 | 패키지 구조 정합성 수정 (타입 re-export, useSocket 싱글턴, Mock 조건부 로드) |
 | v2 | dashboard 뷰 클라이언트에게 모든 이벤트 broadcast 적용 |
 | v3 | Phase 2 — SQLite 영속화, 계층/팀/검색 API, Agent SDK/HTTP Collector |
+| v4 | Phase 3 — 세션 재생 API, 비용/토큰 분석 API, OpenAPI 문서 |
+| v5 | 규약 검증 — WebSocket payload 형식 정정, Sessions API를 SQLite 기반으로 변경, metrics 주기 정정 |
 
 > **타입 규칙**: web 패키지에서 타입을 직접 정의하지 마세요. 모든 도메인 타입은 `@agent-observatory/shared`에서 가져옵니다.
 
@@ -203,6 +205,19 @@ JSONL 파일 변경 감지 (chokidar)
 | `event` | 이벤트 발생 시 | `UAEPEvent` | **dashboard 뷰: 모든 이벤트 (1초 배치)**, 비-dashboard: subscribe한 에이전트만 즉시 |
 
 > **v2 변경**: dashboard 뷰 클라이언트는 별도 subscribe 없이 **모든 이벤트**를 1초 배치로 수신합니다. `useActivityFeed`의 `socket.on('event')` 리스너가 그대로 동작합니다. 비-dashboard 뷰(timeline 등)에서 특정 에이전트 이벤트를 받으려면 `socket.emit('subscribe', agentId)`가 필요합니다.
+>
+> **v5 중요**: `subscribe`/`unsubscribe`/`set_view`는 모두 **raw string** 인자입니다. 객체가 아닙니다.
+> ```typescript
+> // ✅ 올바른 사용법
+> socket.emit('subscribe', 'agent-123');
+> socket.emit('unsubscribe', 'agent-123');
+> socket.emit('set_view', 'dashboard');
+>
+> // ❌ 잘못된 사용법 (서버가 무시함)
+> socket.emit('subscribe', { agent_id: 'agent-123' });
+> socket.emit('set_view', { view: 'dashboard' });
+> ```
+> 정확한 타입은 `ClientToServerEvents` (`@agent-observatory/shared`)를 참조하세요.
 
 ### 4-4. REST API (구현 완료)
 
@@ -215,8 +230,9 @@ GET  /api/v1/agents/:id/events   → { events: UAEPEvent[], total, offset, limit
                                     ?limit=50&offset=0&type=tool.start
 GET  /api/v1/agents/hierarchy    → { hierarchy: AgentHierarchyNode[] }           ← v3 추가
 GET  /api/v1/agents/by-team      → { teams: [{ team_id, agents: AgentLiveState[] }] }  ← v3 추가
-GET  /api/v1/sessions            → { sessions: [...], total }
-GET  /api/v1/sessions/:id        → { session_id, events, total }
+GET  /api/v1/sessions            → { sessions: SessionSummary[], total }         ← v5 변경: SQLite 기반, 종료된 세션 포함
+                                    SessionSummary에 team_id?, end_time? 추가
+GET  /api/v1/sessions/:id        → { session_id, events, total }                ← v5 변경: sessions 테이블 기반 404 판정
 GET  /api/v1/sessions/:id/replay → SessionReplayResponse                        ← v4 추가
                                     ?from=<ISO-8601>&to=<ISO-8601>  — 시간 범위 필터
                                     ?types=tool.start,tool.end       — 이벤트 타입 필터
@@ -577,6 +593,17 @@ e873858 feat(dashboard): initialize React/Vite web application ← FE 초기 구
 85611bf feat: implement Phase 1 backend (shared, collectors, server)
 6ad8960 chore: initial commit
 ```
+
+### v5 규약 정정 요약
+
+| 이슈 | 변경 전 (잘못됨) | 변경 후 (정확) | FE 영향 |
+|------|------------------|---------------|---------|
+| **WebSocket payload** | `socket.emit('subscribe', { agent_id })` | `socket.emit('subscribe', agentId)` — raw string | FE가 객체로 보내면 구독 무시됨 |
+| **WebSocket payload** | `socket.emit('set_view', { view: '...' })` | `socket.emit('set_view', 'dashboard')` — raw string | FE가 객체로 보내면 뷰 전환 안됨 |
+| **Sessions API** | `GET /sessions` — 라이브 상태만 (종료 세션 불가) | SQLite sessions 테이블 기반 — 종료 세션 포함, `team_id`/`end_time` 포함 | SessionListView에서 과거 세션 조회 가능 |
+| **Sessions/:id** | events 0개면 404 | sessions 테이블 존재 여부로 404 판정 | 이벤트 없는 세션도 200 반환 |
+| **metrics:snapshot** | 대시보드 스펙에 1초 간격 | 실제 5초 간격 (코드 변경 없음, 문서만 정정) | StatusBar 갱신 주기 5초 기준 설계 |
+| **SessionSummary 타입** | `team_id` 필드 없음 | `team_id?: string` 추가 | 세션 목록에서 팀 필터링 가능 |
 
 ### v4에서 추가된 백엔드 변경 요약 (Phase 3)
 

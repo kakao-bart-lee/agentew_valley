@@ -69,16 +69,18 @@ export function createApiRouter(
 
   // GET /api/v1/sessions
   router.get('/api/v1/sessions', (_req, res) => {
-    const agents = stateManager.getAllAgents();
-    const sessions = agents.map((a) => ({
-      session_id: a.session_id,
-      agent_id: a.agent_id,
-      agent_name: a.agent_name,
-      source: a.source,
-      start_time: a.session_start,
-      total_events: historyStore.getAgentEventCount(a.agent_id),
-      total_tokens: a.total_tokens,
-      total_cost_usd: a.total_cost_usd,
+    const rows = historyStore.getSessionSummaries();
+    const sessions = rows.map((r) => ({
+      session_id: r.session_id,
+      agent_id: r.agent_id,
+      agent_name: r.agent_name,
+      source: r.source,
+      team_id: r.team_id ?? undefined,
+      start_time: r.start_time,
+      end_time: r.end_time ?? undefined,
+      total_events: r.total_events,
+      total_tokens: r.total_tokens,
+      total_cost_usd: r.total_cost_usd,
     }));
     res.json({ sessions, total: sessions.length });
   });
@@ -86,11 +88,12 @@ export function createApiRouter(
   // GET /api/v1/sessions/:id
   router.get('/api/v1/sessions/:id', (req, res) => {
     const sessionId = req.params.id;
-    const events = historyStore.getBySession(sessionId);
-    if (events.length === 0) {
+    const session = historyStore.getSession(sessionId);
+    if (!session) {
       res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
       return;
     }
+    const events = historyStore.getBySession(sessionId);
     res.json({ session_id: sessionId, events, total: events.length });
   });
 

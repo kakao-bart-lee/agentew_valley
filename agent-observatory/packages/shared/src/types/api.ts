@@ -41,6 +41,7 @@ export interface SessionSummary {
   agent_id: string;
   agent_name: string;
   source: string;
+  team_id?: string;
   start_time: string;
   end_time?: string;
   total_events: number;

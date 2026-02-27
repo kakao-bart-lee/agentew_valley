@@ -141,7 +141,7 @@ socket.on('agent:remove', (data: { agent_id: string }) => void);
 // 실시간 이벤트 (Activity Feed용)
 socket.on('event', (event: UAEPEvent) => void);
 
-// 집계 메트릭 스냅샷 (1초 간격)
+// 집계 메트릭 스냅샷 (5초 간격)
 socket.on('metrics:snapshot', (metrics: MetricsSnapshot) => void);
 
 // 초기 상태 (연결 시 전체 스냅샷)
@@ -154,12 +154,12 @@ socket.on('init', (data: {
 ```typescript
 // 클라이언트 → 서버
 
-// 뷰 전환 알림 (서버 최적화용)
-socket.emit('set_view', { view: 'dashboard' | 'pixel' | 'timeline' });
+// 뷰 전환 알림 (서버 최적화용) — raw string, 객체가 아님
+socket.emit('set_view', 'dashboard' | 'pixel' | 'timeline');
 
-// 특정 에이전트 상세 구독
-socket.emit('subscribe', { agent_id: string });
-socket.emit('unsubscribe', { agent_id: string });
+// 특정 에이전트 상세 구독 — raw string (agent_id), 객체가 아님
+socket.emit('subscribe', agentId: string);
+socket.emit('unsubscribe', agentId: string);
 ```
 
 ### 2.3 MetricsSnapshot (집계 메트릭)
@@ -331,7 +331,7 @@ GET /api-docs/openapi.json
   - 연결 상태: 🟢 Connected / 🔴 Disconnected / 🟡 Reconnecting
 
 동작:
-  - 1초마다 metrics:snapshot으로 갱신
+  - 5초마다 metrics:snapshot으로 갱신
   - 연결 끊김 시 "Reconnecting..." 표시 + 자동 재연결
 ```
 
@@ -619,7 +619,7 @@ interface DashboardLocalState {
 ```
 1. DashboardView 마운트
 2. useSocket 훅이 Socket.IO 연결 확인 (이미 연결되어 있으면 스킵)
-3. socket.emit('set_view', { view: 'dashboard' }) → 서버에 최적화 힌트
+3. socket.emit('set_view', 'dashboard') → 서버에 최적화 힌트
 4. socket.on('init') → agentStore에 초기 상태 세팅
 5. MetricsSnapshot 수신 → metricsStore 초기화
 6. 렌더링 시작
@@ -632,7 +632,7 @@ interface DashboardLocalState {
   socket.on('agent:state')     → agentStore.setAgent() → AgentCard 리렌더
   socket.on('event')           → useActivityFeed 버퍼에 추가 → ActivityFeed 리렌더
 
-매 1초:
+매 5초:
   socket.on('metrics:snapshot') → metricsStore 갱신 → 차트 리렌더
 
 매 5초:
@@ -645,10 +645,10 @@ interface DashboardLocalState {
 1. AgentCard 클릭
 2. agentStore.selectAgent(agent_id)
 3. AgentDetailPanel (공통 사이드패널) 열림
-4. socket.emit('subscribe', { agent_id }) → 상세 이벤트 구독
+4. socket.emit('subscribe', agent_id) → 상세 이벤트 구독 (raw string)
 5. 패널에 에이전트 상세 정보 + 최근 이벤트 히스토리 표시
 6. REST API: GET /api/v1/agents/{id}/events → 과거 이벤트 로딩
-7. 패널 닫힘 시: socket.emit('unsubscribe', { agent_id })
+7. 패널 닫힘 시: socket.emit('unsubscribe', agent_id) (raw string)
 ```
 
 ---
