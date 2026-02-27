@@ -198,6 +198,38 @@ describe('Claude Code Normalizer', () => {
       expect(events[2].data?.tool_name).toBe('Read');
     });
 
+    it('should emit session.end for sub-agent when parent tool_result arrives', () => {
+      const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
+
+      // spawn sub-agent
+      const progress: CCSubagentProgress = {
+        kind: 'subagent_progress',
+        parentToolUseId: 'toolu_task1',
+        nestedRecords: [{ kind: 'tool_use', id: 'sub_r1', name: 'Read', input: {}, timestamp: '2026-02-27T11:00:01.000Z' }],
+        timestamp: '2026-02-27T11:00:01.000Z',
+      };
+      normalize(progress, freshCtx);
+
+      // parent Task tool completes
+      const toolResult: CCToolResult = {
+        kind: 'tool_result',
+        toolUseId: 'toolu_task1',
+        content: 'Task done',
+        timestamp: '2026-02-27T11:00:10.000Z',
+      };
+      const events = normalize(toolResult, freshCtx);
+
+      // session.end (sub-agent) + tool.end (parent)
+      expect(events).toHaveLength(2);
+      expect(events[0].type).toBe('session.end');
+      expect(events[0].agent_id).toBe('cc-abcd1234-s1');
+      expect(events[1].type).toBe('tool.end');
+      expect(events[1].agent_id).toBe('cc-abcd1234');
+
+      // 컨텍스트 정리됨 — 이후 동일 toolUseId로 tool_result가 와도 session.end 중복 없음
+      expect(freshCtx.subContexts.has('toolu_task1')).toBe(false);
+    });
+
     it('should reuse sub-agent context on subsequent progress for same parentToolUseId', () => {
       const freshCtx = createContext('/path/to/abcd1234-5678.jsonl', 1);
 

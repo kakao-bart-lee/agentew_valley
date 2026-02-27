@@ -151,8 +151,17 @@ export function normalize(
         ctx.activeToolTimestamps.delete(record.toolUseId);
       }
 
+      const events: UAEPEvent[] = [];
+
+      // Task 도구가 완료되면 해당 서브에이전트 session.end 발행 후 컨텍스트 정리
+      if (ctx.subContexts.has(record.toolUseId)) {
+        const subCtx = ctx.subContexts.get(record.toolUseId)!;
+        events.push(makeEvent(subCtx, 'session.end', ts));
+        ctx.subContexts.delete(record.toolUseId);
+      }
+
       if (record.isError) {
-        return [
+        events.push(
           makeEvent(ctx, 'tool.error', ts, {
             span_id: record.toolUseId,
             data: {
@@ -160,17 +169,19 @@ export function normalize(
               error: record.content?.slice(0, 200),
             },
           }),
-        ];
+        );
+        return events;
       }
 
-      return [
+      events.push(
         makeEvent(ctx, 'tool.end', ts, {
           span_id: record.toolUseId,
           data: {
             duration_ms: durationMs,
           },
         }),
-      ];
+      );
+      return events;
     }
 
     case 'turn_duration': {
