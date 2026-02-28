@@ -97,17 +97,6 @@ export const FurnitureType = {
 } as const
 export type FurnitureType = (typeof FurnitureType)[keyof typeof FurnitureType]
 
-export const EditTool = {
-  TILE_PAINT: 'tile_paint',
-  WALL_PAINT: 'wall_paint',
-  FURNITURE_PLACE: 'furniture_place',
-  FURNITURE_PICK: 'furniture_pick',
-  SELECT: 'select',
-  EYEDROPPER: 'eyedropper',
-  ERASE: 'erase',
-} as const
-export type EditTool = (typeof EditTool)[keyof typeof EditTool]
-
 export interface FurnitureCatalogEntry {
   type: string // FurnitureType enum or asset ID
   label: string

@@ -19,10 +19,15 @@ export function extractToolName(status: string): string | null {
   return first || null
 }
 
-import { ZOOM_DEFAULT_DPR_FACTOR, ZOOM_MIN } from './constants'
+import { DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, ZOOM_MIN, ZOOM_MAX } from './constants'
 
-/** Compute a default integer zoom level (device pixels per sprite pixel) */
-export function defaultZoom(): number {
+/** Compute a default integer zoom level that fits the map within the viewport */
+export function defaultZoom(mapCols?: number, mapRows?: number): number {
+  const cols = mapCols ?? DEFAULT_COLS
+  const rows = mapRows ?? DEFAULT_ROWS
   const dpr = window.devicePixelRatio || 1
-  return Math.max(ZOOM_MIN, Math.round(ZOOM_DEFAULT_DPR_FACTOR * dpr))
+  const vpW = window.innerWidth * dpr
+  const vpH = window.innerHeight * dpr * 0.85  // UI chrome allowance
+  const fitZoom = Math.min(vpW / (cols * TILE_SIZE), vpH / (rows * TILE_SIZE))
+  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.floor(fitZoom)))
 }
