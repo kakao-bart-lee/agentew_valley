@@ -4,7 +4,12 @@
 .DEFAULT_GOAL := help
 
 ## 개발 서버
-dev: ## 서버 + 웹 동시 실행
+dev: ## 서버 + 웹 동시 실행 (기존 프로세스 자동 종료)
+	@echo "기존 프로세스 확인 및 종료 중..."
+	@kill -9 $$(lsof -t -i:3000) 2>/dev/null || true
+	@kill -9 $$(lsof -t -i:5173) 2>/dev/null || true
+	@sleep 1
+	@echo "서버 + 웹 시작..."
 	pnpm dev
 
 dev-server: ## 서버만 실행
