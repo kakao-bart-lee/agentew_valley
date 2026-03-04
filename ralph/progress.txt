@@ -8,6 +8,7 @@ Started: 2026-03-04
 - Typecheck: `pnpm --filter @agent-observatory/server build` (tsc); web package has a pre-existing vite config TS error unrelated to migration work
 - docs/migration/ is created fresh; no prior content exists
 - Migration governance docs should prefer measurable acceptance tables (`Target`, `Measurement Source`, `Alert Threshold`) to keep criteria verifiable
+- Ops-domain schema guidance should enforce shared audit/tenant columns (`workspace_id`, `created_at`, `updated_at`, `actor`) and keep UAEP telemetry storage boundary separate from operational source-of-truth tables
 ---
 
 ## 2026-03-04 - US-001
@@ -28,4 +29,14 @@ Started: 2026-03-04
   - Patterns discovered: Migration governance docs in `docs/migration/` should use measurable tables (target, measurement source, alert threshold) so acceptance can be objectively verified.
   - Gotchas encountered: `prd.json` and `progress.txt` live under `ralph/`, but implementation files for this project live under `agent-observatory/`.
   - Useful context: This story is docs-only; browser verification is not applicable unless a later story introduces UI changes.
+---
+
+## 2026-03-04 16:26:29 KST - US-003
+- Created `agent-observatory/docs/migration/data-model-principles.md` defining the UAEP event store vs ops domain store boundary and explicit placement rules for operational state.
+- Added required shared ops-table columns (`workspace_id`, `created_at`, `updated_at`, `actor`) with behavior requirements, plus naming/indexing/foreign-key conventions and a merge checklist.
+- Files changed: `agent-observatory/docs/migration/data-model-principles.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: For migration-era relational schemas, treat UAEP as append-only telemetry and keep business state authoritative in ops-domain tables.
+  - Gotchas encountered: Shared ops columns should define write semantics (`created_at` immutable, `updated_at` updated on mutation, `actor` explicit on write) to avoid inconsistent audit behavior.
+  - Useful context: Existing server SQL style uses `idx_<table>_<columns>` names and `IF NOT EXISTS`; documenting the same convention keeps future migrations consistent.
 ---
