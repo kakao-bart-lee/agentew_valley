@@ -71,6 +71,7 @@ The following work is **in scope** and must be complete before the current relea
 4. Domain feature flags deployed and tested for auth_v2, tasks_v2, and webhooks_v2.
 5. Global kill switch (kill_switch_all_v2) functional and tested.
 6. Phase 0 through Phase 2 exit criteria met (see `phase-exit-criteria.md`).
+7. Shadow mode environment rollout for Phase 2 and Phase 3 documented in `shadow-mode-enablement.md`.
 
 ## Out-of-Scope for Current Release
 

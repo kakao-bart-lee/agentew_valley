@@ -194,7 +194,8 @@ import { Router } from 'express';
 //                                    ?metric=tokens_per_minute&from=30
 // GET  /api/v1/migration/shadow-report → shadow mode parity summary
 //                                    shadow mode OFF: 503 + code SHADOW_MODE_DISABLED
-//                                    shadow mode ON: { pass_count, fail_count, top_diffs }
+//                                    read-only 위반: 503 + code SHADOW_MODE_READ_ONLY_REQUIRED
+//                                    shadow mode ON + read-only: { pass_count, fail_count, top_diffs }
 //
 // GET  /api/v1/config              → 현재 설정 (watchPaths, 활성 collector 목록 등)
 // PUT  /api/v1/config              → 설정 변경 (런타임 collector 추가/제거)
@@ -256,6 +257,8 @@ export function createApp(config?: AppConfig): { app, server, eventBus, stateMan
 //   PORT (기본 3000)
 //   CLAUDE_CODE_WATCH_PATHS (기본 ~/.claude/projects)
 //   OPENCLAW_WATCH_PATHS (기본 ~/.openclaw/agents)
+//   OBSERVATORY_SHADOW_MODE_ENABLED (기본 false)
+//   OBSERVATORY_SHADOW_MODE_READ_ONLY (기본 true)
 
 // 1. createApp() 호출
 // 2. Collectors 초기화 + 연결

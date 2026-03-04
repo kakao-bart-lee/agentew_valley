@@ -10,6 +10,7 @@ export interface ApiConfig {
   metricsIntervalMs: number;
   timeseriesRetentionMinutes: number;
   shadowModeEnabled: boolean;
+  shadowModeReadOnly: boolean;
   shadowReportProvider: ShadowReportProvider;
 }
 
@@ -38,6 +39,7 @@ const DEFAULT_CONFIG: ApiConfig = {
   metricsIntervalMs: 5000,
   timeseriesRetentionMinutes: 60,
   shadowModeEnabled: false,
+  shadowModeReadOnly: true,
   shadowReportProvider: defaultShadowReportProvider,
 };
 
@@ -224,6 +226,13 @@ export function createApiRouter(
       res.status(503).json({
         error: 'Shadow mode is disabled',
         code: 'SHADOW_MODE_DISABLED',
+      });
+      return;
+    }
+    if (!config.shadowModeReadOnly) {
+      res.status(503).json({
+        error: 'Shadow mode must run in read-only comparison mode',
+        code: 'SHADOW_MODE_READ_ONLY_REQUIRED',
       });
       return;
     }

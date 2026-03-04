@@ -272,9 +272,34 @@ describe('REST API', () => {
       expect(res.body.code).toBe('SHADOW_MODE_DISABLED');
     });
 
+    it('should reject non-read-only shadow mode even when enabled', async () => {
+      const readWriteInstance = createApp({
+        shadowModeEnabled: true,
+        shadowModeReadOnly: false,
+        shadowReportProvider: () => ({
+          passCount: 1,
+          failCount: 0,
+          topDiffs: [],
+        }),
+      });
+
+      try {
+        const res = await request(readWriteInstance.app).get('/api/v1/migration/shadow-report');
+
+        expect(res.status).toBe(503);
+        expect(res.body.error).toBe('Shadow mode must run in read-only comparison mode');
+        expect(res.body.code).toBe('SHADOW_MODE_READ_ONLY_REQUIRED');
+      } finally {
+        readWriteInstance.close();
+        readWriteInstance.server.close();
+        readWriteInstance.io.close();
+      }
+    });
+
     it('should return pass/fail summary and top diffs when shadow mode is on', async () => {
       const enabledInstance = createApp({
         shadowModeEnabled: true,
+        shadowModeReadOnly: true,
         shadowReportProvider: () => ({
           passCount: 12,
           failCount: 3,

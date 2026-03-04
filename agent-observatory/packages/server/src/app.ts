@@ -24,6 +24,7 @@ export interface AppConfig {
   metricsIntervalMs?: number;
   timeseriesRetentionMinutes?: number;
   shadowModeEnabled?: boolean;
+  shadowModeReadOnly?: boolean;
   shadowReportProvider?: ShadowReportProvider;
   /** SQLite database file path. Defaults to :memory: */
   dbPath?: string;
@@ -69,6 +70,7 @@ export function createApp(config?: AppConfig): AppInstance {
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
     shadowModeEnabled: config?.shadowModeEnabled ?? false,
+    shadowModeReadOnly: config?.shadowModeReadOnly ?? true,
     shadowReportProvider: config?.shadowReportProvider ?? (() => ({
       passCount: 0,
       failCount: 0,

@@ -29,6 +29,7 @@ import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
+import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
 
 type ObservatoryMode = 'local' | 'remote';
 
@@ -39,8 +40,15 @@ async function main(): Promise<void> {
   const tailOnly = process.env.OBSERVATORY_TAIL_ONLY !== 'false'; // 기본 true
   const mode: ObservatoryMode = (process.env.OBSERVATORY_MODE as ObservatoryMode) ?? 'local';
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
+  const shadowModeFlags = getShadowModeFlagsFromEnv();
 
-  const { app, server, eventBus, close } = createApp({ watchPaths, dbPath, collectorApiKeys });
+  const { app, server, eventBus, close } = createApp({
+    watchPaths,
+    dbPath,
+    collectorApiKeys,
+    shadowModeEnabled: shadowModeFlags.shadowModeEnabled,
+    shadowModeReadOnly: shadowModeFlags.shadowModeReadOnly,
+  });
 
   const activeCollectors: Collector[] = [];
 
@@ -109,6 +117,14 @@ async function main(): Promise<void> {
       console.log(`[server] SQLite database: ${dbPath}`);
     } else {
       console.log('[server] SQLite database: in-memory (data will not persist across restarts)');
+    }
+    if (shadowModeFlags.shadowModeEnabled) {
+      console.log(`[server] Shadow mode: ON (read-only=${shadowModeFlags.shadowModeReadOnly ? 'true' : 'false'})`);
+      if (!shadowModeFlags.shadowModeReadOnly) {
+        console.warn('[server] Shadow mode misconfigured: set OBSERVATORY_SHADOW_MODE_READ_ONLY=true for comparison-only reports');
+      }
+    } else {
+      console.log('[server] Shadow mode: OFF');
     }
   });
 
