@@ -24,6 +24,18 @@ export type {
   ShadowDiffPayload,
   ShadowComparator,
 } from './domains/migration/shadow-mode.js';
+export {
+  FEATURE_FLAG_NAMES,
+  FEATURE_FLAG_ENV_VARS,
+  DEFAULT_FEATURE_FLAGS,
+  getFeatureFlagsFromEnv,
+  isFeatureFlagEnabled,
+  isAuthV2Enabled,
+  isTasksV2Enabled,
+  isWebhooksV2Enabled,
+  isKillSwitchAllV2Enabled,
+} from './config/feature-flags.js';
+export type { FeatureFlagName, FeatureFlags } from './config/feature-flags.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';

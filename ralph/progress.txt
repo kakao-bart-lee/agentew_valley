@@ -16,6 +16,7 @@ Started: 2026-03-04
 - Shadow comparator output should keep status values fixed (`match`, `mismatch`, `missing_legacy`, `missing_new`) and use deterministic `$.path` field diffs with sorted object keys for stable reporting
 - Migration shadow report route should enforce a stable disabled contract (`503` + `SHADOW_MODE_DISABLED`) and use snake_case summary keys (`pass_count`, `fail_count`, `top_diffs`) when enabled
 - Shadow mode rollout is environment-gated via `packages/server/src/config/shadow-mode.ts`; keep `OBSERVATORY_SHADOW_MODE_ENABLED` default `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` default `true`, and reject non-read-only mode with `SHADOW_MODE_READ_ONLY_REQUIRED`
+- Domain rollout flags should be centralized in `packages/server/src/config/feature-flags.ts` with canonical keys (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and read through typed helpers instead of ad-hoc env checks
 ---
 
 ## 2026-03-04 - US-001
@@ -124,4 +125,18 @@ Started: 2026-03-04
   - Patterns discovered: Parse migration flag booleans through a shared helper (`parseBooleanFlag`) so startup defaults and accepted aliases stay consistent (`1/0`, `true/false`, `on/off`, `yes/no`).
   - Gotchas encountered: Enabling shadow mode without read-only now intentionally blocks the report endpoint with `SHADOW_MODE_READ_ONLY_REQUIRED`; both env flags must be set for active shadow reporting.
   - Useful context: Phase rollout guidance now lives in `docs/migration/shadow-mode-enablement.md`; future phase-gate work should reference this file instead of duplicating flag semantics.
+---
+
+## 2026-03-04 17:25:35 KST - US-010
+- Added `agent-observatory/packages/server/src/config/feature-flags.ts` as the feature-flag baseline config module with canonical rollout flags (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and env parsing defaults.
+- Added typed accessor helpers (`isFeatureFlagEnabled`, `isAuthV2Enabled`, `isTasksV2Enabled`, `isWebhooksV2Enabled`, `isKillSwitchAllV2Enabled`) and exported them from `agent-observatory/packages/server/src/index.ts`.
+- Added unit coverage in `agent-observatory/packages/server/src/__tests__/feature-flags-config.test.ts` for default values, env parsing aliases, and helper behavior.
+- Updated reusable migration guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server config/tests/docs only, no UI change).
+- Files changed: `agent-observatory/packages/server/src/config/feature-flags.ts`, `agent-observatory/packages/server/src/__tests__/feature-flags-config.test.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep feature flag identity in snake_case keys and map env variables in one config module so route guards stay deterministic across startup/runtime code paths.
+  - Gotchas encountered: Reusing `parseBooleanFlag` from `shadow-mode.ts` avoids alias drift (`1/0`, `true/false`, `on/off`, `yes/no`) between migration toggles.
+  - Useful context: US-011 can wire route guards directly to these typed helpers without redefining env parsing logic.
 ---

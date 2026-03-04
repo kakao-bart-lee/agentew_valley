@@ -46,6 +46,7 @@ packages/
 - Shadow comparator는 `packages/server/src/domains/migration/shadow-mode.ts`를 단일 진실 공급원으로 사용하고, 상태 enum(`match`,`mismatch`,`missing_legacy`,`missing_new`)과 `$.path` 기반 field diff 표기(객체 키 정렬 포함)를 유지해 리포트 결과를 결정적으로 만든다
 - Migration shadow report API(`GET /api/v1/migration/shadow-report`)는 `shadowModeEnabled`가 꺼져 있으면 항상 `503 + SHADOW_MODE_DISABLED`를 반환하고, 켜져 있을 때 응답 키를 `pass_count`, `fail_count`, `top_diffs`(snake_case)로 고정한다
 - Shadow mode env gating은 `packages/server/src/config/shadow-mode.ts`를 통해 처리하며, `OBSERVATORY_SHADOW_MODE_ENABLED` 기본값은 `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` 기본값은 `true`; read-only가 아니면 `SHADOW_MODE_READ_ONLY_REQUIRED`로 차단한다
+- Domain rollout feature flags는 `packages/server/src/config/feature-flags.ts`를 단일 진실 공급원으로 사용하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + env(`OBSERVATORY_*_V2_ENABLED`) + typed helper(`isFeatureFlagEnabled`/개별 accessor) 조합을 유지한다
 
 ## 개발 규칙
 

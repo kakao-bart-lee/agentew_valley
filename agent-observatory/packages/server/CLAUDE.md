@@ -259,6 +259,10 @@ export function createApp(config?: AppConfig): { app, server, eventBus, stateMan
 //   OPENCLAW_WATCH_PATHS (기본 ~/.openclaw/agents)
 //   OBSERVATORY_SHADOW_MODE_ENABLED (기본 false)
 //   OBSERVATORY_SHADOW_MODE_READ_ONLY (기본 true)
+//   OBSERVATORY_AUTH_V2_ENABLED (기본 false)
+//   OBSERVATORY_TASKS_V2_ENABLED (기본 false)
+//   OBSERVATORY_WEBHOOKS_V2_ENABLED (기본 false)
+//   OBSERVATORY_KILL_SWITCH_ALL_V2_ENABLED (기본 false)
 
 // 1. createApp() 호출
 // 2. Collectors 초기화 + 연결
@@ -333,3 +337,4 @@ src/__tests__/
 - Collector 연동: `src/index.ts`에서만 — `app.ts`는 Collector 무관하게 테스트 가능해야 함
 - Graceful shutdown: SIGINT/SIGTERM 시 collector.stop() → server.close() 순서
 - Express의 에러 미들웨어 반드시 등록 (unhandled rejection 방지)
+- Feature rollout flag는 `src/config/feature-flags.ts`에서만 정의하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + typed accessor helper를 통해 읽어 route guard 조건을 일관되게 유지
