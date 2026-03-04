@@ -13,7 +13,7 @@
  */
 
 import type { SpriteData } from '../types'
-import { loadImage, extractRegionToSpriteData, desaturateSprite } from './spriteSheetLoader'
+import { loadImage, extractRegionToSpriteData } from './spriteSheetLoader'
 import { setWallSprites } from '../wallTiles'
 
 const FENCES_URL = '/sprites/sprout/tilesets/fences.png'
@@ -53,7 +53,7 @@ export async function loadSproutWall(): Promise<SpriteData[]> {
   const img = await loadImage(FENCES_URL)
   const sprites: SpriteData[] = BITMASK_TO_TILE.map(([col, row]) => {
     const raw = extractRegionToSpriteData(img, col * TILE, row * TILE, TILE, TILE)
-    return desaturateSprite(raw)
+    return raw
   })
   setWallSprites(sprites)
   return sprites

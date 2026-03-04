@@ -1,4 +1,4 @@
-import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types'
+import { TileType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types'
 import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types'
 import { getCatalogEntry } from './furnitureCatalog'
 import { getColorizedSprite } from '../colorize'
@@ -204,73 +204,218 @@ export function getSeatTiles(seats: Map<string, Seat>): Set<string> {
   return tiles
 }
 
-/** Default floor colors */
-const DEFAULT_GRASS_COLOR: FloorColor = { h: 120, s: 45, b: 10, c: 0 }    // green grass
-const DEFAULT_DIRT_COLOR: FloorColor = { h: 30, s: 35, b: -5, c: 0 }      // dirt path
-const DEFAULT_DARK_GRASS: FloorColor = { h: 130, s: 50, b: -5, c: 0 }     // dark grass (crop area)
+/** Default floor colors — neutral preserves original Sprout Lands PNG colors */
+const NEUTRAL_COLOR: FloorColor = { h: 0, s: 0, b: 0, c: 0 }
 
-/** Create the default farm layout */
+/** Create the default 4-quadrant farm layout (40×28) */
 export function createDefaultLayout(): OfficeLayout {
   const W = TileType.WALL
   const F1 = TileType.FLOOR_1  // grass
   const F2 = TileType.FLOOR_2  // dirt path
   const F3 = TileType.FLOOR_3  // dark grass (crop beds)
 
+  const COLS = DEFAULT_COLS  // 40
+  const ROWS = DEFAULT_ROWS  // 28
+
   const tiles: TileTypeVal[] = []
   const tileColors: Array<FloorColor | null> = []
 
-  for (let r = 0; r < DEFAULT_ROWS; r++) {
-    for (let c = 0; c < DEFAULT_COLS; c++) {
-      // Fence border
-      if (r === 0 || r === DEFAULT_ROWS - 1 || c === 0 || c === DEFAULT_COLS - 1) {
-        tiles.push(W); tileColors.push(null); continue
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      // Fence border (row 0/27, col 0/39)
+      if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
+        tiles.push(W); tileColors.push(NEUTRAL_COLOR); continue
       }
-      // Dirt path (horizontal at row 7, vertical at col 11)
-      if (r === 7 || c === 11) {
-        tiles.push(F2); tileColors.push(DEFAULT_DIRT_COLOR); continue
+      // Cross path: vertical cols 19-20, horizontal rows 13-14
+      if ((c === 19 || c === 20) || (r === 13 || r === 14)) {
+        tiles.push(F2); tileColors.push(NEUTRAL_COLOR); continue
       }
-      // Crop bed areas (left field and right field)
-      if ((c >= 3 && c <= 6 && r >= 3 && r <= 6) ||
-          (c >= 14 && c <= 17 && r >= 3 && r <= 6)) {
-        tiles.push(F3); tileColors.push(DEFAULT_DARK_GRASS); continue
+      // Q1 crop bed: cols 4-9, rows 4-7
+      if (c >= 4 && c <= 9 && r >= 4 && r <= 7) {
+        tiles.push(F3); tileColors.push(NEUTRAL_COLOR); continue
+      }
+      // Q2 crop bed: cols 25-30, rows 4-7
+      if (c >= 25 && c <= 30 && r >= 4 && r <= 7) {
+        tiles.push(F3); tileColors.push(NEUTRAL_COLOR); continue
+      }
+      // Q3 crop bed: cols 4-9, rows 19-22
+      if (c >= 4 && c <= 9 && r >= 19 && r <= 22) {
+        tiles.push(F3); tileColors.push(NEUTRAL_COLOR); continue
+      }
+      // Q4 crop bed: cols 25-30, rows 19-22
+      if (c >= 25 && c <= 30 && r >= 19 && r <= 22) {
+        tiles.push(F3); tileColors.push(NEUTRAL_COLOR); continue
       }
       // Default grass
-      tiles.push(F1); tileColors.push(DEFAULT_GRASS_COLOR)
+      tiles.push(F1); tileColors.push(NEUTRAL_COLOR)
     }
   }
 
-  // Use dynamic Sprout IDs if available, else fall back to hardcoded FurnitureType
   const furniture: PlacedFurniture[] = [
-    // Left crop patches (desks — agents work here)
-    { uid: 'crop-l-1', type: 'crop-wheat' in {} ? 'crop-wheat' : FurnitureType.DESK, col: 3, row: 3 },
-    { uid: 'crop-l-2', type: 'crop-carrot' in {} ? 'crop-carrot' : FurnitureType.DESK, col: 5, row: 3 },
-    // Right crop patches
-    { uid: 'crop-r-1', type: 'crop-tomato' in {} ? 'crop-tomato' : FurnitureType.DESK, col: 14, row: 3 },
-    { uid: 'crop-r-2', type: 'crop-pumpkin' in {} ? 'crop-pumpkin' : FurnitureType.DESK, col: 16, row: 3 },
-    // Work spots (chairs — agent standing positions next to crops)
-    { uid: 'spot-l-1', type: FurnitureType.CHAIR, col: 3, row: 5 },
-    { uid: 'spot-l-2', type: FurnitureType.CHAIR, col: 5, row: 5 },
-    { uid: 'spot-l-3', type: FurnitureType.CHAIR, col: 4, row: 6 },
-    { uid: 'spot-r-1', type: FurnitureType.CHAIR, col: 14, row: 5 },
-    { uid: 'spot-r-2', type: FurnitureType.CHAIR, col: 16, row: 5 },
-    { uid: 'spot-r-3', type: FurnitureType.CHAIR, col: 15, row: 6 },
-    // Trees (storage)
-    { uid: 'tree-1', type: FurnitureType.BOOKSHELF, col: 1, row: 1 },
-    { uid: 'tree-2', type: FurnitureType.BOOKSHELF, col: 19, row: 1 },
+    // ════════════════════════════════════════════════════════
+    // Q1 (NW) — 과수원: oak/apple trees, wheat/carrot crops
+    // ════════════════════════════════════════════════════════
+
+    // Trees
+    { uid: 'q1-tree-1', type: 'tree-oak-tree', col: 1, row: 1 },
+    { uid: 'q1-tree-2', type: 'tree-apple-tree', col: 15, row: 1 },
+    { uid: 'q1-tree-3', type: 'tree-oak-tree', col: 1, row: 9 },
+    { uid: 'q1-tree-4', type: 'tree-apple-tree', col: 10, row: 9 },
+    // Bushes
+    { uid: 'q1-bush-1', type: 'tree-bush', col: 8, row: 1 },
+    { uid: 'q1-bush-2', type: 'tree-berry-bush', col: 16, row: 10 },
+    // Crops (isDesk, staggered)
+    { uid: 'q1-crop-1', type: 'crop-wheat', col: 4, row: 4 },
+    { uid: 'q1-crop-2', type: 'crop-carrot', col: 6, row: 4 },
+    { uid: 'q1-crop-3', type: 'crop-wheat', col: 8, row: 4 },
+    { uid: 'q1-crop-4', type: 'crop-carrot', col: 5, row: 5 },
+    { uid: 'q1-crop-5', type: 'crop-wheat', col: 7, row: 5 },
+    { uid: 'q1-crop-6', type: 'crop-carrot', col: 9, row: 5 },
+    // Work spots (chairs below crops)
+    { uid: 'q1-spot-1', type: 'chair', col: 4, row: 6 },
+    { uid: 'q1-spot-2', type: 'chair', col: 6, row: 6 },
+    { uid: 'q1-spot-3', type: 'chair', col: 8, row: 6 },
+    { uid: 'q1-spot-4', type: 'chair', col: 5, row: 7 },
+    { uid: 'q1-spot-5', type: 'chair', col: 7, row: 7 },
+    { uid: 'q1-spot-6', type: 'chair', col: 9, row: 7 },
     // Nature decor
-    { uid: 'flower-1', type: FurnitureType.PLANT, col: 8, row: 2 },
-    { uid: 'flower-2', type: FurnitureType.PLANT, col: 13, row: 10 },
-    { uid: 'flower-3', type: FurnitureType.PLANT, col: 2, row: 12 },
-    // Chest / barrel (misc)
-    { uid: 'chest-1', type: FurnitureType.COOLER, col: 19, row: 12 },
-    // Lower field work spots
-    { uid: 'spot-b-1', type: FurnitureType.CHAIR, col: 4, row: 10 },
-    { uid: 'spot-b-2', type: FurnitureType.CHAIR, col: 6, row: 10 },
-    { uid: 'spot-b-3', type: FurnitureType.CHAIR, col: 15, row: 10 },
-    { uid: 'spot-b-4', type: FurnitureType.CHAIR, col: 17, row: 10 },
+    { uid: 'q1-flower-1', type: 'nature-flower-red', col: 3, row: 2 },
+    { uid: 'q1-flower-2', type: 'nature-flower-yellow', col: 12, row: 3 },
+    { uid: 'q1-grass-1', type: 'nature-grass-tuft', col: 14, row: 6 },
+    { uid: 'q1-grass-2', type: 'nature-grass-tuft', col: 11, row: 2 },
+    { uid: 'q1-mushroom-1', type: 'nature-mushroom', col: 17, row: 8 },
+    // Stone
+    { uid: 'q1-stone-1', type: 'nature-stone-small', col: 13, row: 11 },
+    // Storage
+    { uid: 'q1-barrel-1', type: 'misc-barrel', col: 17, row: 11 },
+
+    // ════════════════════════════════════════════════════════
+    // Q2 (NE) — 소나무숲: pine trees, corn/sunflower crops
+    // ════════════════════════════════════════════════════════
+
+    // Trees
+    { uid: 'q2-tree-1', type: 'tree-pine-tree', col: 22, row: 1 },
+    { uid: 'q2-tree-2', type: 'tree-pine-tree', col: 36, row: 1 },
+    { uid: 'q2-tree-3', type: 'tree-pine-tree', col: 22, row: 9 },
+    { uid: 'q2-tree-4', type: 'tree-pine-tree', col: 35, row: 9 },
+    // Bushes
+    { uid: 'q2-bush-1', type: 'tree-bush', col: 32, row: 1 },
+    { uid: 'q2-bush-2', type: 'tree-berry-bush', col: 24, row: 10 },
+    // Crops (staggered)
+    { uid: 'q2-crop-1', type: 'crop-corn', col: 25, row: 4 },
+    { uid: 'q2-crop-2', type: 'crop-sunflower', col: 27, row: 4 },
+    { uid: 'q2-crop-3', type: 'crop-corn', col: 29, row: 4 },
+    { uid: 'q2-crop-4', type: 'crop-sunflower', col: 26, row: 5 },
+    { uid: 'q2-crop-5', type: 'crop-corn', col: 28, row: 5 },
+    { uid: 'q2-crop-6', type: 'crop-sunflower', col: 30, row: 5 },
+    // Work spots
+    { uid: 'q2-spot-1', type: 'chair', col: 25, row: 6 },
+    { uid: 'q2-spot-2', type: 'chair', col: 27, row: 6 },
+    { uid: 'q2-spot-3', type: 'chair', col: 29, row: 6 },
+    { uid: 'q2-spot-4', type: 'chair', col: 26, row: 7 },
+    { uid: 'q2-spot-5', type: 'chair', col: 28, row: 7 },
+    { uid: 'q2-spot-6', type: 'chair', col: 30, row: 7 },
+    // Nature decor
+    { uid: 'q2-flower-1', type: 'nature-flower-blue', col: 33, row: 3 },
+    { uid: 'q2-flower-2', type: 'nature-flower-red', col: 24, row: 2 },
+    { uid: 'q2-grass-1', type: 'nature-grass-tuft', col: 31, row: 10 },
+    { uid: 'q2-grass-2', type: 'nature-grass-tuft', col: 37, row: 5 },
+    { uid: 'q2-mushroom-1', type: 'nature-mushroom', col: 34, row: 11 },
+    // Stone
+    { uid: 'q2-stone-1', type: 'nature-rock-pile', col: 37, row: 8 },
+    // Storage
+    { uid: 'q2-chest-1', type: 'misc-chest', col: 37, row: 11 },
+
+    // ════════════════════════════════════════════════════════
+    // Q3 (SW) — 베리 농장: apple tree/berry bush, turnip/pumpkin
+    // ════════════════════════════════════════════════════════
+
+    // Trees
+    { uid: 'q3-tree-1', type: 'tree-apple-tree', col: 1, row: 16 },
+    { uid: 'q3-tree-2', type: 'tree-oak-tree', col: 15, row: 16 },
+    { uid: 'q3-tree-3', type: 'tree-apple-tree', col: 1, row: 24 },
+    { uid: 'q3-tree-4', type: 'tree-oak-tree', col: 10, row: 24 },
+    // Bushes
+    { uid: 'q3-bush-1', type: 'tree-berry-bush', col: 8, row: 16 },
+    { uid: 'q3-bush-2', type: 'tree-berry-bush', col: 16, row: 24 },
+    // Crops (staggered)
+    { uid: 'q3-crop-1', type: 'crop-turnip', col: 4, row: 19 },
+    { uid: 'q3-crop-2', type: 'crop-pumpkin', col: 6, row: 19 },
+    { uid: 'q3-crop-3', type: 'crop-turnip', col: 8, row: 19 },
+    { uid: 'q3-crop-4', type: 'crop-pumpkin', col: 5, row: 20 },
+    { uid: 'q3-crop-5', type: 'crop-turnip', col: 7, row: 20 },
+    { uid: 'q3-crop-6', type: 'crop-pumpkin', col: 9, row: 20 },
+    // Work spots
+    { uid: 'q3-spot-1', type: 'chair', col: 4, row: 21 },
+    { uid: 'q3-spot-2', type: 'chair', col: 6, row: 21 },
+    { uid: 'q3-spot-3', type: 'chair', col: 8, row: 21 },
+    { uid: 'q3-spot-4', type: 'chair', col: 5, row: 22 },
+    { uid: 'q3-spot-5', type: 'chair', col: 7, row: 22 },
+    { uid: 'q3-spot-6', type: 'chair', col: 9, row: 22 },
+    // Nature decor
+    { uid: 'q3-flower-1', type: 'nature-flower-yellow', col: 3, row: 17 },
+    { uid: 'q3-flower-2', type: 'nature-flower-red', col: 12, row: 18 },
+    { uid: 'q3-grass-1', type: 'nature-grass-tuft', col: 14, row: 23 },
+    { uid: 'q3-grass-2', type: 'nature-grass-tuft', col: 11, row: 17 },
+    { uid: 'q3-mushroom-1', type: 'nature-mushroom', col: 3, row: 25 },
+    // Stone
+    { uid: 'q3-stone-1', type: 'nature-stone-large', col: 13, row: 25 },
+    // Storage
+    { uid: 'q3-barrel-1', type: 'misc-barrel', col: 17, row: 25 },
+    { uid: 'q3-chest-1', type: 'misc-chest', col: 16, row: 25 },
+
+    // ════════════════════════════════════════════════════════
+    // Q4 (SE) — 꽃밭: mixed trees, wheat/corn + flowers
+    // ════════════════════════════════════════════════════════
+
+    // Trees
+    { uid: 'q4-tree-1', type: 'tree-oak-tree', col: 22, row: 16 },
+    { uid: 'q4-tree-2', type: 'tree-apple-tree', col: 36, row: 16 },
+    { uid: 'q4-tree-3', type: 'tree-pine-tree', col: 22, row: 24 },
+    { uid: 'q4-tree-4', type: 'tree-oak-tree', col: 35, row: 24 },
+    // Bushes
+    { uid: 'q4-bush-1', type: 'tree-bush', col: 32, row: 16 },
+    { uid: 'q4-bush-2', type: 'tree-berry-bush', col: 24, row: 25 },
+    // Crops (staggered)
+    { uid: 'q4-crop-1', type: 'crop-wheat', col: 25, row: 19 },
+    { uid: 'q4-crop-2', type: 'crop-corn', col: 27, row: 19 },
+    { uid: 'q4-crop-3', type: 'crop-wheat', col: 29, row: 19 },
+    { uid: 'q4-crop-4', type: 'crop-corn', col: 26, row: 20 },
+    { uid: 'q4-crop-5', type: 'crop-wheat', col: 28, row: 20 },
+    { uid: 'q4-crop-6', type: 'crop-corn', col: 30, row: 20 },
+    // Work spots
+    { uid: 'q4-spot-1', type: 'chair', col: 25, row: 21 },
+    { uid: 'q4-spot-2', type: 'chair', col: 27, row: 21 },
+    { uid: 'q4-spot-3', type: 'chair', col: 29, row: 21 },
+    { uid: 'q4-spot-4', type: 'chair', col: 26, row: 22 },
+    { uid: 'q4-spot-5', type: 'chair', col: 28, row: 22 },
+    { uid: 'q4-spot-6', type: 'chair', col: 30, row: 22 },
+    // Extra flowers (Q4 is the flower quadrant)
+    { uid: 'q4-flower-1', type: 'nature-flower-blue', col: 33, row: 18 },
+    { uid: 'q4-flower-2', type: 'nature-flower-red', col: 34, row: 20 },
+    { uid: 'q4-flower-3', type: 'nature-flower-yellow', col: 24, row: 17 },
+    { uid: 'q4-flower-4', type: 'nature-flower-blue', col: 31, row: 23 },
+    { uid: 'q4-flower-5', type: 'nature-flower-red', col: 37, row: 17 },
+    { uid: 'q4-grass-1', type: 'nature-grass-tuft', col: 33, row: 25 },
+    { uid: 'q4-grass-2', type: 'nature-grass-tuft', col: 37, row: 22 },
+    // Stone
+    { uid: 'q4-stone-1', type: 'nature-stone-small', col: 36, row: 25 },
+    // Storage
+    { uid: 'q4-barrel-1', type: 'misc-barrel', col: 37, row: 25 },
+
+    // ════════════════════════════════════════════════════════
+    // Center crossroads decoration (cols 19-20, rows 13-14)
+    // ════════════════════════════════════════════════════════
+    { uid: 'center-flower-1', type: 'nature-flower-red', col: 18, row: 12 },
+    { uid: 'center-flower-2', type: 'nature-flower-blue', col: 21, row: 12 },
+    { uid: 'center-flower-3', type: 'nature-flower-yellow', col: 18, row: 15 },
+    { uid: 'center-flower-4', type: 'nature-flower-red', col: 21, row: 15 },
+
+    // Signpost near center
+    { uid: 'center-stump', type: 'tree-stump', col: 17, row: 12 },
   ]
 
-  return { version: 1, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, tiles, tileColors, furniture }
+  return { version: 1, cols: COLS, rows: ROWS, tiles, tileColors, furniture }
 }
 
 /** Serialize layout to JSON string */
@@ -311,20 +456,20 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
   const tileColors: Array<FloorColor | null> = []
   for (const tile of layout.tiles) {
     switch (tile) {
-      case 0: // WALL (fence)
-        tileColors.push(null)
+      case 0: // WALL (fence) — neutral preserves original fence sprite colors
+        tileColors.push(NEUTRAL_COLOR)
         break
       case 1: // FLOOR_1 → grass
-        tileColors.push(DEFAULT_GRASS_COLOR)
+        tileColors.push(NEUTRAL_COLOR)
         break
       case 2: // FLOOR_2 → dirt path
-        tileColors.push(DEFAULT_DIRT_COLOR)
+        tileColors.push(NEUTRAL_COLOR)
         break
       case 3: // FLOOR_3 → dark grass
-        tileColors.push(DEFAULT_DARK_GRASS)
+        tileColors.push(NEUTRAL_COLOR)
         break
       case 4: // FLOOR_4 → dirt (legacy doorway)
-        tileColors.push(DEFAULT_DIRT_COLOR)
+        tileColors.push(NEUTRAL_COLOR)
         break
       default:
         // New tile types (5-7) without colors — use neutral gray

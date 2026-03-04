@@ -1,18 +1,15 @@
 /**
- * PixelOfficeCanvas - VS Code 종속 코드 없이 Canvas 2D 사무실 렌더링.
+ * PixelOfficeCanvas - Canvas 2D 사무실 렌더링.
  *
- * pixel-agents의 OfficeCanvas.tsx를 기반으로 작성.
- * vscode.postMessage → localStorage 저장으로 대체.
- * ToolOverlay (VS Code HUD) 제거.
+ * 줌/팬, 캐릭터 클릭, 좌석 할당, 카메라 팔로우 등 게임 기능만 포함.
  */
 
 import { useRef, useEffect, useCallback } from 'react'
 import type { OfficeState } from '../engine/officeState'
-import type { EditorState } from '../editor/editorState'
-import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, RotateButtonBounds } from '../engine/renderer'
+import type { SelectionRenderState } from '../engine/renderer'
 import { startGameLoop } from '../engine/gameLoop'
 import { renderFrame } from '../engine/renderer'
-import { TILE_SIZE, EditTool } from '../types'
+import { TILE_SIZE } from '../types'
 import {
   CAMERA_FOLLOW_LERP,
   CAMERA_FOLLOW_SNAP_THRESHOLD,
@@ -21,20 +18,10 @@ import {
   ZOOM_SCROLL_THRESHOLD,
   PAN_MARGIN_FRACTION,
 } from '../constants'
-import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog'
-import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions'
+
 interface PixelOfficeCanvasProps {
   officeState: OfficeState
   onClick: (agentId: number) => void
-  isEditMode: boolean
-  editorState: EditorState
-  onEditorTileAction: (col: number, row: number) => void
-  onEditorEraseAction: (col: number, row: number) => void
-  onEditorSelectionChange: () => void
-  onDeleteSelected: () => void
-  onRotateSelected: () => void
-  onDragMove: (uid: string, newCol: number, newRow: number) => void
-  editorTick: number
   zoom: number
   onZoomChange: (zoom: number) => void
   panRef: React.RefObject<{ x: number; y: number }>
@@ -43,15 +30,6 @@ interface PixelOfficeCanvasProps {
 export function PixelOfficeCanvas({
   officeState,
   onClick,
-  isEditMode,
-  editorState,
-  onEditorTileAction,
-  onEditorEraseAction,
-  onEditorSelectionChange,
-  onDeleteSelected,
-  onRotateSelected,
-  onDragMove,
-  editorTick: _editorTick,
   zoom,
   onZoomChange,
   panRef,
@@ -61,9 +39,6 @@ export function PixelOfficeCanvas({
   const offsetRef = useRef({ x: 0, y: 0 })
   const isPanningRef = useRef(false)
   const panStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 })
-  const deleteButtonBoundsRef = useRef<DeleteButtonBounds | null>(null)
-  const rotateButtonBoundsRef = useRef<RotateButtonBounds | null>(null)
-  const isEraseDraggingRef = useRef(false)
   const zoomAccumulatorRef = useRef(0)
 
   const clampPan = useCallback((px: number, py: number): { x: number; y: number } => {
@@ -113,83 +88,6 @@ export function PixelOfficeCanvas({
         const w = canvas.width
         const h = canvas.height
 
-        let editorRender: EditorRenderState | undefined
-        if (isEditMode) {
-          const showGhostBorder =
-            editorState.activeTool === EditTool.TILE_PAINT ||
-            editorState.activeTool === EditTool.WALL_PAINT ||
-            editorState.activeTool === EditTool.ERASE
-          editorRender = {
-            showGrid: true,
-            ghostSprite: null,
-            ghostCol: editorState.ghostCol,
-            ghostRow: editorState.ghostRow,
-            ghostValid: editorState.ghostValid,
-            selectedCol: 0,
-            selectedRow: 0,
-            selectedW: 0,
-            selectedH: 0,
-            hasSelection: false,
-            isRotatable: false,
-            deleteButtonBounds: null,
-            rotateButtonBounds: null,
-            showGhostBorder,
-            ghostBorderHoverCol: showGhostBorder ? editorState.ghostCol : -999,
-            ghostBorderHoverRow: showGhostBorder ? editorState.ghostRow : -999,
-          }
-
-          if (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.ghostCol >= 0) {
-            const entry = getCatalogEntry(editorState.selectedFurnitureType)
-            if (entry) {
-              const placementRow = getWallPlacementRow(editorState.selectedFurnitureType, editorState.ghostRow)
-              editorRender.ghostSprite = entry.sprite
-              editorRender.ghostRow = placementRow
-              editorRender.ghostValid = canPlaceFurniture(
-                officeState.getLayout(),
-                editorState.selectedFurnitureType,
-                editorState.ghostCol,
-                placementRow,
-              )
-            }
-          }
-
-          if (editorState.isDragMoving && editorState.dragUid && editorState.ghostCol >= 0) {
-            const draggedItem = officeState.getLayout().furniture.find((f) => f.uid === editorState.dragUid)
-            if (draggedItem) {
-              const entry = getCatalogEntry(draggedItem.type)
-              if (entry) {
-                const ghostCol = editorState.ghostCol - editorState.dragOffsetCol
-                const ghostRow = editorState.ghostRow - editorState.dragOffsetRow
-                editorRender.ghostSprite = entry.sprite
-                editorRender.ghostCol = ghostCol
-                editorRender.ghostRow = ghostRow
-                editorRender.ghostValid = canPlaceFurniture(
-                  officeState.getLayout(),
-                  draggedItem.type,
-                  ghostCol,
-                  ghostRow,
-                  editorState.dragUid,
-                )
-              }
-            }
-          }
-
-          if (editorState.selectedFurnitureUid && !editorState.isDragMoving) {
-            const item = officeState.getLayout().furniture.find((f) => f.uid === editorState.selectedFurnitureUid)
-            if (item) {
-              const entry = getCatalogEntry(item.type)
-              if (entry) {
-                editorRender.hasSelection = true
-                editorRender.selectedCol = item.col
-                editorRender.selectedRow = item.row
-                editorRender.selectedW = entry.footprintW
-                editorRender.selectedH = entry.footprintH
-                editorRender.isRotatable = isRotatable(item.type)
-              }
-            }
-          }
-        }
-
         if (officeState.cameraFollowId !== null) {
           const followCh = officeState.characters.get(officeState.cameraFollowId)
           if (followCh) {
@@ -230,15 +128,11 @@ export function PixelOfficeCanvas({
           panRef.current.x,
           panRef.current.y,
           selectionRender,
-          editorRender,
           officeState.getLayout().tileColors,
           officeState.getLayout().cols,
           officeState.getLayout().rows,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
-
-        deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null
-        rotateButtonBoundsRef.current = editorRender?.rotateButtonBounds ?? null
       },
     })
 
@@ -246,7 +140,7 @@ export function PixelOfficeCanvas({
       stop()
       observer.disconnect()
     }
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef])
+  }, [officeState, resizeCanvas, zoom, panRef])
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -272,36 +166,11 @@ export function PixelOfficeCanvas({
       const col = Math.floor(pos.worldX / TILE_SIZE)
       const row = Math.floor(pos.worldY / TILE_SIZE)
       const layout = officeState.getLayout()
-      if (
-        isEditMode &&
-        (editorState.activeTool === EditTool.TILE_PAINT ||
-          editorState.activeTool === EditTool.WALL_PAINT ||
-          editorState.activeTool === EditTool.ERASE)
-      ) {
-        if (col < -1 || col > layout.cols || row < -1 || row > layout.rows) return null
-        return { col, row }
-      }
       if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return null
       return { col, row }
     },
-    [screenToWorld, officeState, isEditMode, editorState],
+    [screenToWorld, officeState],
   )
-
-  const hitTestDeleteButton = useCallback((deviceX: number, deviceY: number): boolean => {
-    const bounds = deleteButtonBoundsRef.current
-    if (!bounds) return false
-    const dx = deviceX - bounds.cx
-    const dy = deviceY - bounds.cy
-    return dx * dx + dy * dy <= (bounds.radius + 2) * (bounds.radius + 2)
-  }, [])
-
-  const hitTestRotateButton = useCallback((deviceX: number, deviceY: number): boolean => {
-    const bounds = rotateButtonBoundsRef.current
-    if (!bounds) return false
-    const dx = deviceX - bounds.cx
-    const dy = deviceY - bounds.cy
-    return dx * dx + dy * dy <= (bounds.radius + 2) * (bounds.radius + 2)
-  }, [])
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
@@ -310,92 +179,6 @@ export function PixelOfficeCanvas({
         const dx = (e.clientX - panStartRef.current.mouseX) * dpr
         const dy = (e.clientY - panStartRef.current.mouseY) * dpr
         panRef.current = clampPan(panStartRef.current.panX + dx, panStartRef.current.panY + dy)
-        return
-      }
-
-      if (isEditMode) {
-        const tile = screenToTile(e.clientX, e.clientY)
-        if (tile) {
-          editorState.ghostCol = tile.col
-          editorState.ghostRow = tile.row
-
-          if (editorState.dragUid && !editorState.isDragMoving) {
-            if (tile.col !== editorState.dragStartCol || tile.row !== editorState.dragStartRow) {
-              editorState.isDragMoving = true
-            }
-          }
-
-          if (
-            editorState.isDragging &&
-            (editorState.activeTool === EditTool.TILE_PAINT ||
-              editorState.activeTool === EditTool.WALL_PAINT ||
-              editorState.activeTool === EditTool.ERASE) &&
-            !editorState.dragUid
-          ) {
-            onEditorTileAction(tile.col, tile.row)
-          }
-          if (
-            isEraseDraggingRef.current &&
-            (editorState.activeTool === EditTool.TILE_PAINT ||
-              editorState.activeTool === EditTool.WALL_PAINT ||
-              editorState.activeTool === EditTool.ERASE)
-          ) {
-            const layout = officeState.getLayout()
-            if (tile.col >= 0 && tile.col < layout.cols && tile.row >= 0 && tile.row < layout.rows) {
-              onEditorEraseAction(tile.col, tile.row)
-            }
-          }
-        } else {
-          editorState.ghostCol = -1
-          editorState.ghostRow = -1
-        }
-
-        const canvas = canvasRef.current
-        if (canvas) {
-          if (editorState.isDragMoving) {
-            canvas.style.cursor = 'grabbing'
-          } else {
-            const pos = screenToWorld(e.clientX, e.clientY)
-            if (
-              pos &&
-              (hitTestDeleteButton(pos.deviceX, pos.deviceY) || hitTestRotateButton(pos.deviceX, pos.deviceY))
-            ) {
-              canvas.style.cursor = 'pointer'
-            } else if (editorState.activeTool === EditTool.FURNITURE_PICK && tile) {
-              const layout = officeState.getLayout()
-              const hitFurniture = layout.furniture.find((f) => {
-                const entry = getCatalogEntry(f.type)
-                if (!entry) return false
-                return (
-                  tile.col >= f.col &&
-                  tile.col < f.col + entry.footprintW &&
-                  tile.row >= f.row &&
-                  tile.row < f.row + entry.footprintH
-                )
-              })
-              canvas.style.cursor = hitFurniture ? 'pointer' : 'crosshair'
-            } else if (
-              (editorState.activeTool === EditTool.SELECT ||
-                (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.selectedFurnitureType === '')) &&
-              tile
-            ) {
-              const layout = officeState.getLayout()
-              const hitFurniture = layout.furniture.find((f) => {
-                const entry = getCatalogEntry(f.type)
-                if (!entry) return false
-                return (
-                  tile.col >= f.col &&
-                  tile.col < f.col + entry.footprintW &&
-                  tile.row >= f.row &&
-                  tile.row < f.row + entry.footprintH
-                )
-              })
-              canvas.style.cursor = hitFurniture ? 'grab' : 'crosshair'
-            } else {
-              canvas.style.cursor = 'crosshair'
-            }
-          }
-        }
         return
       }
 
@@ -429,13 +212,7 @@ export function PixelOfficeCanvas({
       officeState,
       screenToWorld,
       screenToTile,
-      isEditMode,
-      editorState,
-      onEditorTileAction,
-      onEditorEraseAction,
       panRef,
-      hitTestDeleteButton,
-      hitTestRotateButton,
       clampPan,
     ],
   )
@@ -456,91 +233,8 @@ export function PixelOfficeCanvas({
         if (canvas) canvas.style.cursor = 'grabbing'
         return
       }
-
-      if (e.button === 2 && isEditMode) {
-        const tile = screenToTile(e.clientX, e.clientY)
-        if (
-          tile &&
-          (editorState.activeTool === EditTool.TILE_PAINT ||
-            editorState.activeTool === EditTool.WALL_PAINT ||
-            editorState.activeTool === EditTool.ERASE)
-        ) {
-          const layout = officeState.getLayout()
-          if (tile.col >= 0 && tile.col < layout.cols && tile.row >= 0 && tile.row < layout.rows) {
-            isEraseDraggingRef.current = true
-            onEditorEraseAction(tile.col, tile.row)
-          }
-        }
-        return
-      }
-
-      if (!isEditMode) return
-
-      const pos = screenToWorld(e.clientX, e.clientY)
-      if (pos && hitTestRotateButton(pos.deviceX, pos.deviceY)) {
-        onRotateSelected()
-        return
-      }
-      if (pos && hitTestDeleteButton(pos.deviceX, pos.deviceY)) {
-        onDeleteSelected()
-        return
-      }
-
-      const tile = screenToTile(e.clientX, e.clientY)
-
-      const actAsSelect =
-        editorState.activeTool === EditTool.SELECT ||
-        (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.selectedFurnitureType === '')
-      if (actAsSelect && tile) {
-        const layout = officeState.getLayout()
-        let hitFurniture = null as (typeof layout.furniture)[0] | null
-        for (const f of layout.furniture) {
-          const entry = getCatalogEntry(f.type)
-          if (!entry) continue
-          if (
-            tile.col >= f.col &&
-            tile.col < f.col + entry.footprintW &&
-            tile.row >= f.row &&
-            tile.row < f.row + entry.footprintH
-          ) {
-            if (!hitFurniture || entry.canPlaceOnSurfaces) hitFurniture = f
-          }
-        }
-        if (hitFurniture) {
-          editorState.startDrag(
-            hitFurniture.uid,
-            tile.col,
-            tile.row,
-            tile.col - hitFurniture.col,
-            tile.row - hitFurniture.row,
-          )
-          return
-        } else {
-          editorState.clearSelection()
-          onEditorSelectionChange()
-        }
-      }
-
-      editorState.isDragging = true
-      if (tile) {
-        onEditorTileAction(tile.col, tile.row)
-      }
     },
-    [
-      officeState,
-      isEditMode,
-      editorState,
-      screenToTile,
-      screenToWorld,
-      onEditorTileAction,
-      onEditorEraseAction,
-      onEditorSelectionChange,
-      onDeleteSelected,
-      onRotateSelected,
-      hitTestDeleteButton,
-      hitTestRotateButton,
-      panRef,
-    ],
+    [officeState, panRef],
   )
 
   const handleMouseUp = useCallback(
@@ -548,55 +242,15 @@ export function PixelOfficeCanvas({
       if (e.button === 1) {
         isPanningRef.current = false
         const canvas = canvasRef.current
-        if (canvas) canvas.style.cursor = isEditMode ? 'crosshair' : 'default'
+        if (canvas) canvas.style.cursor = 'default'
         return
       }
-      if (e.button === 2) {
-        isEraseDraggingRef.current = false
-        return
-      }
-
-      if (editorState.dragUid) {
-        if (editorState.isDragMoving) {
-          const ghostCol = editorState.ghostCol - editorState.dragOffsetCol
-          const ghostRow = editorState.ghostRow - editorState.dragOffsetRow
-          const draggedItem = officeState.getLayout().furniture.find((f) => f.uid === editorState.dragUid)
-          if (draggedItem) {
-            const valid = canPlaceFurniture(
-              officeState.getLayout(),
-              draggedItem.type,
-              ghostCol,
-              ghostRow,
-              editorState.dragUid,
-            )
-            if (valid) {
-              onDragMove(editorState.dragUid, ghostCol, ghostRow)
-            }
-          }
-          editorState.clearSelection()
-        } else {
-          if (editorState.selectedFurnitureUid === editorState.dragUid) {
-            editorState.clearSelection()
-          } else {
-            editorState.selectedFurnitureUid = editorState.dragUid
-          }
-        }
-        editorState.clearDrag()
-        onEditorSelectionChange()
-        const canvas = canvasRef.current
-        if (canvas) canvas.style.cursor = 'crosshair'
-        return
-      }
-
-      editorState.isDragging = false
-      editorState.wallDragAdding = null
     },
-    [editorState, isEditMode, officeState, onDragMove, onEditorSelectionChange],
+    [],
   )
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (isEditMode) return
       const pos = screenToWorld(e.clientX, e.clientY)
       if (!pos) return
 
@@ -632,7 +286,7 @@ export function PixelOfficeCanvas({
                   officeState.reassignSeat(officeState.selectedAgentId, seatId)
                   officeState.selectedAgentId = null
                   officeState.cameraFollowId = null
-                  // localStorage에 좌석 배정 저장 (VS Code postMessage 대체)
+                  // localStorage에 좌석 배정 저장
                   try {
                     const seats: Record<number, { palette: number; seatId: string | null }> = {}
                     for (const ch of officeState.characters.values()) {
@@ -653,25 +307,18 @@ export function PixelOfficeCanvas({
         officeState.cameraFollowId = null
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, screenToWorld, screenToTile],
   )
 
   const handleMouseLeave = useCallback(() => {
     isPanningRef.current = false
-    isEraseDraggingRef.current = false
-    editorState.isDragging = false
-    editorState.wallDragAdding = null
-    editorState.clearDrag()
-    editorState.ghostCol = -1
-    editorState.ghostRow = -1
     officeState.hoveredAgentId = null
     officeState.hoveredTile = null
-  }, [officeState, editorState])
+  }, [officeState])
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
-      if (isEditMode) return
       if (officeState.selectedAgentId !== null) {
         const tile = screenToTile(e.clientX, e.clientY)
         if (tile) {
@@ -679,7 +326,7 @@ export function PixelOfficeCanvas({
         }
       }
     },
-    [isEditMode, officeState, screenToTile],
+    [officeState, screenToTile],
   )
 
   const handleWheel = useCallback(
@@ -715,7 +362,7 @@ export function PixelOfficeCanvas({
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: '#1E1E2E',
+        background: '#8ACFCF',
       }}
     >
       <canvas
