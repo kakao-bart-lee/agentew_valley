@@ -1,0 +1,31 @@
+# Ralph Progress Log
+Started: 2026-03-04
+---
+
+## Codebase Patterns
+- Project root is `agent-observatory/` (not `ralph/`); all code/docs changes go there
+- Branch created from `main` in the `agentew_valley` monorepo root
+- Typecheck: `pnpm --filter @agent-observatory/server build` (tsc); web package has a pre-existing vite config TS error unrelated to migration work
+- docs/migration/ is created fresh; no prior content exists
+- Migration governance docs should prefer measurable acceptance tables (`Target`, `Measurement Source`, `Alert Threshold`) to keep criteria verifiable
+---
+
+## 2026-03-04 - US-001
+- Created `agent-observatory/docs/migration/scope-cutline.md`
+- Sections: Parity, Equivalent, New; Domain classification table (12 rows covering all 7 required domains plus additional ones); explicit In-Scope and Out-of-Scope lists
+- Files changed: `docs/migration/scope-cutline.md` (new)
+- **Learnings for future iterations:**
+  - The `docs/migration/` directory must be created manually (mkdir -p)
+  - The web package's vite.config.ts has a pre-existing TS error (`test` property unknown); only server/shared/collectors typechecks are meaningful for migration work
+  - US-002 through US-005 also create files in `docs/migration/`; US-006 creates `scripts/migration/`; US-007 and later touch `packages/server/src/`
+---
+
+## 2026-03-04 16:21:33 KST - US-002
+- Created `agent-observatory/docs/migration/slo-targets.md` with explicit migration SLO targets for API p95 latency, WebSocket reconnect time, event loss rate, RPO, RTO, and retention.
+- Added per-metric measurement source and alert threshold definitions, plus monthly error budgets and a breach response policy with escalation and rollback safeguards.
+- Files changed: `agent-observatory/docs/migration/slo-targets.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Migration governance docs in `docs/migration/` should use measurable tables (target, measurement source, alert threshold) so acceptance can be objectively verified.
+  - Gotchas encountered: `prd.json` and `progress.txt` live under `ralph/`, but implementation files for this project live under `agent-observatory/`.
+  - Useful context: This story is docs-only; browser verification is not applicable unless a later story introduces UI changes.
+---

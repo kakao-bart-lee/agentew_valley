@@ -1,0 +1,224 @@
+{
+  "project": "Agent Observatory Migration Guardrails",
+  "branchName": "ralph/mission-control-migration-guardrails",
+  "description": "Add governance, reliability, and rollout guardrails to the gradual migration from mission-control to agent-observatory.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create migration scope cutline document",
+      "description": "As a migration lead, I want a fixed scope cutline so that parity goals and release boundaries are explicit.",
+      "acceptanceCriteria": [
+        "Create docs/migration/scope-cutline.md with sections: Parity, Equivalent, New",
+        "Add a domain classification table covering Auth, Task, Webhook, Scheduler, Pipeline, GitHub Sync, and Super Admin",
+        "Add explicit in-scope and out-of-scope lists for the current release",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Define migration SLO and non-functional targets",
+      "description": "As an operator, I want measurable SLO targets so that migration success is validated by numbers, not opinions.",
+      "acceptanceCriteria": [
+        "Create docs/migration/slo-targets.md with target metrics for API p95, WebSocket reconnect time, event loss rate, RPO, RTO, and retention",
+        "Include a target or measurement source or alert threshold table for each metric",
+        "Define monthly error budget and breach response policy",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Document data model boundary principles",
+      "description": "As a backend engineer, I want clear storage boundaries so that UAEP telemetry and ops-domain data evolve independently.",
+      "acceptanceCriteria": [
+        "Create docs/migration/data-model-principles.md defining the UAEP event store vs ops domain store boundary",
+        "Define required common columns for ops tables: workspace_id, created_at, updated_at, actor",
+        "Document naming, indexing, and foreign key conventions for new domain tables",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Create source-to-target backfill mapping",
+      "description": "As a data migration engineer, I want explicit mapping rules so that migration scope and transformations are deterministic.",
+      "acceptanceCriteria": [
+        "Create docs/migration/backfill-plan.md with source-to-target mappings for Tasks, Reviews, Notifications, Activities, and Webhooks",
+        "Document required field transformations and null-handling policy per entity",
+        "Document unsupported records handling and skip policy",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Add idempotency and upsert conflict policy",
+      "description": "As a migration engineer, I want idempotent load rules so that reruns are safe and predictable.",
+      "acceptanceCriteria": [
+        "Add idempotency key format for each mapped entity in docs/migration/backfill-plan.md",
+        "Define upsert conflict resolution policy for create, update, and delete semantics",
+        "Add deterministic ordering rule for replayed source records",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Add migration rehearsal validation script",
+      "description": "As a release engineer, I want a dry-run validator so that backfill correctness can be checked before production execution.",
+      "acceptanceCriteria": [
+        "Add scripts/migration/rehearsal-check.sh",
+        "Script verifies dry-run row count parity and checksum diff output for mapped entities",
+        "Script exits non-zero when any required parity check fails",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Create shadow comparator core module",
+      "description": "As a release owner, I want a comparator module so that legacy and new outputs can be diffed consistently.",
+      "acceptanceCriteria": [
+        "Add packages/server/src/domains/migration/shadow-mode.ts",
+        "Define comparator interfaces and shadow diff payload schema",
+        "Support diff result statuses: match, mismatch, missing_legacy, missing_new",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Expose shadow report API endpoint",
+      "description": "As an operator, I want a shadow report endpoint so that parity can be measured during phased rollout.",
+      "acceptanceCriteria": [
+        "Expose GET /api/v1/migration/shadow-report in server routes",
+        "Response includes pass_count, fail_count, and top_diffs",
+        "Return stable error code when shadow mode is disabled",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Gate shadow mode by environment flags",
+      "description": "As an operator, I want environment-gated shadow mode so that comparison can be turned on safely by phase.",
+      "acceptanceCriteria": [
+        "Add shadow mode flags in server configuration with default OFF",
+        "Ensure shadow report endpoint runs only in read-only comparison mode",
+        "Document phase-based enablement for Phase 2 and Phase 3",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Create feature flag baseline config",
+      "description": "As an operator, I want domain-level feature flags so that migration rollout can be controlled incrementally.",
+      "acceptanceCriteria": [
+        "Add packages/server/src/config/feature-flags.ts",
+        "Define flags: auth_v2, tasks_v2, webhooks_v2, kill_switch_all_v2",
+        "Provide typed accessor helpers for flag reads",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Apply domain feature guards to v2 routes",
+      "description": "As a backend engineer, I want v2 routes guarded by domain flags so that each domain can be rolled out independently.",
+      "acceptanceCriteria": [
+        "Ensure auth_v2 guards auth v2 routes",
+        "Ensure tasks_v2 guards tasks v2 routes",
+        "Ensure webhooks_v2 guards webhooks v2 routes",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement global kill switch behavior",
+      "description": "As an operator, I want a global kill switch so that all v2 routes can be disabled immediately during incidents.",
+      "acceptanceCriteria": [
+        "If kill_switch_all_v2 is enabled, v2 routes return 503 with a stable error code",
+        "Error response includes machine-readable reason field",
+        "Add regression tests for enabled and disabled kill switch states",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Define phase exit and rollback criteria",
+      "description": "As a program manager, I want numeric phase gates so that go or no-go decisions are objective and auditable.",
+      "acceptanceCriteria": [
+        "Create docs/migration/phase-exit-criteria.md with numeric DoD and rollback triggers for Phase 0 through Phase 4",
+        "Include required evidence checklist per phase: test run id, metrics snapshot, and incident count",
+        "Add go or no-go approval template with sign-off fields",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Create domain ownership matrix",
+      "description": "As a tech lead, I want clear domain ownership so that migration decisions and escalations are unambiguous.",
+      "acceptanceCriteria": [
+        "Create docs/migration/ownership-and-adr.md with DRI matrix per migration domain",
+        "Include escalation chain and approval roles",
+        "Map each migration domain to planned ADR identifiers",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add ADR template and lifecycle rules",
+      "description": "As an architecture owner, I want a standard ADR process so that key migration decisions remain traceable.",
+      "acceptanceCriteria": [
+        "Create docs/adr/0000-template.md",
+        "Document ADR naming, status transitions, and required sections",
+        "Link ADR process from docs/migration/ownership-and-adr.md",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

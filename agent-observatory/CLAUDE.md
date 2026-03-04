@@ -35,6 +35,11 @@ packages/
 - 시각화 추상화 연구: `docs/02_visualization_abstraction_research_2026-02-27.md`
 - 유사 사례 조사: `docs/03_swarm_team_dashboard_cases_2026-02-27.md`
 
+## Migration 문서 규칙
+
+- `docs/migration/`의 운영 가드레일 문서는 가능한 한 정량 검증 가능한 표를 사용 (`Target`, `Measurement Source`, `Alert Threshold`)
+- SLO/신뢰성 문서에는 월간 error budget과 breach 시 rollback/완화 절차를 함께 명시
+
 ## 개발 규칙
 
 ### 코드 스타일
