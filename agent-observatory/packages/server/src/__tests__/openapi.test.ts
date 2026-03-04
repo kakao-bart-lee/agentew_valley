@@ -39,6 +39,9 @@ describe('OpenAPI Documentation', () => {
     expect(paths).toContain('/api/v1/metrics/timeseries');
     expect(paths).toContain('/api/v1/events/search');
     expect(paths).toContain('/api/v1/migration/shadow-report');
+    expect(paths).toContain('/api/v2/auth/status');
+    expect(paths).toContain('/api/v2/tasks');
+    expect(paths).toContain('/api/v2/webhooks/test');
     expect(paths).toContain('/api/v1/config');
     expect(paths).toContain('/api/v1/events');
     expect(paths).toContain('/api/v1/events/batch');

@@ -17,6 +17,7 @@ Started: 2026-03-04
 - Migration shadow report route should enforce a stable disabled contract (`503` + `SHADOW_MODE_DISABLED`) and use snake_case summary keys (`pass_count`, `fail_count`, `top_diffs`) when enabled
 - Shadow mode rollout is environment-gated via `packages/server/src/config/shadow-mode.ts`; keep `OBSERVATORY_SHADOW_MODE_ENABLED` default `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` default `true`, and reject non-read-only mode with `SHADOW_MODE_READ_ONLY_REQUIRED`
 - Domain rollout flags should be centralized in `packages/server/src/config/feature-flags.ts` with canonical keys (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and read through typed helpers instead of ad-hoc env checks
+- Domain v2 route guards should return deterministic disabled responses (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`) so rollout diagnostics can identify which flag blocked a request
 ---
 
 ## 2026-03-04 - US-001
@@ -139,4 +140,18 @@ Started: 2026-03-04
   - Patterns discovered: Keep feature flag identity in snake_case keys and map env variables in one config module so route guards stay deterministic across startup/runtime code paths.
   - Gotchas encountered: Reusing `parseBooleanFlag` from `shadow-mode.ts` avoids alias drift (`1/0`, `true/false`, `on/off`, `yes/no`) between migration toggles.
   - Useful context: US-011 can wire route guards directly to these typed helpers without redefining env parsing logic.
+---
+
+## 2026-03-04 17:32:11 KST - US-011
+- Added domain-scoped v2 routes in `packages/server/src/delivery/api.ts` (`/api/v2/auth/status`, `/api/v2/tasks`, `/api/v2/webhooks/test`) and guarded each route with `auth_v2`, `tasks_v2`, and `webhooks_v2` typed helpers.
+- Wired feature flags through app/runtime config (`packages/server/src/app.ts`, `packages/server/src/index.ts`) using `getFeatureFlagsFromEnv()` so v2 guard behavior is environment-driven by default.
+- Extended API/OpenAPI regression coverage (`packages/server/src/__tests__/api.test.ts`, `packages/server/src/__tests__/openapi.test.ts`, `packages/server/src/delivery/openapi.ts`) for disabled (`503 + FEATURE_FLAG_DISABLED + feature_flag`) and enabled route behavior per domain.
+- Updated reusable guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server API/config/test/docs changes only, no UI change).
+- Files changed: `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/app.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/packages/server/src/delivery/openapi.ts`, `agent-observatory/packages/server/src/__tests__/openapi.test.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Gate v2 domain routes directly in the API router with typed feature-flag helpers and keep disabled responses deterministic (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`).
+  - Gotchas encountered: `DEFAULT_FEATURE_FLAGS` must be cloned (`{ ...DEFAULT_FEATURE_FLAGS }`) when used as runtime defaults to avoid accidental shared-object mutation.
+  - Useful context: US-012 can layer `kill_switch_all_v2` as a pre-check on these same `/api/v2/*` routes without changing domain-level guard contracts.
 ---

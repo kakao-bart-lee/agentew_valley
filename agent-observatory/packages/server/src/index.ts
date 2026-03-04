@@ -41,6 +41,7 @@ import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
+import { getFeatureFlagsFromEnv } from './config/feature-flags.js';
 import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
 
 type ObservatoryMode = 'local' | 'remote';
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
   const mode: ObservatoryMode = (process.env.OBSERVATORY_MODE as ObservatoryMode) ?? 'local';
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
   const shadowModeFlags = getShadowModeFlagsFromEnv();
+  const featureFlags = getFeatureFlagsFromEnv();
 
   const { app, server, eventBus, close } = createApp({
     watchPaths,
@@ -60,6 +62,7 @@ async function main(): Promise<void> {
     collectorApiKeys,
     shadowModeEnabled: shadowModeFlags.shadowModeEnabled,
     shadowModeReadOnly: shadowModeFlags.shadowModeReadOnly,
+    featureFlags,
   });
 
   const activeCollectors: Collector[] = [];
@@ -138,6 +141,9 @@ async function main(): Promise<void> {
     } else {
       console.log('[server] Shadow mode: OFF');
     }
+    console.log(
+      `[server] Feature flags: auth_v2=${featureFlags.auth_v2 ? 'ON' : 'OFF'}, tasks_v2=${featureFlags.tasks_v2 ? 'ON' : 'OFF'}, webhooks_v2=${featureFlags.webhooks_v2 ? 'ON' : 'OFF'}, kill_switch_all_v2=${featureFlags.kill_switch_all_v2 ? 'ON' : 'OFF'}`,
+    );
   });
 
   // Graceful shutdown

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app.js';
 import type { AppInstance } from '../app.js';
+import { DEFAULT_FEATURE_FLAGS } from '../config/feature-flags.js';
 import { makeSessionStart, makeToolStart, makeMetricsUsage, makeEvent } from './helpers.js';
 
 describe('REST API', () => {
@@ -324,6 +325,87 @@ describe('REST API', () => {
         enabledInstance.close();
         enabledInstance.server.close();
         enabledInstance.io.close();
+      }
+    });
+  });
+
+  describe('v2 domain feature guards', () => {
+    it('should reject auth/tasks/webhooks v2 routes when flags are disabled', async () => {
+      const authRes = await request(instance.app).get('/api/v2/auth/status');
+      expect(authRes.status).toBe(503);
+      expect(authRes.body.code).toBe('FEATURE_FLAG_DISABLED');
+      expect(authRes.body.feature_flag).toBe('auth_v2');
+
+      const tasksRes = await request(instance.app).get('/api/v2/tasks');
+      expect(tasksRes.status).toBe(503);
+      expect(tasksRes.body.code).toBe('FEATURE_FLAG_DISABLED');
+      expect(tasksRes.body.feature_flag).toBe('tasks_v2');
+
+      const webhooksRes = await request(instance.app).post('/api/v2/webhooks/test').send({});
+      expect(webhooksRes.status).toBe(503);
+      expect(webhooksRes.body.code).toBe('FEATURE_FLAG_DISABLED');
+      expect(webhooksRes.body.feature_flag).toBe('webhooks_v2');
+    });
+
+    it('should allow only auth v2 routes when auth_v2 is enabled', async () => {
+      const authEnabledInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          auth_v2: true,
+        },
+      });
+
+      try {
+        const authRes = await request(authEnabledInstance.app).get('/api/v2/auth/status');
+        expect(authRes.status).toBe(200);
+        expect(authRes.body.domain).toBe('auth');
+        expect(authRes.body.version).toBe('v2');
+        expect(authRes.body.status).toBe('enabled');
+
+        const tasksRes = await request(authEnabledInstance.app).get('/api/v2/tasks');
+        expect(tasksRes.status).toBe(503);
+        expect(tasksRes.body.feature_flag).toBe('tasks_v2');
+
+        const webhooksRes = await request(authEnabledInstance.app).post('/api/v2/webhooks/test').send({});
+        expect(webhooksRes.status).toBe(503);
+        expect(webhooksRes.body.feature_flag).toBe('webhooks_v2');
+      } finally {
+        authEnabledInstance.close();
+        authEnabledInstance.server.close();
+        authEnabledInstance.io.close();
+      }
+    });
+
+    it('should allow tasks and webhooks routes when their flags are enabled', async () => {
+      const tasksAndWebhooksInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          tasks_v2: true,
+          webhooks_v2: true,
+        },
+      });
+
+      try {
+        const tasksRes = await request(tasksAndWebhooksInstance.app).get('/api/v2/tasks');
+        expect(tasksRes.status).toBe(200);
+        expect(tasksRes.body.domain).toBe('tasks');
+        expect(tasksRes.body.version).toBe('v2');
+        expect(tasksRes.body.tasks).toEqual([]);
+        expect(tasksRes.body.total).toBe(0);
+
+        const webhooksRes = await request(tasksAndWebhooksInstance.app).post('/api/v2/webhooks/test').send({});
+        expect(webhooksRes.status).toBe(202);
+        expect(webhooksRes.body.domain).toBe('webhooks');
+        expect(webhooksRes.body.version).toBe('v2');
+        expect(webhooksRes.body.status).toBe('accepted');
+
+        const authRes = await request(tasksAndWebhooksInstance.app).get('/api/v2/auth/status');
+        expect(authRes.status).toBe(503);
+        expect(authRes.body.feature_flag).toBe('auth_v2');
+      } finally {
+        tasksAndWebhooksInstance.close();
+        tasksAndWebhooksInstance.server.close();
+        tasksAndWebhooksInstance.io.close();
       }
     });
   });

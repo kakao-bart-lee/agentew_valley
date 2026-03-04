@@ -12,6 +12,8 @@ import { HistoryStore } from './core/history-store.js';
 import { createApiRouter } from './delivery/api.js';
 import type { ApiConfig } from './delivery/api.js';
 import type { ShadowReportProvider } from './delivery/api.js';
+import { DEFAULT_FEATURE_FLAGS } from './config/feature-flags.js';
+import type { FeatureFlags } from './config/feature-flags.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
 import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
@@ -26,6 +28,7 @@ export interface AppConfig {
   shadowModeEnabled?: boolean;
   shadowModeReadOnly?: boolean;
   shadowReportProvider?: ShadowReportProvider;
+  featureFlags?: FeatureFlags;
   /** SQLite database file path. Defaults to :memory: */
   dbPath?: string;
   /** API keys for authenticating remote Collectors. Empty = open access. */
@@ -76,6 +79,7 @@ export function createApp(config?: AppConfig): AppInstance {
       failCount: 0,
       topDiffs: [],
     })),
+    featureFlags: config?.featureFlags ?? { ...DEFAULT_FEATURE_FLAGS },
   };
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
   app.use(createAnalyticsRouter(historyStore));
