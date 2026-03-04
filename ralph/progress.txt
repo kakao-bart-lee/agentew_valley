@@ -13,6 +13,7 @@ Started: 2026-03-04
 - Backfill idempotency policy should use operation-aware keys (`<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>`) and deterministic replay sorting (`version_token`, `source_sequence`, operation rank, primary id) so reruns are reproducible
 - Migration rehearsal validation consumes CSV artifacts with fixed headers (`entity,source_count,target_count` and `entity,diff_count`) and enforces required entities: `tasks`, `reviews`, `notifications`, `activities`, `webhooks`
 - On pnpm v10, run `pnpm approve-builds` and approve `better-sqlite3` + `esbuild` before server tests; otherwise native binding load errors occur
+- Shadow comparator output should keep status values fixed (`match`, `mismatch`, `missing_legacy`, `missing_new`) and use deterministic `$.path` field diffs with sorted object keys for stable reporting
 ---
 
 ## 2026-03-04 - US-001
@@ -79,5 +80,18 @@ Started: 2026-03-04
 - **Learnings for future iterations:**
   - Patterns discovered: rehearsal validation expects two CSV artifacts (`entity,source_count,target_count` and `entity,diff_count`) and fails when any required entity parity/checksum condition is unmet.
   - Gotchas encountered: server tests depend on native `better-sqlite3`; pnpm v10 blocks install scripts until `pnpm approve-builds` is run.
-  - Useful context: this story is CLI/script-only, so browser verification is unnecessary.
+- Useful context: this story is CLI/script-only, so browser verification is unnecessary.
+---
+
+## 2026-03-04 17:10:59 KST - US-007
+- Added `agent-observatory/packages/server/src/domains/migration/shadow-mode.ts` with comparator interfaces, shadow diff payload schema metadata, runtime guards, and a default comparator that returns `match`, `mismatch`, `missing_legacy`, or `missing_new`.
+- Added `agent-observatory/packages/server/src/__tests__/shadow-mode.test.ts` to cover all statuses, deterministic mismatch field diffs, payload validation, and invalid-input behavior.
+- Exported shadow comparator APIs from `agent-observatory/packages/server/src/index.ts` and documented reusable comparator conventions in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server-domain module only, no UI changes).
+- Files changed: `agent-observatory/packages/server/src/domains/migration/shadow-mode.ts`, `agent-observatory/packages/server/src/__tests__/shadow-mode.test.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep shadow comparison statuses as a fixed enum and emit `fieldDiffs` in deterministic path order for stable top-diff reporting.
+  - Gotchas encountered: Generic helper wrappers around comparator instances should preserve payload type parameters; instantiate with `DefaultShadowComparator<TPayload>` to avoid narrowing errors.
+  - Useful context: `isShadowDiffPayload` is available as a runtime guard for route-level response validation in upcoming shadow-report endpoint work.
 ---

@@ -9,6 +9,21 @@ export { createApiRouter } from './delivery/api.js';
 export { createWebSocketServer } from './delivery/websocket.js';
 export { createCollectorGateway } from './delivery/collector-gateway.js';
 export type { CollectorGateway } from './delivery/collector-gateway.js';
+export {
+  SHADOW_DIFF_STATUSES,
+  SHADOW_DIFF_PAYLOAD_SCHEMA,
+  DefaultShadowComparator,
+  compareShadowPayloads,
+  isShadowDiffStatus,
+  isShadowDiffPayload,
+} from './domains/migration/shadow-mode.js';
+export type {
+  ShadowDiffStatus,
+  ShadowComparisonInput,
+  ShadowFieldDiff,
+  ShadowDiffPayload,
+  ShadowComparator,
+} from './domains/migration/shadow-mode.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
