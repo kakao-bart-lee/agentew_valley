@@ -19,6 +19,7 @@ Started: 2026-03-04
 - Domain rollout flags should be centralized in `packages/server/src/config/feature-flags.ts` with canonical keys (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and read through typed helpers instead of ad-hoc env checks
 - Domain v2 route guards should return deterministic disabled responses (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`) so rollout diagnostics can identify which flag blocked a request
 - Global kill switch must be checked before domain-level v2 flags; when enabled, all `/api/v2/*` routes should return `503 + V2_KILL_SWITCH_ENABLED` with machine-readable `reason: kill_switch_all_v2`
+- Phase gate governance docs should pair numeric exit DoD and rollback triggers for each phase (0-4) and always capture the same evidence trio: `test run id`, `metrics snapshot`, `incident count`
 ---
 
 ## 2026-03-04 - US-001
@@ -169,4 +170,17 @@ Started: 2026-03-04
   - Patterns discovered: Global kill switch checks should execute before per-domain v2 guards so incident shutdown behavior is deterministic across all v2 endpoints.
   - Gotchas encountered: Keep kill-switch errors distinct from feature-flag errors (`V2_KILL_SWITCH_ENABLED` vs `FEATURE_FLAG_DISABLED`) to preserve rollout diagnostics.
   - Useful context: If API error payload shape expands (e.g., `reason`), update OpenAPI schemas alongside route handlers to avoid documentation drift.
+---
+
+## 2026-03-04 17:40:14 KST - US-013
+- Created `agent-observatory/docs/migration/phase-exit-criteria.md` with numeric phase-gate Definition of Done and rollback triggers for Phase 0 through Phase 4.
+- Added mandatory per-phase evidence checklists capturing `test run id`, `metrics snapshot`, and `incident count`, plus a reusable go/no-go approval template with explicit sign-off fields.
+- Updated migration documentation conventions in `agent-observatory/CLAUDE.md` to preserve the reusable phase-gate pattern.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/migration/phase-exit-criteria.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Phase-gate docs are clearer when each phase includes paired numeric exit/rollback thresholds instead of prose-only guidance.
+  - Gotchas encountered: Acceptance requires the evidence checklist to be explicit per phase; a single generic checklist can be interpreted as incomplete.
+  - Useful context: `scope-cutline.md` already references phase gating; keeping threshold values here avoids duplicating gate logic across migration docs.
 ---
