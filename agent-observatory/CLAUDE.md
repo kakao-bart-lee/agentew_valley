@@ -35,6 +35,24 @@ packages/
 - 시각화 추상화 연구: `docs/02_visualization_abstraction_research_2026-02-27.md`
 - 유사 사례 조사: `docs/03_swarm_team_dashboard_cases_2026-02-27.md`
 
+## Migration 문서 규칙
+
+- `docs/migration/`의 운영 가드레일 문서는 가능한 한 정량 검증 가능한 표를 사용 (`Target`, `Measurement Source`, `Alert Threshold`)
+- SLO/신뢰성 문서에는 월간 error budget과 breach 시 rollback/완화 절차를 함께 명시
+- Phase gate 문서(`phase-exit-criteria.md`)는 Phase 0~4 각각에 대해 숫자 기반 Exit DoD와 Rollback Trigger를 쌍으로 기록하고, 게이트 리뷰 필수 증빙(`test run id`, `metrics snapshot`, `incident count`)을 빠짐없이 포함
+- 소유권 거버넌스 문서(`ownership-and-adr.md`)는 migration domain별 DRI 매트릭스, severity 기반 escalation chain, planned ADR ID 매핑을 함께 유지해 의사결정 책임을 추적 가능하게 만든다
+- ADR 문서는 `docs/adr/NNNN-*.md` 네이밍과 `Proposed -> Accepted/Rejected -> Deprecated/Superseded` lifecycle 규칙을 `docs/adr/0000-template.md` 단일 기준으로 유지한다
+- 데이터 모델 경계 문서/스키마 변경 시 UAEP event store(append-only telemetry)와 ops domain store(authoritative workflow state)를 분리하고, 신규 ops 테이블에 `workspace_id`, `created_at`, `updated_at`, `actor` 공통 컬럼을 포함
+- Backfill 설계 문서(`backfill-plan.md`)는 엔터티별 source->target 매핑, 필드 변환/널 처리 규칙, unsupported/skip code 정책을 함께 기록해 재실행 시 결정이 바뀌지 않도록 유지
+- Backfill 설계 문서에서 idempotency는 `<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>` 형식을 기본으로 하고, replay 정렬 기준(`version_token`, `source_sequence`, operation rank, primary id)과 create/update/delete conflict 해소 규칙을 함께 명시
+- 리허설 검증은 `scripts/migration/rehearsal-check.sh`를 사용하며 입력 CSV 스키마를 고정(`entity,source_count,target_count` + `entity,diff_count`)하고 필수 엔터티(`tasks`,`reviews`,`notifications`,`activities`,`webhooks`) 누락/불일치를 실패로 처리
+- Shadow comparator는 `packages/server/src/domains/migration/shadow-mode.ts`를 단일 진실 공급원으로 사용하고, 상태 enum(`match`,`mismatch`,`missing_legacy`,`missing_new`)과 `$.path` 기반 field diff 표기(객체 키 정렬 포함)를 유지해 리포트 결과를 결정적으로 만든다
+- Migration shadow report API(`GET /api/v1/migration/shadow-report`)는 `shadowModeEnabled`가 꺼져 있으면 항상 `503 + SHADOW_MODE_DISABLED`를 반환하고, 켜져 있을 때 응답 키를 `pass_count`, `fail_count`, `top_diffs`(snake_case)로 고정한다
+- Shadow mode env gating은 `packages/server/src/config/shadow-mode.ts`를 통해 처리하며, `OBSERVATORY_SHADOW_MODE_ENABLED` 기본값은 `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` 기본값은 `true`; read-only가 아니면 `SHADOW_MODE_READ_ONLY_REQUIRED`로 차단한다
+- Domain rollout feature flags는 `packages/server/src/config/feature-flags.ts`를 단일 진실 공급원으로 사용하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + env(`OBSERVATORY_*_V2_ENABLED`) + typed helper(`isFeatureFlagEnabled`/개별 accessor) 조합을 유지한다
+- v2 domain route guard는 flag OFF 시 `503 + FEATURE_FLAG_DISABLED`를 반환하고 `feature_flag` 필드에 차단된 canonical key를 포함해 운영 진단 가능성을 유지한다
+- Global kill switch(`kill_switch_all_v2`)는 `/api/v2/*` route guard에서 domain별 flag보다 먼저 평가하고, 활성화 시 `503 + V2_KILL_SWITCH_ENABLED`와 machine-readable `reason: kill_switch_all_v2`를 고정 응답으로 반환한다
+
 ## 개발 규칙
 
 ### 코드 스타일
@@ -55,6 +73,7 @@ packages/
 - 모든 패키지: Vitest
 - Collector parser/normalizer: 반드시 단위 테스트 작성
 - 테스트 데이터: `__tests__/fixtures/` 디렉토리에 샘플 JSONL 파일
+- pnpm v10 신규 환경에서는 `pnpm approve-builds`로 `better-sqlite3`, `esbuild` 빌드 스크립트를 먼저 승인해야 server 테스트에서 native binding 오류가 발생하지 않음
 
 ### Git
 - 브랜치: `feat/{package}/{feature}` (예: `feat/collectors/openclaw-watcher`)

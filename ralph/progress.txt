@@ -1,0 +1,212 @@
+# Ralph Progress Log
+Started: 2026-03-04
+---
+
+## Codebase Patterns
+- Project root is `agent-observatory/` (not `ralph/`); all code/docs changes go there
+- Branch created from `main` in the `agentew_valley` monorepo root
+- Typecheck: `pnpm --filter @agent-observatory/server build` (tsc); web package has a pre-existing vite config TS error unrelated to migration work
+- docs/migration/ is created fresh; no prior content exists
+- Migration governance docs should prefer measurable acceptance tables (`Target`, `Measurement Source`, `Alert Threshold`) to keep criteria verifiable
+- Ops-domain schema guidance should enforce shared audit/tenant columns (`workspace_id`, `created_at`, `updated_at`, `actor`) and keep UAEP telemetry storage boundary separate from operational source-of-truth tables
+- Backfill planning docs should define per-entity source->target mappings together with field-level transform/null rules and explicit skip-code taxonomy for unsupported records
+- Backfill idempotency policy should use operation-aware keys (`<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>`) and deterministic replay sorting (`version_token`, `source_sequence`, operation rank, primary id) so reruns are reproducible
+- Migration rehearsal validation consumes CSV artifacts with fixed headers (`entity,source_count,target_count` and `entity,diff_count`) and enforces required entities: `tasks`, `reviews`, `notifications`, `activities`, `webhooks`
+- On pnpm v10, run `pnpm approve-builds` and approve `better-sqlite3` + `esbuild` before server tests; otherwise native binding load errors occur
+- Shadow comparator output should keep status values fixed (`match`, `mismatch`, `missing_legacy`, `missing_new`) and use deterministic `$.path` field diffs with sorted object keys for stable reporting
+- Migration shadow report route should enforce a stable disabled contract (`503` + `SHADOW_MODE_DISABLED`) and use snake_case summary keys (`pass_count`, `fail_count`, `top_diffs`) when enabled
+- Shadow mode rollout is environment-gated via `packages/server/src/config/shadow-mode.ts`; keep `OBSERVATORY_SHADOW_MODE_ENABLED` default `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` default `true`, and reject non-read-only mode with `SHADOW_MODE_READ_ONLY_REQUIRED`
+- Domain rollout flags should be centralized in `packages/server/src/config/feature-flags.ts` with canonical keys (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and read through typed helpers instead of ad-hoc env checks
+- Domain v2 route guards should return deterministic disabled responses (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`) so rollout diagnostics can identify which flag blocked a request
+- Global kill switch must be checked before domain-level v2 flags; when enabled, all `/api/v2/*` routes should return `503 + V2_KILL_SWITCH_ENABLED` with machine-readable `reason: kill_switch_all_v2`
+- Phase gate governance docs should pair numeric exit DoD and rollback triggers for each phase (0-4) and always capture the same evidence trio: `test run id`, `metrics snapshot`, `incident count`
+- Migration ownership governance should keep one matrix that pairs every migration domain with DRI assignments, escalation path, and planned ADR IDs so accountability and decision records stay aligned
+- ADR governance should keep naming/required-sections/status lifecycle policy centralized in `docs/adr/0000-template.md` and link it from `docs/migration/ownership-and-adr.md`
+---
+
+## 2026-03-04 - US-001
+- Created `agent-observatory/docs/migration/scope-cutline.md`
+- Sections: Parity, Equivalent, New; Domain classification table (12 rows covering all 7 required domains plus additional ones); explicit In-Scope and Out-of-Scope lists
+- Files changed: `docs/migration/scope-cutline.md` (new)
+- **Learnings for future iterations:**
+  - The `docs/migration/` directory must be created manually (mkdir -p)
+  - The web package's vite.config.ts has a pre-existing TS error (`test` property unknown); only server/shared/collectors typechecks are meaningful for migration work
+  - US-002 through US-005 also create files in `docs/migration/`; US-006 creates `scripts/migration/`; US-007 and later touch `packages/server/src/`
+---
+
+## 2026-03-04 16:21:33 KST - US-002
+- Created `agent-observatory/docs/migration/slo-targets.md` with explicit migration SLO targets for API p95 latency, WebSocket reconnect time, event loss rate, RPO, RTO, and retention.
+- Added per-metric measurement source and alert threshold definitions, plus monthly error budgets and a breach response policy with escalation and rollback safeguards.
+- Files changed: `agent-observatory/docs/migration/slo-targets.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Migration governance docs in `docs/migration/` should use measurable tables (target, measurement source, alert threshold) so acceptance can be objectively verified.
+  - Gotchas encountered: `prd.json` and `progress.txt` live under `ralph/`, but implementation files for this project live under `agent-observatory/`.
+  - Useful context: This story is docs-only; browser verification is not applicable unless a later story introduces UI changes.
+---
+
+## 2026-03-04 16:26:29 KST - US-003
+- Created `agent-observatory/docs/migration/data-model-principles.md` defining the UAEP event store vs ops domain store boundary and explicit placement rules for operational state.
+- Added required shared ops-table columns (`workspace_id`, `created_at`, `updated_at`, `actor`) with behavior requirements, plus naming/indexing/foreign-key conventions and a merge checklist.
+- Files changed: `agent-observatory/docs/migration/data-model-principles.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: For migration-era relational schemas, treat UAEP as append-only telemetry and keep business state authoritative in ops-domain tables.
+  - Gotchas encountered: Shared ops columns should define write semantics (`created_at` immutable, `updated_at` updated on mutation, `actor` explicit on write) to avoid inconsistent audit behavior.
+  - Useful context: Existing server SQL style uses `idx_<table>_<columns>` names and `IF NOT EXISTS`; documenting the same convention keeps future migrations consistent.
+---
+
+## 2026-03-04 16:29:59 KST - US-004
+- Created `agent-observatory/docs/migration/backfill-plan.md` with source-to-target mapping coverage for Tasks, Reviews, Notifications, Activities, and Webhooks.
+- Added field-level transformation and null-handling policies for each entity, plus unsupported-record handling rules and a skip-code taxonomy with exception reporting requirements.
+- Files changed: `agent-observatory/docs/migration/backfill-plan.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Backfill docs are most reviewable when each entity has a dedicated mapping table and explicit null/default behavior per field.
+  - Gotchas encountered: Skip policy must distinguish hard integrity blockers (skip) from nullable business states (allow null/default) to avoid silently dropping valid records.
+  - Useful context: Idempotency key and upsert conflict semantics were intentionally deferred to US-005; this file currently establishes only mapping/transform/null/skip baseline.
+---
+
+## 2026-03-04 16:33:33 KST - US-005
+- Added entity-specific idempotency key formats to `agent-observatory/docs/migration/backfill-plan.md` for Tasks, Reviews, Notifications, Activities, and Webhooks.
+- Defined upsert conflict resolution policy for `create`, `update`, and `delete`, including same-version checksum conflict handling and stale-write no-op rules.
+- Documented deterministic replay ordering (`version_token`, `source_sequence`, operation rank, primary id) and aligned skip taxonomy with `SKIP_MISSING_TARGET_FOR_UPDATE`.
+- Updated migration conventions in `agent-observatory/CLAUDE.md` to preserve reusable idempotency/replay policy guidance.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI change).
+- Files changed: `agent-observatory/docs/migration/backfill-plan.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: operation-aware idempotency keys plus explicit `migration_version_token` conflict rules keep replays deterministic across reruns.
+  - Gotchas encountered: update replay needs an explicit missing-target branch (`create-on-update` vs `SKIP_MISSING_TARGET_FOR_UPDATE`) to avoid ambiguous behavior.
+  - Useful context: delete semantics should be documented as logical delete/tombstone policy, not implicit physical delete, because target tables may differ by soft-delete support.
+---
+
+## 2026-03-04 16:41:00 KST - US-006
+- Added `agent-observatory/scripts/migration/rehearsal-check.sh` to validate dry-run row-count parity and checksum diff outputs for mapped entities (`tasks`, `reviews`, `notifications`, `activities`, `webhooks`).
+- Implemented strict failure behavior: malformed CSV rows, missing required entities, non-numeric values, row-count mismatches, and non-zero checksum diffs all exit non-zero.
+- Updated `agent-observatory/pnpm-workspace.yaml` to keep native build approval config clean for `better-sqlite3`/`esbuild` and documented reusable testing/migration script patterns in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared test -- --run && pnpm --filter @agent-observatory/collectors test -- --run && pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (no UI changes).
+- Files changed: `agent-observatory/scripts/migration/rehearsal-check.sh`, `agent-observatory/pnpm-workspace.yaml`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: rehearsal validation expects two CSV artifacts (`entity,source_count,target_count` and `entity,diff_count`) and fails when any required entity parity/checksum condition is unmet.
+  - Gotchas encountered: server tests depend on native `better-sqlite3`; pnpm v10 blocks install scripts until `pnpm approve-builds` is run.
+- Useful context: this story is CLI/script-only, so browser verification is unnecessary.
+---
+
+## 2026-03-04 17:10:59 KST - US-007
+- Added `agent-observatory/packages/server/src/domains/migration/shadow-mode.ts` with comparator interfaces, shadow diff payload schema metadata, runtime guards, and a default comparator that returns `match`, `mismatch`, `missing_legacy`, or `missing_new`.
+- Added `agent-observatory/packages/server/src/__tests__/shadow-mode.test.ts` to cover all statuses, deterministic mismatch field diffs, payload validation, and invalid-input behavior.
+- Exported shadow comparator APIs from `agent-observatory/packages/server/src/index.ts` and documented reusable comparator conventions in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server-domain module only, no UI changes).
+- Files changed: `agent-observatory/packages/server/src/domains/migration/shadow-mode.ts`, `agent-observatory/packages/server/src/__tests__/shadow-mode.test.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep shadow comparison statuses as a fixed enum and emit `fieldDiffs` in deterministic path order for stable top-diff reporting.
+  - Gotchas encountered: Generic helper wrappers around comparator instances should preserve payload type parameters; instantiate with `DefaultShadowComparator<TPayload>` to avoid narrowing errors.
+  - Useful context: `isShadowDiffPayload` is available as a runtime guard for route-level response validation in upcoming shadow-report endpoint work.
+---
+
+## 2026-03-04 17:15:37 KST - US-008
+- Added `GET /api/v1/migration/shadow-report` to the server API router with a stable disabled response (`503` + `SHADOW_MODE_DISABLED`).
+- Wired configurable shadow report controls through `AppConfig`/`ApiConfig` so enabled mode returns `{ pass_count, fail_count, top_diffs }` from a provider.
+- Updated OpenAPI path/schema metadata and test coverage for the new migration endpoint.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server API + docs/test changes only, no UI changes).
+- Files changed: `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/app.ts`, `agent-observatory/packages/server/src/delivery/openapi.ts`, `agent-observatory/packages/server/src/delivery/openapi-schemas.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/packages/server/src/__tests__/openapi.test.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Migration endpoint contracts should keep disabled-mode responses deterministic (`SHADOW_MODE_DISABLED`) and expose summary payload keys in snake_case for API consistency.
+  - Gotchas encountered: `createApp()` defaults to shadow mode OFF, so enabled-path tests must construct a dedicated app instance with `shadowModeEnabled: true` and a `shadowReportProvider`.
+  - Useful context: US-009 can build on the new `shadowModeEnabled`/provider hooks to wire environment-based rollout flags without changing endpoint shape.
+---
+
+## 2026-03-04 17:22:28 KST - US-009
+- Added environment-gated shadow mode flag parsing in `agent-observatory/packages/server/src/config/shadow-mode.ts` with defaults `OBSERVATORY_SHADOW_MODE_ENABLED=false` and `OBSERVATORY_SHADOW_MODE_READ_ONLY=true`.
+- Wired shadow flags through server startup (`index.ts`) and app/api configuration (`app.ts`, `delivery/api.ts`), and enforced comparison-only mode for `/api/v1/migration/shadow-report` (`503 + SHADOW_MODE_READ_ONLY_REQUIRED` when read-only is disabled).
+- Added tests for env flag parsing and read-only guard behavior in `agent-observatory/packages/server/src/__tests__/shadow-mode-config.test.ts` and `agent-observatory/packages/server/src/__tests__/api.test.ts`.
+- Documented Phase 2/Phase 3 enablement in `agent-observatory/docs/migration/shadow-mode-enablement.md` and linked rollout scope in `agent-observatory/docs/migration/scope-cutline.md`.
+- Updated reusable guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server/docs/config work only, no UI change).
+- Files changed: `agent-observatory/packages/server/src/config/shadow-mode.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/packages/server/src/app.ts`, `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/__tests__/shadow-mode-config.test.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/docs/migration/shadow-mode-enablement.md`, `agent-observatory/docs/migration/scope-cutline.md`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Parse migration flag booleans through a shared helper (`parseBooleanFlag`) so startup defaults and accepted aliases stay consistent (`1/0`, `true/false`, `on/off`, `yes/no`).
+  - Gotchas encountered: Enabling shadow mode without read-only now intentionally blocks the report endpoint with `SHADOW_MODE_READ_ONLY_REQUIRED`; both env flags must be set for active shadow reporting.
+  - Useful context: Phase rollout guidance now lives in `docs/migration/shadow-mode-enablement.md`; future phase-gate work should reference this file instead of duplicating flag semantics.
+---
+
+## 2026-03-04 17:25:35 KST - US-010
+- Added `agent-observatory/packages/server/src/config/feature-flags.ts` as the feature-flag baseline config module with canonical rollout flags (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and env parsing defaults.
+- Added typed accessor helpers (`isFeatureFlagEnabled`, `isAuthV2Enabled`, `isTasksV2Enabled`, `isWebhooksV2Enabled`, `isKillSwitchAllV2Enabled`) and exported them from `agent-observatory/packages/server/src/index.ts`.
+- Added unit coverage in `agent-observatory/packages/server/src/__tests__/feature-flags-config.test.ts` for default values, env parsing aliases, and helper behavior.
+- Updated reusable migration guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server config/tests/docs only, no UI change).
+- Files changed: `agent-observatory/packages/server/src/config/feature-flags.ts`, `agent-observatory/packages/server/src/__tests__/feature-flags-config.test.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep feature flag identity in snake_case keys and map env variables in one config module so route guards stay deterministic across startup/runtime code paths.
+  - Gotchas encountered: Reusing `parseBooleanFlag` from `shadow-mode.ts` avoids alias drift (`1/0`, `true/false`, `on/off`, `yes/no`) between migration toggles.
+  - Useful context: US-011 can wire route guards directly to these typed helpers without redefining env parsing logic.
+---
+
+## 2026-03-04 17:32:11 KST - US-011
+- Added domain-scoped v2 routes in `packages/server/src/delivery/api.ts` (`/api/v2/auth/status`, `/api/v2/tasks`, `/api/v2/webhooks/test`) and guarded each route with `auth_v2`, `tasks_v2`, and `webhooks_v2` typed helpers.
+- Wired feature flags through app/runtime config (`packages/server/src/app.ts`, `packages/server/src/index.ts`) using `getFeatureFlagsFromEnv()` so v2 guard behavior is environment-driven by default.
+- Extended API/OpenAPI regression coverage (`packages/server/src/__tests__/api.test.ts`, `packages/server/src/__tests__/openapi.test.ts`, `packages/server/src/delivery/openapi.ts`) for disabled (`503 + FEATURE_FLAG_DISABLED + feature_flag`) and enabled route behavior per domain.
+- Updated reusable guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server API/config/test/docs changes only, no UI change).
+- Files changed: `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/app.ts`, `agent-observatory/packages/server/src/index.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/packages/server/src/delivery/openapi.ts`, `agent-observatory/packages/server/src/__tests__/openapi.test.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Gate v2 domain routes directly in the API router with typed feature-flag helpers and keep disabled responses deterministic (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`).
+  - Gotchas encountered: `DEFAULT_FEATURE_FLAGS` must be cloned (`{ ...DEFAULT_FEATURE_FLAGS }`) when used as runtime defaults to avoid accidental shared-object mutation.
+  - Useful context: US-012 can layer `kill_switch_all_v2` as a pre-check on these same `/api/v2/*` routes without changing domain-level guard contracts.
+---
+
+## 2026-03-04 17:36:47 KST - US-012
+- Implemented global v2 kill-switch behavior in `agent-observatory/packages/server/src/delivery/api.ts`: when `kill_switch_all_v2` is enabled, all `/api/v2/*` routes now return `503` with stable code `V2_KILL_SWITCH_ENABLED` and machine-readable `reason: kill_switch_all_v2`.
+- Added regression coverage in `agent-observatory/packages/server/src/__tests__/api.test.ts` for both kill-switch enabled (all v2 routes blocked) and disabled (domain-enabled routes succeed) states.
+- Updated API docs metadata so v2 route 503 responses mention global kill-switch cases and added optional `reason` to `ErrorResponse` schema.
+- Updated reusable server guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server/API-only changes, no UI changes).
+- Files changed: `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/packages/server/src/delivery/openapi.ts`, `agent-observatory/packages/server/src/delivery/openapi-schemas.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Global kill switch checks should execute before per-domain v2 guards so incident shutdown behavior is deterministic across all v2 endpoints.
+  - Gotchas encountered: Keep kill-switch errors distinct from feature-flag errors (`V2_KILL_SWITCH_ENABLED` vs `FEATURE_FLAG_DISABLED`) to preserve rollout diagnostics.
+  - Useful context: If API error payload shape expands (e.g., `reason`), update OpenAPI schemas alongside route handlers to avoid documentation drift.
+---
+
+## 2026-03-04 17:40:14 KST - US-013
+- Created `agent-observatory/docs/migration/phase-exit-criteria.md` with numeric phase-gate Definition of Done and rollback triggers for Phase 0 through Phase 4.
+- Added mandatory per-phase evidence checklists capturing `test run id`, `metrics snapshot`, and `incident count`, plus a reusable go/no-go approval template with explicit sign-off fields.
+- Updated migration documentation conventions in `agent-observatory/CLAUDE.md` to preserve the reusable phase-gate pattern.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/migration/phase-exit-criteria.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Phase-gate docs are clearer when each phase includes paired numeric exit/rollback thresholds instead of prose-only guidance.
+  - Gotchas encountered: Acceptance requires the evidence checklist to be explicit per phase; a single generic checklist can be interpreted as incomplete.
+  - Useful context: `scope-cutline.md` already references phase gating; keeping threshold values here avoids duplicating gate logic across migration docs.
+---
+
+## 2026-03-04 17:43:24 KST - US-014
+- Created `agent-observatory/docs/migration/ownership-and-adr.md` with a migration-domain DRI matrix, severity-based escalation chain, approval role matrix, and planned ADR identifier mapping.
+- Added reusable migration governance guidance to `agent-observatory/CLAUDE.md` so future ownership/ADR updates keep accountability and architecture traceability in sync.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/migration/ownership-and-adr.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Ownership docs are most durable when every migration domain has a single row that includes DRI, escalation, and ADR linkage.
+  - Gotchas encountered: If planned ADR IDs are not reserved at the same time as ownership assignment, decision tracking drifts during later implementation stories.
+  - Useful context: US-015 can now reference this file as the ADR inventory source when adding lifecycle/template rules in `docs/adr/0000-template.md`.
+---
+
+## 2026-03-04 17:46:07 KST - US-015
+- Created `agent-observatory/docs/adr/0000-template.md` with ADR naming rules, status lifecycle transitions, required sections, and a reusable markdown template.
+- Linked the ADR process from `agent-observatory/docs/migration/ownership-and-adr.md` and updated migration conventions in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/adr/0000-template.md`, `agent-observatory/docs/migration/ownership-and-adr.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: `docs/adr/0000-template.md` should remain the single source of truth for ADR naming, required sections, and status transitions.
+  - Gotchas encountered: Keep the planned ADR ID map in `ownership-and-adr.md` linked to the template to avoid governance drift.
+  - Useful context: This story is docs-only; browser verification is unnecessary.
+---

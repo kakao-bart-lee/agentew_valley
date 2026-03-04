@@ -1,21 +1,77 @@
 import { Router } from 'express';
+import type { Response } from 'express';
 import type { StateManager } from '../core/state-manager.js';
 import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
+import {
+  DEFAULT_FEATURE_FLAGS,
+  isAuthV2Enabled,
+  isKillSwitchAllV2Enabled,
+  isTasksV2Enabled,
+  isWebhooksV2Enabled,
+} from '../config/feature-flags.js';
+import type { FeatureFlags } from '../config/feature-flags.js';
 
 export interface ApiConfig {
   watchPaths: string[];
   metricsIntervalMs: number;
   timeseriesRetentionMinutes: number;
+  shadowModeEnabled: boolean;
+  shadowModeReadOnly: boolean;
+  shadowReportProvider: ShadowReportProvider;
+  featureFlags: FeatureFlags;
 }
+
+export interface ShadowReportTopDiff {
+  entity: string;
+  path: string;
+  count: number;
+}
+
+export interface ShadowReport {
+  passCount: number;
+  failCount: number;
+  topDiffs: ShadowReportTopDiff[];
+}
+
+export type ShadowReportProvider = () => ShadowReport;
+
+const defaultShadowReportProvider: ShadowReportProvider = () => ({
+  passCount: 0,
+  failCount: 0,
+  topDiffs: [],
+});
 
 const DEFAULT_CONFIG: ApiConfig = {
   watchPaths: [],
   metricsIntervalMs: 5000,
   timeseriesRetentionMinutes: 60,
+  shadowModeEnabled: false,
+  shadowModeReadOnly: true,
+  shadowReportProvider: defaultShadowReportProvider,
+  featureFlags: { ...DEFAULT_FEATURE_FLAGS },
 };
+
+function sendFeatureFlagDisabled(
+  featureFlag: 'auth_v2' | 'tasks_v2' | 'webhooks_v2',
+  res: Response,
+): void {
+  res.status(503).json({
+    error: 'Requested v2 domain is disabled by feature flag',
+    code: 'FEATURE_FLAG_DISABLED',
+    feature_flag: featureFlag,
+  });
+}
+
+function sendV2KillSwitchEnabled(res: Response): void {
+  res.status(503).json({
+    error: 'All v2 routes are disabled by global kill switch',
+    code: 'V2_KILL_SWITCH_ENABLED',
+    reason: 'kill_switch_all_v2',
+  });
+}
 
 export function createApiRouter(
   stateManager: StateManager,
@@ -192,6 +248,83 @@ export function createApiRouter(
     } catch {
       res.json({ query: q, events: [], total: 0 });
     }
+  });
+
+  // GET /api/v1/migration/shadow-report
+  router.get('/api/v1/migration/shadow-report', (_req, res) => {
+    if (!config.shadowModeEnabled) {
+      res.status(503).json({
+        error: 'Shadow mode is disabled',
+        code: 'SHADOW_MODE_DISABLED',
+      });
+      return;
+    }
+    if (!config.shadowModeReadOnly) {
+      res.status(503).json({
+        error: 'Shadow mode must run in read-only comparison mode',
+        code: 'SHADOW_MODE_READ_ONLY_REQUIRED',
+      });
+      return;
+    }
+
+    const report = config.shadowReportProvider();
+    res.json({
+      pass_count: report.passCount,
+      fail_count: report.failCount,
+      top_diffs: report.topDiffs,
+    });
+  });
+
+  // GET /api/v2/auth/status
+  router.get('/api/v2/auth/status', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isAuthV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('auth_v2', res);
+      return;
+    }
+    res.json({
+      domain: 'auth',
+      version: 'v2',
+      status: 'enabled',
+    });
+  });
+
+  // GET /api/v2/tasks
+  router.get('/api/v2/tasks', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+    res.json({
+      domain: 'tasks',
+      version: 'v2',
+      tasks: [],
+      total: 0,
+    });
+  });
+
+  // POST /api/v2/webhooks/test
+  router.post('/api/v2/webhooks/test', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isWebhooksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('webhooks_v2', res);
+      return;
+    }
+    res.status(202).json({
+      domain: 'webhooks',
+      version: 'v2',
+      status: 'accepted',
+    });
   });
 
   // GET /api/v1/config

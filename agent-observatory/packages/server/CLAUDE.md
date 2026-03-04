@@ -192,6 +192,10 @@ import { Router } from 'express';
 // GET  /api/v1/metrics/summary     → metricsAggregator.getSnapshot()
 // GET  /api/v1/metrics/timeseries  → metricsAggregator.getTimeseries(metric, from)
 //                                    ?metric=tokens_per_minute&from=30
+// GET  /api/v1/migration/shadow-report → shadow mode parity summary
+//                                    shadow mode OFF: 503 + code SHADOW_MODE_DISABLED
+//                                    read-only 위반: 503 + code SHADOW_MODE_READ_ONLY_REQUIRED
+//                                    shadow mode ON + read-only: { pass_count, fail_count, top_diffs }
 //
 // GET  /api/v1/config              → 현재 설정 (watchPaths, 활성 collector 목록 등)
 // PUT  /api/v1/config              → 설정 변경 (런타임 collector 추가/제거)
@@ -253,6 +257,12 @@ export function createApp(config?: AppConfig): { app, server, eventBus, stateMan
 //   PORT (기본 3000)
 //   CLAUDE_CODE_WATCH_PATHS (기본 ~/.claude/projects)
 //   OPENCLAW_WATCH_PATHS (기본 ~/.openclaw/agents)
+//   OBSERVATORY_SHADOW_MODE_ENABLED (기본 false)
+//   OBSERVATORY_SHADOW_MODE_READ_ONLY (기본 true)
+//   OBSERVATORY_AUTH_V2_ENABLED (기본 false)
+//   OBSERVATORY_TASKS_V2_ENABLED (기본 false)
+//   OBSERVATORY_WEBHOOKS_V2_ENABLED (기본 false)
+//   OBSERVATORY_KILL_SWITCH_ALL_V2_ENABLED (기본 false)
 
 // 1. createApp() 호출
 // 2. Collectors 초기화 + 연결
@@ -327,3 +337,6 @@ src/__tests__/
 - Collector 연동: `src/index.ts`에서만 — `app.ts`는 Collector 무관하게 테스트 가능해야 함
 - Graceful shutdown: SIGINT/SIGTERM 시 collector.stop() → server.close() 순서
 - Express의 에러 미들웨어 반드시 등록 (unhandled rejection 방지)
+- Feature rollout flag는 `src/config/feature-flags.ts`에서만 정의하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + typed accessor helper를 통해 읽어 route guard 조건을 일관되게 유지
+- `/api/v2/*` domain route guard는 feature flag OFF 시 `503 + FEATURE_FLAG_DISABLED`를 반환하고 `feature_flag`에 차단된 키(`auth_v2`/`tasks_v2`/`webhooks_v2`)를 명시해 디버깅 가능성을 유지
+- `/api/v2/*` route는 `kill_switch_all_v2`를 domain flag 검사보다 먼저 평가하고, 활성화 시 항상 `503 + V2_KILL_SWITCH_ENABLED`와 `reason: kill_switch_all_v2`를 반환해 incident 시 전체 v2 차단 상태를 일관되게 노출

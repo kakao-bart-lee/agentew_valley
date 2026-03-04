@@ -141,6 +141,81 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           },
         },
       },
+      '/api/v1/migration/shadow-report': {
+        get: {
+          tags: ['Migration'],
+          summary: 'Get migration shadow comparison report summary',
+          responses: {
+            200: {
+              description: 'Shadow report summary',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ShadowReportResponse' },
+                },
+              },
+            },
+            503: {
+              description: 'Shadow mode disabled',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/v2/auth/status': {
+        get: {
+          tags: ['Migration'],
+          summary: 'Get auth v2 route status',
+          responses: {
+            200: { description: 'Auth v2 route enabled' },
+            503: {
+              description: 'Auth v2 route disabled by feature flag or global kill switch',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/v2/tasks': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List tasks from v2 route',
+          responses: {
+            200: { description: 'Tasks v2 route enabled' },
+            503: {
+              description: 'Tasks v2 route disabled by feature flag or global kill switch',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/v2/webhooks/test': {
+        post: {
+          tags: ['Migration'],
+          summary: 'Test webhooks v2 route',
+          responses: {
+            202: { description: 'Webhooks v2 route enabled' },
+            503: {
+              description: 'Webhooks v2 route disabled by feature flag or global kill switch',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' },
+                },
+              },
+            },
+          },
+        },
+      },
       '/api/v1/config': {
         get: {
           tags: ['Config'],

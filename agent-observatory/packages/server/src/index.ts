@@ -9,11 +9,40 @@ export { createApiRouter } from './delivery/api.js';
 export { createWebSocketServer } from './delivery/websocket.js';
 export { createCollectorGateway } from './delivery/collector-gateway.js';
 export type { CollectorGateway } from './delivery/collector-gateway.js';
+export {
+  SHADOW_DIFF_STATUSES,
+  SHADOW_DIFF_PAYLOAD_SCHEMA,
+  DefaultShadowComparator,
+  compareShadowPayloads,
+  isShadowDiffStatus,
+  isShadowDiffPayload,
+} from './domains/migration/shadow-mode.js';
+export type {
+  ShadowDiffStatus,
+  ShadowComparisonInput,
+  ShadowFieldDiff,
+  ShadowDiffPayload,
+  ShadowComparator,
+} from './domains/migration/shadow-mode.js';
+export {
+  FEATURE_FLAG_NAMES,
+  FEATURE_FLAG_ENV_VARS,
+  DEFAULT_FEATURE_FLAGS,
+  getFeatureFlagsFromEnv,
+  isFeatureFlagEnabled,
+  isAuthV2Enabled,
+  isTasksV2Enabled,
+  isWebhooksV2Enabled,
+  isKillSwitchAllV2Enabled,
+} from './config/feature-flags.js';
+export type { FeatureFlagName, FeatureFlags } from './config/feature-flags.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
+import { getFeatureFlagsFromEnv } from './config/feature-flags.js';
+import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
 
 type ObservatoryMode = 'local' | 'remote';
 
@@ -24,8 +53,17 @@ async function main(): Promise<void> {
   const tailOnly = process.env.OBSERVATORY_TAIL_ONLY !== 'false'; // 기본 true
   const mode: ObservatoryMode = (process.env.OBSERVATORY_MODE as ObservatoryMode) ?? 'local';
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
+  const shadowModeFlags = getShadowModeFlagsFromEnv();
+  const featureFlags = getFeatureFlagsFromEnv();
 
-  const { app, server, eventBus, close } = createApp({ watchPaths, dbPath, collectorApiKeys });
+  const { app, server, eventBus, close } = createApp({
+    watchPaths,
+    dbPath,
+    collectorApiKeys,
+    shadowModeEnabled: shadowModeFlags.shadowModeEnabled,
+    shadowModeReadOnly: shadowModeFlags.shadowModeReadOnly,
+    featureFlags,
+  });
 
   const activeCollectors: Collector[] = [];
 
@@ -95,6 +133,17 @@ async function main(): Promise<void> {
     } else {
       console.log('[server] SQLite database: in-memory (data will not persist across restarts)');
     }
+    if (shadowModeFlags.shadowModeEnabled) {
+      console.log(`[server] Shadow mode: ON (read-only=${shadowModeFlags.shadowModeReadOnly ? 'true' : 'false'})`);
+      if (!shadowModeFlags.shadowModeReadOnly) {
+        console.warn('[server] Shadow mode misconfigured: set OBSERVATORY_SHADOW_MODE_READ_ONLY=true for comparison-only reports');
+      }
+    } else {
+      console.log('[server] Shadow mode: OFF');
+    }
+    console.log(
+      `[server] Feature flags: auth_v2=${featureFlags.auth_v2 ? 'ON' : 'OFF'}, tasks_v2=${featureFlags.tasks_v2 ? 'ON' : 'OFF'}, webhooks_v2=${featureFlags.webhooks_v2 ? 'ON' : 'OFF'}, kill_switch_all_v2=${featureFlags.kill_switch_all_v2 ? 'ON' : 'OFF'}`,
+    );
   });
 
   // Graceful shutdown
