@@ -20,6 +20,7 @@ Started: 2026-03-04
 - Domain v2 route guards should return deterministic disabled responses (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`) so rollout diagnostics can identify which flag blocked a request
 - Global kill switch must be checked before domain-level v2 flags; when enabled, all `/api/v2/*` routes should return `503 + V2_KILL_SWITCH_ENABLED` with machine-readable `reason: kill_switch_all_v2`
 - Phase gate governance docs should pair numeric exit DoD and rollback triggers for each phase (0-4) and always capture the same evidence trio: `test run id`, `metrics snapshot`, `incident count`
+- Migration ownership governance should keep one matrix that pairs every migration domain with DRI assignments, escalation path, and planned ADR IDs so accountability and decision records stay aligned
 ---
 
 ## 2026-03-04 - US-001
@@ -183,4 +184,16 @@ Started: 2026-03-04
   - Patterns discovered: Phase-gate docs are clearer when each phase includes paired numeric exit/rollback thresholds instead of prose-only guidance.
   - Gotchas encountered: Acceptance requires the evidence checklist to be explicit per phase; a single generic checklist can be interpreted as incomplete.
   - Useful context: `scope-cutline.md` already references phase gating; keeping threshold values here avoids duplicating gate logic across migration docs.
+---
+
+## 2026-03-04 17:43:24 KST - US-014
+- Created `agent-observatory/docs/migration/ownership-and-adr.md` with a migration-domain DRI matrix, severity-based escalation chain, approval role matrix, and planned ADR identifier mapping.
+- Added reusable migration governance guidance to `agent-observatory/CLAUDE.md` so future ownership/ADR updates keep accountability and architecture traceability in sync.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/migration/ownership-and-adr.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Ownership docs are most durable when every migration domain has a single row that includes DRI, escalation, and ADR linkage.
+  - Gotchas encountered: If planned ADR IDs are not reserved at the same time as ownership assignment, decision tracking drifts during later implementation stories.
+  - Useful context: US-015 can now reference this file as the ADR inventory source when adding lifecycle/template rules in `docs/adr/0000-template.md`.
 ---
