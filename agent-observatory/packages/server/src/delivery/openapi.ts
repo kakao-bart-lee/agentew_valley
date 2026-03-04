@@ -141,6 +141,30 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           },
         },
       },
+      '/api/v1/migration/shadow-report': {
+        get: {
+          tags: ['Migration'],
+          summary: 'Get migration shadow comparison report summary',
+          responses: {
+            200: {
+              description: 'Shadow report summary',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ShadowReportResponse' },
+                },
+              },
+            },
+            503: {
+              description: 'Shadow mode disabled',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/ErrorResponse' },
+                },
+              },
+            },
+          },
+        },
+      },
       '/api/v1/config': {
         get: {
           tags: ['Config'],

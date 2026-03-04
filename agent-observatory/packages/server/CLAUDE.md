@@ -192,6 +192,9 @@ import { Router } from 'express';
 // GET  /api/v1/metrics/summary     → metricsAggregator.getSnapshot()
 // GET  /api/v1/metrics/timeseries  → metricsAggregator.getTimeseries(metric, from)
 //                                    ?metric=tokens_per_minute&from=30
+// GET  /api/v1/migration/shadow-report → shadow mode parity summary
+//                                    shadow mode OFF: 503 + code SHADOW_MODE_DISABLED
+//                                    shadow mode ON: { pass_count, fail_count, top_diffs }
 //
 // GET  /api/v1/config              → 현재 설정 (watchPaths, 활성 collector 목록 등)
 // PUT  /api/v1/config              → 설정 변경 (런타임 collector 추가/제거)

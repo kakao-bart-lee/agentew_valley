@@ -263,6 +263,46 @@ describe('REST API', () => {
     });
   });
 
+  describe('GET /api/v1/migration/shadow-report', () => {
+    it('should return stable disabled error when shadow mode is off', async () => {
+      const res = await request(instance.app).get('/api/v1/migration/shadow-report');
+
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe('Shadow mode is disabled');
+      expect(res.body.code).toBe('SHADOW_MODE_DISABLED');
+    });
+
+    it('should return pass/fail summary and top diffs when shadow mode is on', async () => {
+      const enabledInstance = createApp({
+        shadowModeEnabled: true,
+        shadowReportProvider: () => ({
+          passCount: 12,
+          failCount: 3,
+          topDiffs: [
+            { entity: 'tasks', path: '$.status', count: 2 },
+            { entity: 'reviews', path: '$.score', count: 1 },
+          ],
+        }),
+      });
+
+      try {
+        const res = await request(enabledInstance.app).get('/api/v1/migration/shadow-report');
+
+        expect(res.status).toBe(200);
+        expect(res.body.pass_count).toBe(12);
+        expect(res.body.fail_count).toBe(3);
+        expect(res.body.top_diffs).toEqual([
+          { entity: 'tasks', path: '$.status', count: 2 },
+          { entity: 'reviews', path: '$.score', count: 1 },
+        ]);
+      } finally {
+        enabledInstance.close();
+        enabledInstance.server.close();
+        enabledInstance.io.close();
+      }
+    });
+  });
+
   describe('POST /api/v1/events/batch', () => {
     it('should accept batch events', async () => {
       const events = [

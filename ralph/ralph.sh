@@ -1,11 +1,12 @@
 #!/bin/bash
 # Ralph Wiggum - Long-running AI agent loop
-# Usage: ./ralph.sh [--tool amp|claude|codex] [max_iterations]
+# Usage: ./ralph.sh [--tool amp|claude|codex] [--model model_name] [max_iterations]
 
 set -e
 
 # Parse arguments
 TOOL="amp"  # Default to amp for backwards compatibility
+MODEL="gpt-5.3-codex"
 MAX_ITERATIONS=10
 
 while [[ $# -gt 0 ]]; do
@@ -16,6 +17,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --tool=*)
       TOOL="${1#*=}"
+      shift
+      ;;
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    --model=*)
+      MODEL="${1#*=}"
       shift
       ;;
     *)
@@ -79,7 +88,7 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   echo "---" >> "$PROGRESS_FILE"
 fi
 
-echo "Starting Ralph - Tool: $TOOL - Max iterations: $MAX_ITERATIONS"
+echo "Starting Ralph - Tool: $TOOL - Model: $MODEL - Max iterations: $MAX_ITERATIONS"
 
 for i in $(seq 1 $MAX_ITERATIONS); do
   echo ""
@@ -96,6 +105,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   else
     # Codex CLI: run non-interactively and read prompt from stdin ("-")
     OUTPUT=$(codex exec \
+      -m "$MODEL" \
       --dangerously-bypass-approvals-and-sandbox \
       -C "$SCRIPT_DIR/.." \
       - \

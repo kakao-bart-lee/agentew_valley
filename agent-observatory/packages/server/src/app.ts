@@ -11,6 +11,7 @@ import { MetricsAggregator } from './core/metrics-aggregator.js';
 import { HistoryStore } from './core/history-store.js';
 import { createApiRouter } from './delivery/api.js';
 import type { ApiConfig } from './delivery/api.js';
+import type { ShadowReportProvider } from './delivery/api.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
 import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
@@ -22,6 +23,8 @@ export interface AppConfig {
   watchPaths?: string[];
   metricsIntervalMs?: number;
   timeseriesRetentionMinutes?: number;
+  shadowModeEnabled?: boolean;
+  shadowReportProvider?: ShadowReportProvider;
   /** SQLite database file path. Defaults to :memory: */
   dbPath?: string;
   /** API keys for authenticating remote Collectors. Empty = open access. */
@@ -65,6 +68,12 @@ export function createApp(config?: AppConfig): AppInstance {
     watchPaths: config?.watchPaths ?? [],
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
+    shadowModeEnabled: config?.shadowModeEnabled ?? false,
+    shadowReportProvider: config?.shadowReportProvider ?? (() => ({
+      passCount: 0,
+      failCount: 0,
+      topDiffs: [],
+    })),
   };
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
   app.use(createAnalyticsRouter(historyStore));

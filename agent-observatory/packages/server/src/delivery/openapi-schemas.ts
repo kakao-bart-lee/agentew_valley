@@ -243,6 +243,29 @@ export const schemas = {
     },
   },
 
+  ShadowReportTopDiff: {
+    type: 'object',
+    properties: {
+      entity: { type: 'string' },
+      path: { type: 'string' },
+      count: { type: 'number' },
+    },
+    required: ['entity', 'path', 'count'],
+  },
+
+  ShadowReportResponse: {
+    type: 'object',
+    properties: {
+      pass_count: { type: 'number' },
+      fail_count: { type: 'number' },
+      top_diffs: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/ShadowReportTopDiff' },
+      },
+    },
+    required: ['pass_count', 'fail_count', 'top_diffs'],
+  },
+
   ErrorResponse: {
     type: 'object',
     properties: {

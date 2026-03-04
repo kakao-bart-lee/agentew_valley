@@ -9,12 +9,36 @@ export interface ApiConfig {
   watchPaths: string[];
   metricsIntervalMs: number;
   timeseriesRetentionMinutes: number;
+  shadowModeEnabled: boolean;
+  shadowReportProvider: ShadowReportProvider;
 }
+
+export interface ShadowReportTopDiff {
+  entity: string;
+  path: string;
+  count: number;
+}
+
+export interface ShadowReport {
+  passCount: number;
+  failCount: number;
+  topDiffs: ShadowReportTopDiff[];
+}
+
+export type ShadowReportProvider = () => ShadowReport;
+
+const defaultShadowReportProvider: ShadowReportProvider = () => ({
+  passCount: 0,
+  failCount: 0,
+  topDiffs: [],
+});
 
 const DEFAULT_CONFIG: ApiConfig = {
   watchPaths: [],
   metricsIntervalMs: 5000,
   timeseriesRetentionMinutes: 60,
+  shadowModeEnabled: false,
+  shadowReportProvider: defaultShadowReportProvider,
 };
 
 export function createApiRouter(
@@ -192,6 +216,24 @@ export function createApiRouter(
     } catch {
       res.json({ query: q, events: [], total: 0 });
     }
+  });
+
+  // GET /api/v1/migration/shadow-report
+  router.get('/api/v1/migration/shadow-report', (_req, res) => {
+    if (!config.shadowModeEnabled) {
+      res.status(503).json({
+        error: 'Shadow mode is disabled',
+        code: 'SHADOW_MODE_DISABLED',
+      });
+      return;
+    }
+
+    const report = config.shadowReportProvider();
+    res.json({
+      pass_count: report.passCount,
+      fail_count: report.failCount,
+      top_diffs: report.topDiffs,
+    });
   });
 
   // GET /api/v1/config

@@ -38,6 +38,7 @@ describe('OpenAPI Documentation', () => {
     expect(paths).toContain('/api/v1/metrics/summary');
     expect(paths).toContain('/api/v1/metrics/timeseries');
     expect(paths).toContain('/api/v1/events/search');
+    expect(paths).toContain('/api/v1/migration/shadow-report');
     expect(paths).toContain('/api/v1/config');
     expect(paths).toContain('/api/v1/events');
     expect(paths).toContain('/api/v1/events/batch');
@@ -71,6 +72,7 @@ describe('OpenAPI Documentation', () => {
     expect(schemaNames).toContain('CostByTeamResponse');
     expect(schemaNames).toContain('CostByToolResponse');
     expect(schemaNames).toContain('TokenAnalyticsResponse');
+    expect(schemaNames).toContain('ShadowReportResponse');
   });
 
   it('should serve custom swagger-initializer.js', async () => {

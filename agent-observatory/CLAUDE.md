@@ -44,6 +44,7 @@ packages/
 - Backfill 설계 문서에서 idempotency는 `<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>` 형식을 기본으로 하고, replay 정렬 기준(`version_token`, `source_sequence`, operation rank, primary id)과 create/update/delete conflict 해소 규칙을 함께 명시
 - 리허설 검증은 `scripts/migration/rehearsal-check.sh`를 사용하며 입력 CSV 스키마를 고정(`entity,source_count,target_count` + `entity,diff_count`)하고 필수 엔터티(`tasks`,`reviews`,`notifications`,`activities`,`webhooks`) 누락/불일치를 실패로 처리
 - Shadow comparator는 `packages/server/src/domains/migration/shadow-mode.ts`를 단일 진실 공급원으로 사용하고, 상태 enum(`match`,`mismatch`,`missing_legacy`,`missing_new`)과 `$.path` 기반 field diff 표기(객체 키 정렬 포함)를 유지해 리포트 결과를 결정적으로 만든다
+- Migration shadow report API(`GET /api/v1/migration/shadow-report`)는 `shadowModeEnabled`가 꺼져 있으면 항상 `503 + SHADOW_MODE_DISABLED`를 반환하고, 켜져 있을 때 응답 키를 `pass_count`, `fail_count`, `top_diffs`(snake_case)로 고정한다
 
 ## 개발 규칙
 
