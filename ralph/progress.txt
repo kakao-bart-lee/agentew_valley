@@ -18,6 +18,7 @@ Started: 2026-03-04
 - Shadow mode rollout is environment-gated via `packages/server/src/config/shadow-mode.ts`; keep `OBSERVATORY_SHADOW_MODE_ENABLED` default `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` default `true`, and reject non-read-only mode with `SHADOW_MODE_READ_ONLY_REQUIRED`
 - Domain rollout flags should be centralized in `packages/server/src/config/feature-flags.ts` with canonical keys (`auth_v2`, `tasks_v2`, `webhooks_v2`, `kill_switch_all_v2`) and read through typed helpers instead of ad-hoc env checks
 - Domain v2 route guards should return deterministic disabled responses (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`) so rollout diagnostics can identify which flag blocked a request
+- Global kill switch must be checked before domain-level v2 flags; when enabled, all `/api/v2/*` routes should return `503 + V2_KILL_SWITCH_ENABLED` with machine-readable `reason: kill_switch_all_v2`
 ---
 
 ## 2026-03-04 - US-001
@@ -154,4 +155,18 @@ Started: 2026-03-04
   - Patterns discovered: Gate v2 domain routes directly in the API router with typed feature-flag helpers and keep disabled responses deterministic (`503`, `FEATURE_FLAG_DISABLED`, `feature_flag`).
   - Gotchas encountered: `DEFAULT_FEATURE_FLAGS` must be cloned (`{ ...DEFAULT_FEATURE_FLAGS }`) when used as runtime defaults to avoid accidental shared-object mutation.
   - Useful context: US-012 can layer `kill_switch_all_v2` as a pre-check on these same `/api/v2/*` routes without changing domain-level guard contracts.
+---
+
+## 2026-03-04 17:36:47 KST - US-012
+- Implemented global v2 kill-switch behavior in `agent-observatory/packages/server/src/delivery/api.ts`: when `kill_switch_all_v2` is enabled, all `/api/v2/*` routes now return `503` with stable code `V2_KILL_SWITCH_ENABLED` and machine-readable `reason: kill_switch_all_v2`.
+- Added regression coverage in `agent-observatory/packages/server/src/__tests__/api.test.ts` for both kill-switch enabled (all v2 routes blocked) and disabled (domain-enabled routes succeed) states.
+- Updated API docs metadata so v2 route 503 responses mention global kill-switch cases and added optional `reason` to `ErrorResponse` schema.
+- Updated reusable server guidance in `agent-observatory/CLAUDE.md` and `agent-observatory/packages/server/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (server/API-only changes, no UI changes).
+- Files changed: `agent-observatory/packages/server/src/delivery/api.ts`, `agent-observatory/packages/server/src/__tests__/api.test.ts`, `agent-observatory/packages/server/src/delivery/openapi.ts`, `agent-observatory/packages/server/src/delivery/openapi-schemas.ts`, `agent-observatory/CLAUDE.md`, `agent-observatory/packages/server/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Global kill switch checks should execute before per-domain v2 guards so incident shutdown behavior is deterministic across all v2 endpoints.
+  - Gotchas encountered: Keep kill-switch errors distinct from feature-flag errors (`V2_KILL_SWITCH_ENABLED` vs `FEATURE_FLAG_DISABLED`) to preserve rollout diagnostics.
+  - Useful context: If API error payload shape expands (e.g., `reason`), update OpenAPI schemas alongside route handlers to avoid documentation drift.
 ---

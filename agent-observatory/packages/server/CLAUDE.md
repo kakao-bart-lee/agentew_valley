@@ -339,3 +339,4 @@ src/__tests__/
 - Express의 에러 미들웨어 반드시 등록 (unhandled rejection 방지)
 - Feature rollout flag는 `src/config/feature-flags.ts`에서만 정의하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + typed accessor helper를 통해 읽어 route guard 조건을 일관되게 유지
 - `/api/v2/*` domain route guard는 feature flag OFF 시 `503 + FEATURE_FLAG_DISABLED`를 반환하고 `feature_flag`에 차단된 키(`auth_v2`/`tasks_v2`/`webhooks_v2`)를 명시해 디버깅 가능성을 유지
+- `/api/v2/*` route는 `kill_switch_all_v2`를 domain flag 검사보다 먼저 평가하고, 활성화 시 항상 `503 + V2_KILL_SWITCH_ENABLED`와 `reason: kill_switch_all_v2`를 반환해 incident 시 전체 v2 차단 상태를 일관되게 노출

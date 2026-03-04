@@ -8,6 +8,7 @@ import type { UAEPEvent } from '@agent-observatory/shared';
 import {
   DEFAULT_FEATURE_FLAGS,
   isAuthV2Enabled,
+  isKillSwitchAllV2Enabled,
   isTasksV2Enabled,
   isWebhooksV2Enabled,
 } from '../config/feature-flags.js';
@@ -61,6 +62,14 @@ function sendFeatureFlagDisabled(
     error: 'Requested v2 domain is disabled by feature flag',
     code: 'FEATURE_FLAG_DISABLED',
     feature_flag: featureFlag,
+  });
+}
+
+function sendV2KillSwitchEnabled(res: Response): void {
+  res.status(503).json({
+    error: 'All v2 routes are disabled by global kill switch',
+    code: 'V2_KILL_SWITCH_ENABLED',
+    reason: 'kill_switch_all_v2',
   });
 }
 
@@ -268,6 +277,10 @@ export function createApiRouter(
 
   // GET /api/v2/auth/status
   router.get('/api/v2/auth/status', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
     if (!isAuthV2Enabled(config.featureFlags)) {
       sendFeatureFlagDisabled('auth_v2', res);
       return;
@@ -281,6 +294,10 @@ export function createApiRouter(
 
   // GET /api/v2/tasks
   router.get('/api/v2/tasks', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
     if (!isTasksV2Enabled(config.featureFlags)) {
       sendFeatureFlagDisabled('tasks_v2', res);
       return;
@@ -295,6 +312,10 @@ export function createApiRouter(
 
   // POST /api/v2/webhooks/test
   router.post('/api/v2/webhooks/test', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
     if (!isWebhooksV2Enabled(config.featureFlags)) {
       sendFeatureFlagDisabled('webhooks_v2', res);
       return;

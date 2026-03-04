@@ -330,6 +330,39 @@ describe('REST API', () => {
   });
 
   describe('v2 domain feature guards', () => {
+    it('should reject all v2 routes when global kill switch is enabled', async () => {
+      const killSwitchInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          auth_v2: true,
+          tasks_v2: true,
+          webhooks_v2: true,
+          kill_switch_all_v2: true,
+        },
+      });
+
+      try {
+        const authRes = await request(killSwitchInstance.app).get('/api/v2/auth/status');
+        expect(authRes.status).toBe(503);
+        expect(authRes.body.code).toBe('V2_KILL_SWITCH_ENABLED');
+        expect(authRes.body.reason).toBe('kill_switch_all_v2');
+
+        const tasksRes = await request(killSwitchInstance.app).get('/api/v2/tasks');
+        expect(tasksRes.status).toBe(503);
+        expect(tasksRes.body.code).toBe('V2_KILL_SWITCH_ENABLED');
+        expect(tasksRes.body.reason).toBe('kill_switch_all_v2');
+
+        const webhooksRes = await request(killSwitchInstance.app).post('/api/v2/webhooks/test').send({});
+        expect(webhooksRes.status).toBe(503);
+        expect(webhooksRes.body.code).toBe('V2_KILL_SWITCH_ENABLED');
+        expect(webhooksRes.body.reason).toBe('kill_switch_all_v2');
+      } finally {
+        killSwitchInstance.close();
+        killSwitchInstance.server.close();
+        killSwitchInstance.io.close();
+      }
+    });
+
     it('should reject auth/tasks/webhooks v2 routes when flags are disabled', async () => {
       const authRes = await request(instance.app).get('/api/v2/auth/status');
       expect(authRes.status).toBe(503);
@@ -373,6 +406,36 @@ describe('REST API', () => {
         authEnabledInstance.close();
         authEnabledInstance.server.close();
         authEnabledInstance.io.close();
+      }
+    });
+
+    it('should allow v2 routes when domain flags are enabled and kill switch is disabled', async () => {
+      const enabledInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          auth_v2: true,
+          tasks_v2: true,
+          webhooks_v2: true,
+          kill_switch_all_v2: false,
+        },
+      });
+
+      try {
+        const authRes = await request(enabledInstance.app).get('/api/v2/auth/status');
+        expect(authRes.status).toBe(200);
+        expect(authRes.body.domain).toBe('auth');
+
+        const tasksRes = await request(enabledInstance.app).get('/api/v2/tasks');
+        expect(tasksRes.status).toBe(200);
+        expect(tasksRes.body.domain).toBe('tasks');
+
+        const webhooksRes = await request(enabledInstance.app).post('/api/v2/webhooks/test').send({});
+        expect(webhooksRes.status).toBe(202);
+        expect(webhooksRes.body.domain).toBe('webhooks');
+      } finally {
+        enabledInstance.close();
+        enabledInstance.server.close();
+        enabledInstance.io.close();
       }
     });
 

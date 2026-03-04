@@ -271,6 +271,7 @@ export const schemas = {
     properties: {
       error: { type: 'string' },
       code: { type: 'string' },
+      reason: { type: 'string' },
     },
   },
 } as const;

@@ -172,7 +172,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           responses: {
             200: { description: 'Auth v2 route enabled' },
             503: {
-              description: 'Auth v2 route disabled by feature flag',
+              description: 'Auth v2 route disabled by feature flag or global kill switch',
               content: {
                 'application/json': {
                   schema: { $ref: '#/components/schemas/ErrorResponse' },
@@ -189,7 +189,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           responses: {
             200: { description: 'Tasks v2 route enabled' },
             503: {
-              description: 'Tasks v2 route disabled by feature flag',
+              description: 'Tasks v2 route disabled by feature flag or global kill switch',
               content: {
                 'application/json': {
                   schema: { $ref: '#/components/schemas/ErrorResponse' },
@@ -206,7 +206,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           responses: {
             202: { description: 'Webhooks v2 route enabled' },
             503: {
-              description: 'Webhooks v2 route disabled by feature flag',
+              description: 'Webhooks v2 route disabled by feature flag or global kill switch',
               content: {
                 'application/json': {
                   schema: { $ref: '#/components/schemas/ErrorResponse' },

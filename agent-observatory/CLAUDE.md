@@ -48,6 +48,7 @@ packages/
 - Shadow mode env gating은 `packages/server/src/config/shadow-mode.ts`를 통해 처리하며, `OBSERVATORY_SHADOW_MODE_ENABLED` 기본값은 `false`, `OBSERVATORY_SHADOW_MODE_READ_ONLY` 기본값은 `true`; read-only가 아니면 `SHADOW_MODE_READ_ONLY_REQUIRED`로 차단한다
 - Domain rollout feature flags는 `packages/server/src/config/feature-flags.ts`를 단일 진실 공급원으로 사용하고, canonical key(`auth_v2`,`tasks_v2`,`webhooks_v2`,`kill_switch_all_v2`) + env(`OBSERVATORY_*_V2_ENABLED`) + typed helper(`isFeatureFlagEnabled`/개별 accessor) 조합을 유지한다
 - v2 domain route guard는 flag OFF 시 `503 + FEATURE_FLAG_DISABLED`를 반환하고 `feature_flag` 필드에 차단된 canonical key를 포함해 운영 진단 가능성을 유지한다
+- Global kill switch(`kill_switch_all_v2`)는 `/api/v2/*` route guard에서 domain별 flag보다 먼저 평가하고, 활성화 시 `503 + V2_KILL_SWITCH_ENABLED`와 machine-readable `reason: kill_switch_all_v2`를 고정 응답으로 반환한다
 
 ## 개발 규칙
 
