@@ -58,7 +58,8 @@ This document defines domain ownership, escalation paths, and ADR planning so mi
 
 ## Planned ADR Identifier Map
 
-ADR documents will use the `docs/adr/` namespace and a zero-padded numeric sequence (`0000`, `0001`, ...). The template and lifecycle policy are defined in US-015.
+ADR documents use the `docs/adr/` namespace and a zero-padded numeric sequence (`0000`, `0001`, ...).
+ADR process reference: [ADR-0000 Template and Lifecycle Rules](../adr/0000-template.md).
 
 | Migration Domain | Planned ADR ID | Planned ADR Title | Owner Role | Target Phase |
 |---|---|---|---|---|

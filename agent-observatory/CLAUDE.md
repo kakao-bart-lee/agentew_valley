@@ -41,6 +41,7 @@ packages/
 - SLO/신뢰성 문서에는 월간 error budget과 breach 시 rollback/완화 절차를 함께 명시
 - Phase gate 문서(`phase-exit-criteria.md`)는 Phase 0~4 각각에 대해 숫자 기반 Exit DoD와 Rollback Trigger를 쌍으로 기록하고, 게이트 리뷰 필수 증빙(`test run id`, `metrics snapshot`, `incident count`)을 빠짐없이 포함
 - 소유권 거버넌스 문서(`ownership-and-adr.md`)는 migration domain별 DRI 매트릭스, severity 기반 escalation chain, planned ADR ID 매핑을 함께 유지해 의사결정 책임을 추적 가능하게 만든다
+- ADR 문서는 `docs/adr/NNNN-*.md` 네이밍과 `Proposed -> Accepted/Rejected -> Deprecated/Superseded` lifecycle 규칙을 `docs/adr/0000-template.md` 단일 기준으로 유지한다
 - 데이터 모델 경계 문서/스키마 변경 시 UAEP event store(append-only telemetry)와 ops domain store(authoritative workflow state)를 분리하고, 신규 ops 테이블에 `workspace_id`, `created_at`, `updated_at`, `actor` 공통 컬럼을 포함
 - Backfill 설계 문서(`backfill-plan.md`)는 엔터티별 source->target 매핑, 필드 변환/널 처리 규칙, unsupported/skip code 정책을 함께 기록해 재실행 시 결정이 바뀌지 않도록 유지
 - Backfill 설계 문서에서 idempotency는 `<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>` 형식을 기본으로 하고, replay 정렬 기준(`version_token`, `source_sequence`, operation rank, primary id)과 create/update/delete conflict 해소 규칙을 함께 명시

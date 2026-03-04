@@ -21,6 +21,7 @@ Started: 2026-03-04
 - Global kill switch must be checked before domain-level v2 flags; when enabled, all `/api/v2/*` routes should return `503 + V2_KILL_SWITCH_ENABLED` with machine-readable `reason: kill_switch_all_v2`
 - Phase gate governance docs should pair numeric exit DoD and rollback triggers for each phase (0-4) and always capture the same evidence trio: `test run id`, `metrics snapshot`, `incident count`
 - Migration ownership governance should keep one matrix that pairs every migration domain with DRI assignments, escalation path, and planned ADR IDs so accountability and decision records stay aligned
+- ADR governance should keep naming/required-sections/status lifecycle policy centralized in `docs/adr/0000-template.md` and link it from `docs/migration/ownership-and-adr.md`
 ---
 
 ## 2026-03-04 - US-001
@@ -196,4 +197,16 @@ Started: 2026-03-04
   - Patterns discovered: Ownership docs are most durable when every migration domain has a single row that includes DRI, escalation, and ADR linkage.
   - Gotchas encountered: If planned ADR IDs are not reserved at the same time as ownership assignment, decision tracking drifts during later implementation stories.
   - Useful context: US-015 can now reference this file as the ADR inventory source when adding lifecycle/template rules in `docs/adr/0000-template.md`.
+---
+
+## 2026-03-04 17:46:07 KST - US-015
+- Created `agent-observatory/docs/adr/0000-template.md` with ADR naming rules, status lifecycle transitions, required sections, and a reusable markdown template.
+- Linked the ADR process from `agent-observatory/docs/migration/ownership-and-adr.md` and updated migration conventions in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI changes).
+- Files changed: `agent-observatory/docs/adr/0000-template.md`, `agent-observatory/docs/migration/ownership-and-adr.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: `docs/adr/0000-template.md` should remain the single source of truth for ADR naming, required sections, and status transitions.
+  - Gotchas encountered: Keep the planned ADR ID map in `ownership-and-adr.md` linked to the template to avoid governance drift.
+  - Useful context: This story is docs-only; browser verification is unnecessary.
 ---
