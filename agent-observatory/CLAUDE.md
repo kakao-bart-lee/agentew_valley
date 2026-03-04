@@ -40,6 +40,7 @@ packages/
 - `docs/migration/`의 운영 가드레일 문서는 가능한 한 정량 검증 가능한 표를 사용 (`Target`, `Measurement Source`, `Alert Threshold`)
 - SLO/신뢰성 문서에는 월간 error budget과 breach 시 rollback/완화 절차를 함께 명시
 - 데이터 모델 경계 문서/스키마 변경 시 UAEP event store(append-only telemetry)와 ops domain store(authoritative workflow state)를 분리하고, 신규 ops 테이블에 `workspace_id`, `created_at`, `updated_at`, `actor` 공통 컬럼을 포함
+- Backfill 설계 문서(`backfill-plan.md`)는 엔터티별 source->target 매핑, 필드 변환/널 처리 규칙, unsupported/skip code 정책을 함께 기록해 재실행 시 결정이 바뀌지 않도록 유지
 
 ## 개발 규칙
 

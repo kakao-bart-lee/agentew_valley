@@ -9,6 +9,7 @@ Started: 2026-03-04
 - docs/migration/ is created fresh; no prior content exists
 - Migration governance docs should prefer measurable acceptance tables (`Target`, `Measurement Source`, `Alert Threshold`) to keep criteria verifiable
 - Ops-domain schema guidance should enforce shared audit/tenant columns (`workspace_id`, `created_at`, `updated_at`, `actor`) and keep UAEP telemetry storage boundary separate from operational source-of-truth tables
+- Backfill planning docs should define per-entity source->target mappings together with field-level transform/null rules and explicit skip-code taxonomy for unsupported records
 ---
 
 ## 2026-03-04 - US-001
@@ -39,4 +40,14 @@ Started: 2026-03-04
   - Patterns discovered: For migration-era relational schemas, treat UAEP as append-only telemetry and keep business state authoritative in ops-domain tables.
   - Gotchas encountered: Shared ops columns should define write semantics (`created_at` immutable, `updated_at` updated on mutation, `actor` explicit on write) to avoid inconsistent audit behavior.
   - Useful context: Existing server SQL style uses `idx_<table>_<columns>` names and `IF NOT EXISTS`; documenting the same convention keeps future migrations consistent.
+---
+
+## 2026-03-04 16:29:59 KST - US-004
+- Created `agent-observatory/docs/migration/backfill-plan.md` with source-to-target mapping coverage for Tasks, Reviews, Notifications, Activities, and Webhooks.
+- Added field-level transformation and null-handling policies for each entity, plus unsupported-record handling rules and a skip-code taxonomy with exception reporting requirements.
+- Files changed: `agent-observatory/docs/migration/backfill-plan.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Backfill docs are most reviewable when each entity has a dedicated mapping table and explicit null/default behavior per field.
+  - Gotchas encountered: Skip policy must distinguish hard integrity blockers (skip) from nullable business states (allow null/default) to avoid silently dropping valid records.
+  - Useful context: Idempotency key and upsert conflict semantics were intentionally deferred to US-005; this file currently establishes only mapping/transform/null/skip baseline.
 ---
