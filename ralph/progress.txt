@@ -10,6 +10,7 @@ Started: 2026-03-04
 - Migration governance docs should prefer measurable acceptance tables (`Target`, `Measurement Source`, `Alert Threshold`) to keep criteria verifiable
 - Ops-domain schema guidance should enforce shared audit/tenant columns (`workspace_id`, `created_at`, `updated_at`, `actor`) and keep UAEP telemetry storage boundary separate from operational source-of-truth tables
 - Backfill planning docs should define per-entity source->target mappings together with field-level transform/null rules and explicit skip-code taxonomy for unsupported records
+- Backfill idempotency policy should use operation-aware keys (`<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>`) and deterministic replay sorting (`version_token`, `source_sequence`, operation rank, primary id) so reruns are reproducible
 ---
 
 ## 2026-03-04 - US-001
@@ -50,4 +51,18 @@ Started: 2026-03-04
   - Patterns discovered: Backfill docs are most reviewable when each entity has a dedicated mapping table and explicit null/default behavior per field.
   - Gotchas encountered: Skip policy must distinguish hard integrity blockers (skip) from nullable business states (allow null/default) to avoid silently dropping valid records.
   - Useful context: Idempotency key and upsert conflict semantics were intentionally deferred to US-005; this file currently establishes only mapping/transform/null/skip baseline.
+---
+
+## 2026-03-04 16:33:33 KST - US-005
+- Added entity-specific idempotency key formats to `agent-observatory/docs/migration/backfill-plan.md` for Tasks, Reviews, Notifications, Activities, and Webhooks.
+- Defined upsert conflict resolution policy for `create`, `update`, and `delete`, including same-version checksum conflict handling and stale-write no-op rules.
+- Documented deterministic replay ordering (`version_token`, `source_sequence`, operation rank, primary id) and aligned skip taxonomy with `SKIP_MISSING_TARGET_FOR_UPDATE`.
+- Updated migration conventions in `agent-observatory/CLAUDE.md` to preserve reusable idempotency/replay policy guidance.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (docs-only story, no UI change).
+- Files changed: `agent-observatory/docs/migration/backfill-plan.md`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: operation-aware idempotency keys plus explicit `migration_version_token` conflict rules keep replays deterministic across reruns.
+  - Gotchas encountered: update replay needs an explicit missing-target branch (`create-on-update` vs `SKIP_MISSING_TARGET_FOR_UPDATE`) to avoid ambiguous behavior.
+  - Useful context: delete semantics should be documented as logical delete/tombstone policy, not implicit physical delete, because target tables may differ by soft-delete support.
 ---

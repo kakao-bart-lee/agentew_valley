@@ -14,7 +14,7 @@ This document defines deterministic source-to-target mappings for migration back
 - Source system: mission-control operational store (legacy)
 - Target system: agent-observatory ops domain store
 - Timezone normalization: all timestamps converted to UTC before write
-- This story covers mapping and transformation policy only; idempotency/upsert policy is defined separately
+- This document defines mapping, transformation, idempotency, upsert conflict handling, and replay ordering for deterministic reruns
 
 ---
 
@@ -107,11 +107,67 @@ This document defines deterministic source-to-target mappings for migration back
 
 ---
 
-## 4. Unsupported Records Handling and Skip Policy
+## 4. Idempotency, Upsert, and Replay Ordering
+
+### 4.1 Idempotency Key Format by Entity
+
+Idempotency keys use operation-aware, versioned keys:
+
+`<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>`
+
+Where:
+
+- `operation` must be one of `create`, `update`, `delete`
+- `version_token` is normalized UTC ISO-8601 timestamp at millisecond precision (`updated_at` fallback `created_at`)
+- records without a valid `version_token` are skipped with `SKIP_INVALID_TIMESTAMP`
+
+| Entity | Idempotency Key Format | Version Token Source | Example |
+|---|---|---|---|
+| Tasks | `task:{workspace_id}:{task_id}:{operation}:{version_token}` | `updated_at` fallback `created_at` | `task:ws_42:task_100:update:2026-03-01T10:22:11.000Z` |
+| Reviews | `review:{workspace_id}:{review_id}:{operation}:{version_token}` | `updated_at` fallback `created_at` | `review:ws_42:rev_55:create:2026-03-01T10:30:00.000Z` |
+| Notifications | `notification:{workspace_id}:{notification_id}:{operation}:{version_token}` | `updated_at` fallback `created_at` | `notification:ws_42:noti_77:update:2026-03-01T10:35:17.000Z` |
+| Activities | `activity:{workspace_id}:{activity_id}:{operation}:{version_token}` | `updated_at` fallback `created_at` | `activity:ws_42:act_902:create:2026-03-01T10:36:09.000Z` |
+| Webhooks | `webhook:{workspace_id}:{webhook_id}:{operation}:{version_token}` | `updated_at` fallback `created_at` | `webhook:ws_42:wh_12:delete:2026-03-01T10:40:00.000Z` |
+
+### 4.2 Upsert Conflict Resolution Policy
+
+| Operation | Conflict Case | Resolution Policy |
+|---|---|---|
+| `create` | Target row does not exist | Insert row and persist `migration_version_token` from idempotency key |
+| `create` | Target row exists with equal or newer `migration_version_token` | No-op (duplicate or stale create) |
+| `create` | Target row exists with older `migration_version_token` | Upsert mutable fields only; preserve original immutable identity fields |
+| `update` | Target row does not exist and payload includes full required projection | Insert as create-on-update upsert |
+| `update` | Target row does not exist and payload is partial | Skip with `SKIP_MISSING_TARGET_FOR_UPDATE` and emit exception record |
+| `update` | Target row exists with older `migration_version_token` | Update row and set new `migration_version_token` |
+| `update` | Target row exists with same `migration_version_token` and same canonical payload checksum | No-op (idempotent replay) |
+| `update` | Target row exists with same `migration_version_token` but different canonical payload checksum | Emit `CONFLICT_SAME_VERSION_DIFFERENT_PAYLOAD`; do not mutate target row |
+| `update` | Target row exists with newer `migration_version_token` | No-op (stale update) |
+| `delete` | Target row exists with older or equal `migration_version_token` | Apply logical delete (`deleted_at_utc`, `deleted_by_actor`) or write delete tombstone where table lacks soft-delete columns |
+| `delete` | Target row exists with newer `migration_version_token` | No-op (stale delete) |
+| `delete` | Target row does not exist | Write tombstone only (`entity`, `workspace_id`, `entity_id`, `version_token`) to suppress stale re-creation on replay |
+
+### 4.3 Deterministic Ordering Rule for Replayed Source Records
+
+Replayed records are processed in a deterministic total order per entity and workspace:
+
+1. Partition by (`entity`, `workspace_id`).
+2. Sort each partition by tuple:
+   - `version_token` ascending
+   - `source_sequence` ascending (`0` when source has no sequence column)
+   - operation rank ascending (`create=1`, `update=2`, `delete=3`)
+   - source primary identifier ascending (string compare)
+3. Compute idempotency key and skip duplicates already seen in the same run.
+4. Apply upsert/delete conflict policy from Section 4.2 in sorted order.
+
+This ordering ensures replay outputs are identical across repeated dry-runs and production reruns.
+
+---
+
+## 5. Unsupported Records Handling and Skip Policy
 
 Records that cannot satisfy minimum target integrity are excluded from target writes using the skip rules below.
 
-### 4.1 Skip Categories
+### 5.1 Skip Categories
 
 | Skip Code | Condition | Required Action |
 |---|---|---|
@@ -121,8 +177,9 @@ Records that cannot satisfy minimum target integrity are excluded from target wr
 | `SKIP_INVALID_JSON` | JSON field is malformed and cannot be parsed | Do not write record; count as skipped |
 | `SKIP_INVALID_REFERENCE` | Required foreign reference is missing in scoped backfill set | Do not write record; count as skipped |
 | `SKIP_INVALID_WEBHOOK_URL` | Webhook URL is not HTTPS/valid | Do not write record; count as skipped |
+| `SKIP_MISSING_TARGET_FOR_UPDATE` | Update record arrives without existing target row and without full create projection | Do not write record; count as skipped |
 
-### 4.2 Unsupported Record Types
+### 5.2 Unsupported Record Types
 
 - Hard-deleted source rows without retrievable payload/history
 - Records with encrypted fields that cannot be decrypted with approved migration keys
@@ -131,7 +188,7 @@ Records that cannot satisfy minimum target integrity are excluded from target wr
 
 Unsupported records are skipped and emitted to the backfill exception report for manual triage.
 
-### 4.3 Exception Reporting Requirements
+### 5.3 Exception Reporting Requirements
 
 For every skipped record, the backfill job must emit:
 
@@ -146,9 +203,12 @@ The exception report is retained for 30 days and reviewed before phase advanceme
 
 ---
 
-## 5. Validation Checklist
+## 6. Validation Checklist
 
 - All five in-scope entities have explicit source-to-target mapping definitions
 - Every mapped field defines transformation and null-handling behavior
+- Every mapped entity has an explicit idempotency key format and version token rule
+- Create, update, and delete upsert conflicts have deterministic resolution rules
+- Replay processing order is deterministic and explicitly documented
 - Unsupported record conditions are explicit and categorized with skip codes
 - Skip output includes enough metadata for deterministic manual replay/triage
