@@ -90,6 +90,11 @@ fi
 
 echo "Starting Ralph - Tool: $TOOL - Model: $MODEL - Max iterations: $MAX_ITERATIONS"
 
+PROMPT_FILE="$SCRIPT_DIR/CLAUDE.md"
+if [[ -f "$SCRIPT_DIR/prompt.md" ]]; then
+  PROMPT_FILE="$SCRIPT_DIR/prompt.md"
+fi
+
 for i in $(seq 1 $MAX_ITERATIONS); do
   echo ""
   echo "==============================================================="
@@ -98,7 +103,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
 
   # Run the selected tool with the ralph prompt
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(cat "$SCRIPT_DIR/prompt.md" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(amp --dangerously-allow-all < "$PROMPT_FILE" 2>&1 | tee /dev/stderr) || true
   elif [[ "$TOOL" == "claude" ]]; then
     # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
     OUTPUT=$(claude --dangerously-skip-permissions --print < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee /dev/stderr) || true

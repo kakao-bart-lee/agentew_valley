@@ -125,7 +125,7 @@ FILENAME == counts_file {
   source = trim(fields[2])
   target = trim(fields[3])
 
-  if (FNR == 1 && entity == "entity" && tolower(source) == "source_count" && tolower(target) == "target_count") {
+  if (!has_counts_data && entity == "entity" && tolower(source) == "source_count" && tolower(target) == "target_count") {
     next
   }
 
@@ -162,7 +162,7 @@ FILENAME == checksums_file {
   entity = tolower(trim(fields[1]))
   diff_count = trim(fields[2])
 
-  if (FNR == 1 && entity == "entity" && tolower(diff_count) == "diff_count") {
+  if (!has_checksum_data && entity == "entity" && tolower(diff_count) == "diff_count") {
     next
   }
 
