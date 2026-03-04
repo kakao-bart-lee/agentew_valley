@@ -11,6 +11,8 @@ Started: 2026-03-04
 - Ops-domain schema guidance should enforce shared audit/tenant columns (`workspace_id`, `created_at`, `updated_at`, `actor`) and keep UAEP telemetry storage boundary separate from operational source-of-truth tables
 - Backfill planning docs should define per-entity source->target mappings together with field-level transform/null rules and explicit skip-code taxonomy for unsupported records
 - Backfill idempotency policy should use operation-aware keys (`<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>`) and deterministic replay sorting (`version_token`, `source_sequence`, operation rank, primary id) so reruns are reproducible
+- Migration rehearsal validation consumes CSV artifacts with fixed headers (`entity,source_count,target_count` and `entity,diff_count`) and enforces required entities: `tasks`, `reviews`, `notifications`, `activities`, `webhooks`
+- On pnpm v10, run `pnpm approve-builds` and approve `better-sqlite3` + `esbuild` before server tests; otherwise native binding load errors occur
 ---
 
 ## 2026-03-04 - US-001
@@ -65,4 +67,17 @@ Started: 2026-03-04
   - Patterns discovered: operation-aware idempotency keys plus explicit `migration_version_token` conflict rules keep replays deterministic across reruns.
   - Gotchas encountered: update replay needs an explicit missing-target branch (`create-on-update` vs `SKIP_MISSING_TARGET_FOR_UPDATE`) to avoid ambiguous behavior.
   - Useful context: delete semantics should be documented as logical delete/tombstone policy, not implicit physical delete, because target tables may differ by soft-delete support.
+---
+
+## 2026-03-04 16:41:00 KST - US-006
+- Added `agent-observatory/scripts/migration/rehearsal-check.sh` to validate dry-run row-count parity and checksum diff outputs for mapped entities (`tasks`, `reviews`, `notifications`, `activities`, `webhooks`).
+- Implemented strict failure behavior: malformed CSV rows, missing required entities, non-numeric values, row-count mismatches, and non-zero checksum diffs all exit non-zero.
+- Updated `agent-observatory/pnpm-workspace.yaml` to keep native build approval config clean for `better-sqlite3`/`esbuild` and documented reusable testing/migration script patterns in `agent-observatory/CLAUDE.md`.
+- Ran quality checks: `pnpm --filter @agent-observatory/shared test -- --run && pnpm --filter @agent-observatory/collectors test -- --run && pnpm --filter @agent-observatory/server test -- --run && pnpm --filter @agent-observatory/shared build && pnpm --filter @agent-observatory/collectors build && pnpm --filter @agent-observatory/server build` (pass).
+- Browser verification: not applicable (no UI changes).
+- Files changed: `agent-observatory/scripts/migration/rehearsal-check.sh`, `agent-observatory/pnpm-workspace.yaml`, `agent-observatory/CLAUDE.md`, `ralph/prd.json`, `ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: rehearsal validation expects two CSV artifacts (`entity,source_count,target_count` and `entity,diff_count`) and fails when any required entity parity/checksum condition is unmet.
+  - Gotchas encountered: server tests depend on native `better-sqlite3`; pnpm v10 blocks install scripts until `pnpm approve-builds` is run.
+  - Useful context: this story is CLI/script-only, so browser verification is unnecessary.
 ---

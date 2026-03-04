@@ -42,6 +42,7 @@ packages/
 - 데이터 모델 경계 문서/스키마 변경 시 UAEP event store(append-only telemetry)와 ops domain store(authoritative workflow state)를 분리하고, 신규 ops 테이블에 `workspace_id`, `created_at`, `updated_at`, `actor` 공통 컬럼을 포함
 - Backfill 설계 문서(`backfill-plan.md`)는 엔터티별 source->target 매핑, 필드 변환/널 처리 규칙, unsupported/skip code 정책을 함께 기록해 재실행 시 결정이 바뀌지 않도록 유지
 - Backfill 설계 문서에서 idempotency는 `<entity>:<workspace_id>:<entity_id>:<operation>:<version_token>` 형식을 기본으로 하고, replay 정렬 기준(`version_token`, `source_sequence`, operation rank, primary id)과 create/update/delete conflict 해소 규칙을 함께 명시
+- 리허설 검증은 `scripts/migration/rehearsal-check.sh`를 사용하며 입력 CSV 스키마를 고정(`entity,source_count,target_count` + `entity,diff_count`)하고 필수 엔터티(`tasks`,`reviews`,`notifications`,`activities`,`webhooks`) 누락/불일치를 실패로 처리
 
 ## 개발 규칙
 
@@ -63,6 +64,7 @@ packages/
 - 모든 패키지: Vitest
 - Collector parser/normalizer: 반드시 단위 테스트 작성
 - 테스트 데이터: `__tests__/fixtures/` 디렉토리에 샘플 JSONL 파일
+- pnpm v10 신규 환경에서는 `pnpm approve-builds`로 `better-sqlite3`, `esbuild` 빌드 스크립트를 먼저 승인해야 server 테스트에서 native binding 오류가 발생하지 않음
 
 ### Git
 - 브랜치: `feat/{package}/{feature}` (예: `feat/collectors/openclaw-watcher`)
