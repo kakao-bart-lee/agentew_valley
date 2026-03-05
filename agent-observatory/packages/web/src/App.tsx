@@ -20,7 +20,9 @@ function App() {
           <div className={activeView === 'dashboard' ? 'flex flex-col flex-1' : 'hidden'}><DashboardView /></div>
           <div className={activeView === 'pixel' ? 'flex flex-col flex-1' : 'hidden'}><PixelCanvasView /></div>
           <div className={activeView === 'sessions' ? 'flex flex-col flex-1' : 'hidden'}><SessionsView /></div>
-          <div className={activeView === 'mission-control' ? 'flex flex-col flex-1' : 'hidden'}><MissionControlView /></div>
+          {activeView === 'mission-control' ? (
+            <div className="flex flex-col flex-1"><MissionControlView /></div>
+          ) : null}
         </div>
       </div>
     </SocketProvider>
