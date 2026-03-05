@@ -5,7 +5,7 @@ export class HistoryStore {
   private db: Database.Database;
 
   constructor(dbPath?: string) {
-    this.db = new Database(dbPath ?? ':memory:');
+    this.db = new Database(dbPath ?? process.env.OBSERVATORY_DB_PATH ?? ':memory:');
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.initSchema();
@@ -37,6 +37,8 @@ export class HistoryStore {
         agent_name TEXT NOT NULL,
         source TEXT NOT NULL,
         team_id TEXT,
+        project_id TEXT,
+        model_id TEXT,
         start_time TEXT NOT NULL,
         end_time TEXT,
         total_events INTEGER DEFAULT 0,
@@ -51,9 +53,13 @@ export class HistoryStore {
         description TEXT,
         status TEXT DEFAULT 'inbox', -- inbox | assigned | in_progress | review | quality_review | done
         priority TEXT DEFAULT 'medium', -- low | medium | high | urgent
+        project TEXT,
         assigned_to TEXT, -- agent_id
+        checkout_agent_id TEXT,
+        checkout_at INTEGER,
         created_by TEXT,
         created_at INTEGER NOT NULL, -- Unix timestamp
+        started_at INTEGER,
         updated_at INTEGER NOT NULL, -- Unix timestamp
         due_date INTEGER,
         tags TEXT, -- JSON array
@@ -61,6 +67,14 @@ export class HistoryStore {
       );
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
+      CREATE TABLE IF NOT EXISTS agent_profiles (
+        agent_id TEXT PRIMARY KEY,
+        agent_name TEXT NOT NULL,
+        budget_monthly_cents INTEGER,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_profiles_budget ON agent_profiles(budget_monthly_cents);
 
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
@@ -109,7 +123,40 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
     `);
 
+    this.ensureSchemaCompatibility();
     this.initFTS();
+  }
+
+  private ensureSchemaCompatibility(): void {
+    for (const [table, columns] of Object.entries({
+      sessions: ['project_id TEXT', 'model_id TEXT'],
+      tasks: [
+        'project TEXT',
+        'checkout_agent_id TEXT',
+        'checkout_at INTEGER',
+        'started_at INTEGER',
+      ],
+    })) {
+      for (const column of columns) {
+        this.ensureColumn(table, column);
+      }
+    }
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+      CREATE INDEX IF NOT EXISTS idx_tasks_checkout ON tasks(checkout_agent_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at);
+    `);
+  }
+
+  private ensureColumn(table: string, columnDef: string): void {
+    try {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
+    } catch {
+      // Column already exists.
+    }
   }
 
   private initFTS(): void {
@@ -169,17 +216,32 @@ export class HistoryStore {
 
   private updateSession(event: UAEPEvent): void {
     if (event.type === 'session.start') {
+      const budgetMonthlyCents = typeof event.data?.['budget_monthly_cents'] === 'number'
+        ? Math.round(event.data['budget_monthly_cents'] as number)
+        : undefined;
+
       this.db.prepare(`
-        INSERT OR IGNORE INTO sessions (session_id, agent_id, agent_name, source, team_id, start_time, total_events, total_tokens, total_cost_usd)
-        VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)
+        INSERT OR IGNORE INTO sessions (
+          session_id, agent_id, agent_name, source, team_id, project_id, model_id,
+          start_time, total_events, total_tokens, total_cost_usd
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
       `).run(
         event.session_id,
         event.agent_id,
         event.agent_name ?? event.agent_id,
         event.source,
         event.team_id ?? null,
+        event.project_id ?? null,
+        event.model_id ?? (event.data?.['model_id'] as string | undefined) ?? null,
         event.ts,
       );
+
+      this.upsertAgentProfile({
+        agent_id: event.agent_id,
+        agent_name: event.agent_name ?? event.agent_id,
+        budget_monthly_cents: budgetMonthlyCents,
+      });
     }
 
     if (event.type === 'session.end') {
@@ -197,11 +259,16 @@ export class HistoryStore {
     if (event.type === 'metrics.usage' && event.data) {
       const tokens = typeof event.data['tokens'] === 'number' ? event.data['tokens'] : 0;
       const cost = typeof event.data['cost'] === 'number' ? event.data['cost'] : 0;
-      if (tokens > 0 || cost > 0) {
-        this.db.prepare(`
-          UPDATE sessions SET total_tokens = total_tokens + ?, total_cost_usd = total_cost_usd + ? WHERE session_id = ?
-        `).run(tokens, cost, event.session_id);
-      }
+      const projectId = event.project_id ?? (event.data['project_id'] as string | undefined);
+      const modelId = event.model_id ?? (event.data['model_id'] as string | undefined);
+      this.db.prepare(`
+        UPDATE sessions
+        SET total_tokens = total_tokens + ?,
+            total_cost_usd = total_cost_usd + ?,
+            project_id = COALESCE(project_id, ?),
+            model_id = COALESCE(model_id, ?)
+        WHERE session_id = ?
+      `).run(tokens, cost, projectId ?? null, modelId ?? null, event.session_id);
     }
 
     // Handle high-level Task/Activity events
@@ -219,19 +286,42 @@ export class HistoryStore {
   private upsertTask(task: any): void {
     const tagsStr = task.tags ? JSON.stringify(task.tags) : null;
     const metaStr = task.metadata ? JSON.stringify(task.metadata) : null;
+    const now = Math.floor(Date.now() / 1000);
+    const nextStatus = task.status ?? 'inbox';
+    const nextUpdatedAt = task.updated_at ?? now;
 
     // Check current state to detect changes
-    const current = this.db.prepare(`SELECT assigned_to, status FROM tasks WHERE id = ?`).get(task.id) as { assigned_to: string, status: string } | undefined;
+    const current = this.db.prepare(`
+      SELECT assigned_to, status, started_at FROM tasks WHERE id = ?
+    `).get(task.id) as {
+      assigned_to: string | null;
+      status: string;
+      started_at: number | null;
+    } | undefined;
+
+    const startedAt = typeof task.started_at === 'number'
+      ? task.started_at
+      : nextStatus === 'in_progress'
+        ? current?.status === 'in_progress' && current.started_at
+          ? current.started_at
+          : nextUpdatedAt
+        : null;
 
     this.db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, due_date, tags, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (
+        id, title, description, status, priority, project, assigned_to,
+        checkout_agent_id, checkout_at, created_by, created_at, started_at,
+        updated_at, due_date, tags, metadata
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         description = excluded.description,
         status = excluded.status,
         priority = excluded.priority,
+        project = excluded.project,
         assigned_to = excluded.assigned_to,
+        started_at = excluded.started_at,
         updated_at = excluded.updated_at,
         due_date = excluded.due_date,
         tags = excluded.tags,
@@ -240,12 +330,16 @@ export class HistoryStore {
       task.id,
       task.title,
       task.description ?? null,
-      task.status ?? 'inbox',
+      nextStatus,
       task.priority ?? 'medium',
+      task.project ?? null,
       task.assigned_to ?? null,
+      task.checkout_agent_id ?? null,
+      task.checkout_at ?? null,
       task.created_by ?? null,
-      task.created_at ?? Math.floor(Date.now() / 1000),
-      task.updated_at ?? Math.floor(Date.now() / 1000),
+      task.created_at ?? now,
+      startedAt,
+      nextUpdatedAt,
       task.due_date ?? null,
       tagsStr,
       metaStr,
@@ -264,14 +358,14 @@ export class HistoryStore {
     }
 
     // Notify on status change to 'review'
-    if (task.status === 'review' && task.status !== current?.status) {
-       this.upsertNotification({
+    if (nextStatus === 'review' && nextStatus !== current?.status) {
+      this.upsertNotification({
         recipient: 'observatory', // Broadcast to system or manager
         type: 'status_change',
         title: 'Task Ready for Review',
         message: `Task "${task.title}" is ready for review by ${task.assigned_to}`,
         source_type: 'task',
-        source_id: task.id
+        source_id: task.id,
       });
     }
   }
@@ -315,6 +409,34 @@ export class HistoryStore {
       notif.read_at ?? null,
       notif.created_at ?? Math.floor(Date.now() / 1000)
     );
+  }
+
+  private upsertAgentProfile(profile: {
+    agent_id: string;
+    agent_name: string;
+    budget_monthly_cents?: number;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO agent_profiles (agent_id, agent_name, budget_monthly_cents, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        agent_name = excluded.agent_name,
+        budget_monthly_cents = COALESCE(excluded.budget_monthly_cents, agent_profiles.budget_monthly_cents),
+        updated_at = excluded.updated_at
+    `).run(
+      profile.agent_id,
+      profile.agent_name,
+      profile.budget_monthly_cents ?? null,
+      new Date().toISOString(),
+    );
+  }
+
+  setAgentBudget(agentId: string, budgetMonthlyCents: number, agentName = agentId): void {
+    this.upsertAgentProfile({
+      agent_id: agentId,
+      agent_name: agentName,
+      budget_monthly_cents: budgetMonthlyCents,
+    });
   }
 
   getByAgent(
@@ -536,6 +658,84 @@ export class HistoryStore {
     }[];
   }
 
+  /** Get cost grouped by project (excludes sessions without project_id) */
+  getCostByProject(opts?: { from?: string; to?: string }): {
+    project_id: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    session_count: number;
+    agent_count: number;
+  }[] {
+    const conditions = ['project_id IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT project_id,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as session_count,
+             COUNT(DISTINCT agent_id) as agent_count
+      FROM sessions ${where}
+      GROUP BY project_id
+      ORDER BY total_cost_usd DESC, project_id ASC
+    `).all(...params) as {
+      project_id: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      session_count: number;
+      agent_count: number;
+    }[];
+  }
+
+  /** Get cost grouped by model (excludes sessions without model_id) */
+  getCostByModel(opts?: { from?: string; to?: string }): {
+    model_id: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    session_count: number;
+    agent_count: number;
+  }[] {
+    const conditions = ['model_id IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT model_id,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as session_count,
+             COUNT(DISTINCT agent_id) as agent_count
+      FROM sessions ${where}
+      GROUP BY model_id
+      ORDER BY total_cost_usd DESC, model_id ASC
+    `).all(...params) as {
+      model_id: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      session_count: number;
+      agent_count: number;
+    }[];
+  }
+
   /** Get cost grouped by team (excludes sessions without team_id) */
   getCostByTeam(opts?: { from?: string; to?: string }): {
     team_id: string;
@@ -659,6 +859,74 @@ export class HistoryStore {
     `).all(...params) as { agent_id: string; agent_name: string; total_tokens: number }[];
   }
 
+  getBudgetAlerts(opts?: {
+    monthStart?: string;
+    monthEnd?: string;
+    warningThreshold?: number;
+  }): {
+    agent_id: string;
+    agent_name: string;
+    budget_monthly_cents: number;
+    spent_monthly_cents: number;
+    spent_monthly_usd: number;
+    utilization_ratio: number;
+    severity: 'warning' | 'critical';
+  }[] {
+    const now = new Date();
+    const monthStart = opts?.monthStart
+      ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const monthEnd = opts?.monthEnd
+      ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+    const warningThreshold = opts?.warningThreshold ?? 0.8;
+
+    const rows = this.db.prepare(`
+      SELECT ap.agent_id,
+             ap.agent_name,
+             ap.budget_monthly_cents,
+             COALESCE(CAST(ROUND(SUM(s.total_cost_usd) * 100) AS INTEGER), 0) as spent_monthly_cents,
+             COALESCE(SUM(s.total_cost_usd), 0) as spent_monthly_usd
+      FROM agent_profiles ap
+      LEFT JOIN sessions s
+        ON s.agent_id = ap.agent_id
+       AND s.start_time >= ?
+       AND s.start_time < ?
+      WHERE ap.budget_monthly_cents IS NOT NULL
+        AND ap.budget_monthly_cents > 0
+      GROUP BY ap.agent_id, ap.agent_name, ap.budget_monthly_cents
+    `).all(monthStart, monthEnd) as {
+      agent_id: string;
+      agent_name: string;
+      budget_monthly_cents: number;
+      spent_monthly_cents: number;
+      spent_monthly_usd: number;
+    }[];
+
+    return rows
+      .map((row) => {
+        const utilizationRatio = row.budget_monthly_cents > 0
+          ? row.spent_monthly_cents / row.budget_monthly_cents
+          : 0;
+        if (utilizationRatio < warningThreshold) {
+          return null;
+        }
+        return {
+          ...row,
+          utilization_ratio: utilizationRatio,
+          severity: utilizationRatio >= 1 ? 'critical' as const : 'warning' as const,
+        };
+      })
+      .filter((row): row is {
+        agent_id: string;
+        agent_name: string;
+        budget_monthly_cents: number;
+        spent_monthly_cents: number;
+        spent_monthly_usd: number;
+        utilization_ratio: number;
+        severity: 'warning' | 'critical';
+      } => row !== null)
+      .sort((a, b) => b.utilization_ratio - a.utilization_ratio);
+  }
+
   /** Close the database connection */
   close(): void {
     this.db.close();
@@ -700,6 +968,8 @@ interface SessionRow {
   agent_name: string;
   source: string;
   team_id: string | null;
+  project_id: string | null;
+  model_id: string | null;
   start_time: string;
   end_time: string | null;
   total_events: number;

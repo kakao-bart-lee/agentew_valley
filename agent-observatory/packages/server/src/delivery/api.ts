@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Response } from 'express';
+import type Database from 'better-sqlite3';
 import type { StateManager } from '../core/state-manager.js';
 import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
@@ -57,6 +58,123 @@ const DEFAULT_CONFIG: ApiConfig = {
   shadowReportProvider: defaultShadowReportProvider,
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
 };
+
+const STALE_TASK_THRESHOLD_SECONDS = 60 * 60;
+
+type TaskRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  project: string | null;
+  assigned_to: string | null;
+  checkout_agent_id: string | null;
+  checkout_at: number | null;
+  created_by: string | null;
+  created_at: number;
+  started_at: number | null;
+  updated_at: number;
+  due_date: number | null;
+  tags: string | null;
+  metadata: string | null;
+  is_stale?: number;
+};
+
+function getStaleCutoff(nowSeconds = Math.floor(Date.now() / 1000)): number {
+  return nowSeconds - STALE_TASK_THRESHOLD_SECONDS;
+}
+
+type TaskResponseRow = Omit<TaskRow, 'is_stale'> & { is_stale: boolean };
+
+function mapTaskRow(task: TaskRow, staleCutoff = getStaleCutoff()): TaskResponseRow {
+  return {
+    ...task,
+    is_stale: task.is_stale !== undefined
+      ? Boolean(task.is_stale)
+      : task.status === 'in_progress' && (task.started_at ?? task.updated_at) <= staleCutoff,
+  };
+}
+
+function getTaskSelectSql(where = ''): string {
+  return `
+    SELECT
+      id,
+      title,
+      description,
+      status,
+      priority,
+      project,
+      assigned_to,
+      checkout_agent_id,
+      checkout_at,
+      created_by,
+      created_at,
+      started_at,
+      updated_at,
+      due_date,
+      tags,
+      metadata,
+      CASE
+        WHEN status = 'in_progress' AND COALESCE(started_at, updated_at) <= ? THEN 1
+        ELSE 0
+      END AS is_stale
+    FROM tasks
+    ${where}
+  `;
+}
+
+function getTaskById(db: Database.Database, taskId: string): TaskResponseRow | null {
+  const row = db.prepare(`${getTaskSelectSql('WHERE id = ?')} LIMIT 1`).get(
+    getStaleCutoff(),
+    taskId,
+  ) as TaskRow | undefined;
+  return row ? mapTaskRow(row) : null;
+}
+
+function getStaleTasks(db: Database.Database, limit = 10): Array<{
+  id: string;
+  title: string;
+  project?: string;
+  assigned_to?: string;
+  checkout_agent_id?: string;
+  started_at?: number;
+  updated_at: number;
+  stale_for_seconds: number;
+}> {
+  const staleCutoff = getStaleCutoff();
+  const now = Math.floor(Date.now() / 1000);
+  const rows = db.prepare(`
+    SELECT id, title, project, assigned_to, checkout_agent_id, started_at, updated_at
+    FROM tasks
+    WHERE status = 'in_progress'
+      AND COALESCE(started_at, updated_at) <= ?
+    ORDER BY COALESCE(started_at, updated_at) ASC
+    LIMIT ?
+  `).all(staleCutoff, limit) as Array<{
+    id: string;
+    title: string;
+    project: string | null;
+    assigned_to: string | null;
+    checkout_agent_id: string | null;
+    started_at: number | null;
+    updated_at: number;
+  }>;
+
+  return rows.map((row) => {
+    const startedAt = row.started_at ?? row.updated_at;
+    return {
+      id: row.id,
+      title: row.title,
+      project: row.project ?? undefined,
+      assigned_to: row.assigned_to ?? undefined,
+      checkout_agent_id: row.checkout_agent_id ?? undefined,
+      started_at: row.started_at ?? undefined,
+      updated_at: row.updated_at,
+      stale_for_seconds: Math.max(now - startedAt, 0),
+    };
+  });
+}
 
 function sendFeatureFlagDisabled(
   featureFlag: 'auth_v2' | 'tasks_v2' | 'webhooks_v2',
@@ -141,6 +259,8 @@ export function createApiRouter(
       agent_name: r.agent_name,
       source: r.source,
       team_id: r.team_id ?? undefined,
+      project_id: r.project_id ?? undefined,
+      model_id: r.model_id ?? undefined,
       start_time: r.start_time,
       end_time: r.end_time ?? undefined,
       total_events: r.total_events,
@@ -202,6 +322,8 @@ export function createApiRouter(
       agent_name: session.agent_name,
       source: session.source,
       team_id: session.team_id ?? undefined,
+      project_id: session.project_id ?? undefined,
+      model_id: session.model_id ?? undefined,
       start_time: session.start_time,
       end_time: session.end_time ?? undefined,
       duration_ms,
@@ -230,6 +352,48 @@ export function createApiRouter(
   router.get('/api/v1/metrics/summary', (_req, res) => {
     const metrics = metricsAggregator.getSnapshot();
     res.json({ metrics });
+  });
+
+  // GET /api/v1/dashboard/summary
+  router.get('/api/v1/dashboard/summary', (req, res) => {
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const costSummary = historyStore.getCostSummary({ from, to });
+    const topProjects = historyStore.getCostByProject({ from, to });
+    const topAgents = historyStore.getCostByAgent({ from, to });
+    const topModels = historyStore.getCostByModel({ from, to });
+    const budgetAlerts = historyStore.getBudgetAlerts();
+    const mcDb = config.getMcDb?.();
+    const staleTasks = mcDb ? getStaleTasks(mcDb, 10) : [];
+    const alertSeverity = budgetAlerts.some((alert) => alert.severity === 'critical')
+      ? 'critical'
+      : budgetAlerts.length > 0 || staleTasks.length > 0
+        ? 'warning'
+        : 'ok';
+
+    const withPercentages = <T extends { total_cost_usd: number }>(rows: T[]) =>
+      rows.map((row) => ({
+        ...row,
+        cost_percentage: costSummary.total_cost_usd > 0
+          ? (row.total_cost_usd / costSummary.total_cost_usd) * 100
+          : 0,
+      }));
+
+    res.json({
+      time_range: {
+        from: from ?? '1970-01-01T00:00:00Z',
+        to: to ?? new Date().toISOString(),
+      },
+      cost_summary: costSummary,
+      top_projects: withPercentages(topProjects).slice(0, 5),
+      top_agents: withPercentages(topAgents).slice(0, 5),
+      top_models: withPercentages(topModels).slice(0, 5),
+      budget_alerts: budgetAlerts,
+      stale_tasks: staleTasks,
+      pending_alerts: budgetAlerts.length + staleTasks.length,
+      alert_severity: alertSeverity,
+      mc_db_connected: mcDb != null,
+    });
   });
 
   // GET /api/v1/metrics/timeseries
@@ -321,8 +485,10 @@ export function createApiRouter(
     const status = req.query.status as string | undefined;
     const assignedTo = req.query.assigned_to as string | undefined;
     const priority = req.query.priority as string | undefined;
+    const project = req.query.project as string | undefined;
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
     const offset = parseInt(req.query.offset as string, 10) || 0;
+    const staleCutoff = getStaleCutoff();
 
     const conditions: string[] = [];
     const params: (string | number)[] = [];
@@ -330,13 +496,15 @@ export function createApiRouter(
     if (status) { conditions.push('status = ?'); params.push(status); }
     if (assignedTo) { conditions.push('assigned_to = ?'); params.push(assignedTo); }
     if (priority) { conditions.push('priority = ?'); params.push(priority); }
+    if (project) { conditions.push('project = ?'); params.push(project); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     try {
       const tasks = db
-        .prepare(`SELECT id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, due_date, tags, metadata FROM tasks ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-        .all(...params, limit, offset);
+        .prepare(`${getTaskSelectSql(where)} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+        .all(staleCutoff, ...params, limit, offset)
+        .map((task) => mapTaskRow(task as TaskRow, staleCutoff));
       const totalRow = db
         .prepare(`SELECT COUNT(*) as count FROM tasks ${where}`)
         .get(...params) as { count: number };
@@ -345,6 +513,79 @@ export function createApiRouter(
     } catch (err) {
       res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
     }
+  });
+
+  // POST /api/v2/tasks/:id/checkout
+  router.post('/api/v2/tasks/:id/checkout', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const taskId = req.params.id;
+    const agentId = typeof req.body?.agent_id === 'string' ? req.body.agent_id.trim() : '';
+    if (!agentId) {
+      res.status(400).json({ error: 'agent_id is required', code: 'MISSING_AGENT_ID' });
+      return;
+    }
+
+    const checkoutAt = Math.floor(Date.now() / 1000);
+    const result = db.prepare(`
+      UPDATE tasks
+      SET checkout_agent_id = ?, checkout_at = ?
+      WHERE id = ?
+        AND (checkout_agent_id IS NULL OR checkout_agent_id = ?)
+    `).run(agentId, checkoutAt, taskId, agentId);
+
+    if (result.changes === 0) {
+      const task = getTaskById(db, taskId);
+      if (!task) {
+        res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' });
+        return;
+      }
+      res.status(409).json({
+        error: 'Task is already checked out by another agent',
+        code: 'TASK_CHECKOUT_CONFLICT',
+        task,
+      });
+      return;
+    }
+
+    try {
+      db.prepare(`
+        INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `task_checkout_${taskId}_${checkoutAt}`,
+        'task_checkout',
+        'task',
+        taskId,
+        agentId,
+        `Task "${taskId}" was checked out by ${agentId}`,
+        JSON.stringify({ checkout_agent_id: agentId, checkout_at: checkoutAt }),
+        checkoutAt,
+      );
+    } catch {
+      // Ignore activity log write failures for external MC DBs with older schemas.
+    }
+
+    const task = getTaskById(db, taskId);
+    res.json({
+      domain: 'tasks',
+      version: 'v2',
+      status: 'checked_out',
+      task,
+    });
   });
 
   // GET /api/v2/activities

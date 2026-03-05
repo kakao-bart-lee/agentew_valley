@@ -473,6 +473,129 @@ describe('REST API', () => {
     });
   });
 
+  describe('dashboard summary and task checkout', () => {
+    it('should expose pending alerts, top cost breakdowns, and stale tasks', async () => {
+      instance.historyStore.setAgentBudget('agent-1', 100, 'Moonlit');
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1', {
+        ts: '2026-03-01T10:00:00Z',
+        project_id: 'moonlit',
+        model_id: 'claude-sonnet-4-6',
+      }));
+      instance.eventBus.publish(makeMetricsUsage(100, 0.90, 'agent-1', { session_id: 'sess-1' }));
+      instance.eventBus.publish(makeEvent({
+        type: 'task.sync',
+        source: 'mission_control',
+        agent_id: 'observatory',
+        session_id: 'mission_control_sync',
+        data: {
+          id: 'task-1',
+          title: 'Investigate stale worker',
+          project: 'moonlit',
+          status: 'in_progress',
+          priority: 'high',
+          assigned_to: 'agent-1',
+          created_at: Math.floor(new Date('2026-03-01T09:00:00Z').getTime() / 1000),
+          started_at: Math.floor(new Date('2026-03-01T09:00:00Z').getTime() / 1000),
+          updated_at: Math.floor(new Date('2026-03-01T09:10:00Z').getTime() / 1000),
+        },
+      }));
+
+      const res = await request(instance.app).get(
+        '/api/v1/dashboard/summary?from=2026-03-01T00:00:00Z&to=2026-04-01T00:00:00Z',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.cost_summary.total_cost_usd).toBeCloseTo(0.90);
+      expect(res.body.top_projects[0].project_id).toBe('moonlit');
+      expect(res.body.top_models[0].model_id).toBe('claude-sonnet-4-6');
+      expect(res.body.budget_alerts).toHaveLength(1);
+      expect(res.body.stale_tasks).toHaveLength(1);
+      expect(res.body.pending_alerts).toBe(2);
+      expect(res.body.alert_severity).toBe('warning');
+    });
+
+    it('should return tasks with project and stale fields when tasks v2 is enabled', async () => {
+      const tasksInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          tasks_v2: true,
+        },
+      });
+
+      try {
+        tasksInstance.eventBus.publish(makeEvent({
+          type: 'task.sync',
+          source: 'mission_control',
+          agent_id: 'observatory',
+          session_id: 'mission_control_sync',
+          data: {
+            id: 'task-1',
+            title: 'Refactor dashboard summary',
+            project: 'moonlit',
+            status: 'in_progress',
+            priority: 'high',
+            assigned_to: 'agent-1',
+            created_at: Math.floor(Date.now() / 1000) - 7200,
+            started_at: Math.floor(Date.now() / 1000) - 7200,
+            updated_at: Math.floor(Date.now() / 1000) - 3600,
+          },
+        }));
+
+        const res = await request(tasksInstance.app).get('/api/v2/tasks?project=moonlit');
+        expect(res.status).toBe(200);
+        expect(res.body.tasks).toHaveLength(1);
+        expect(res.body.tasks[0].project).toBe('moonlit');
+        expect(res.body.tasks[0].is_stale).toBe(true);
+      } finally {
+        tasksInstance.close();
+        tasksInstance.server.close();
+        tasksInstance.io.close();
+      }
+    });
+
+    it('should enforce atomic checkout and return 409 on conflict', async () => {
+      const tasksInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          tasks_v2: true,
+        },
+      });
+
+      try {
+        tasksInstance.eventBus.publish(makeEvent({
+          type: 'task.sync',
+          source: 'mission_control',
+          agent_id: 'observatory',
+          session_id: 'mission_control_sync',
+          data: {
+            id: 'task-1',
+            title: 'Atomic checkout',
+            status: 'assigned',
+            priority: 'medium',
+            updated_at: Math.floor(Date.now() / 1000),
+          },
+        }));
+
+        const first = await request(tasksInstance.app)
+          .post('/api/v2/tasks/task-1/checkout')
+          .send({ agent_id: 'agent-1' });
+        expect(first.status).toBe(200);
+        expect(first.body.task.checkout_agent_id).toBe('agent-1');
+
+        const conflict = await request(tasksInstance.app)
+          .post('/api/v2/tasks/task-1/checkout')
+          .send({ agent_id: 'agent-2' });
+        expect(conflict.status).toBe(409);
+        expect(conflict.body.code).toBe('TASK_CHECKOUT_CONFLICT');
+        expect(conflict.body.task.checkout_agent_id).toBe('agent-1');
+      } finally {
+        tasksInstance.close();
+        tasksInstance.server.close();
+        tasksInstance.io.close();
+      }
+    });
+  });
+
   describe('POST /api/v1/events/batch', () => {
     it('should accept batch events', async () => {
       const events = [

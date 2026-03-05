@@ -96,6 +96,7 @@ export const AGENT_SOURCE_TYPES: readonly AgentSourceType[] = [
   'langchain',
   'crewai',
   'custom',
+  'mission_control',
 ] as const;
 
 /** 지원하는 모든 UAEPEventType 값 목록 */
@@ -113,4 +114,7 @@ export const UAEP_EVENT_TYPES: readonly UAEPEventType[] = [
   'subagent.spawn',
   'subagent.end',
   'metrics.usage',
+  'task.sync',
+  'activity.new',
+  'notification.new',
 ] as const;

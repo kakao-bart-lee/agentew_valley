@@ -56,6 +56,28 @@ export function createAnalyticsRouter(historyStore: HistoryStore): Router {
     });
   });
 
+  // GET /api/v1/analytics/cost/by-project
+  router.get('/api/v1/analytics/cost/by-project', (req, res) => {
+    const { from, to } = parseTimeRange(req);
+    const projects = historyStore.getCostByProject({ from, to });
+    const summary = historyStore.getCostSummary({ from, to });
+    const range = getEffectiveTimeRange(from, to);
+
+    const projectsWithPercentage = projects.map((project) => ({
+      ...project,
+      cost_percentage: summary.total_cost_usd > 0
+        ? (project.total_cost_usd / summary.total_cost_usd) * 100
+        : 0,
+    }));
+
+    res.json({
+      time_range: range,
+      projects: projectsWithPercentage,
+      total_cost_usd: summary.total_cost_usd,
+      total_tokens: summary.total_tokens,
+    });
+  });
+
   // GET /api/v1/analytics/cost/by-team
   router.get('/api/v1/analytics/cost/by-team', (req, res) => {
     const { from, to } = parseTimeRange(req);
@@ -73,6 +95,28 @@ export function createAnalyticsRouter(historyStore: HistoryStore): Router {
     res.json({
       time_range: range,
       teams: teamsWithPercentage,
+      total_cost_usd: summary.total_cost_usd,
+      total_tokens: summary.total_tokens,
+    });
+  });
+
+  // GET /api/v1/analytics/cost/by-model
+  router.get('/api/v1/analytics/cost/by-model', (req, res) => {
+    const { from, to } = parseTimeRange(req);
+    const models = historyStore.getCostByModel({ from, to });
+    const summary = historyStore.getCostSummary({ from, to });
+    const range = getEffectiveTimeRange(from, to);
+
+    const modelsWithPercentage = models.map((model) => ({
+      ...model,
+      cost_percentage: summary.total_cost_usd > 0
+        ? (model.total_cost_usd / summary.total_cost_usd) * 100
+        : 0,
+    }));
+
+    res.json({
+      time_range: range,
+      models: modelsWithPercentage,
       total_cost_usd: summary.total_cost_usd,
       total_tokens: summary.total_tokens,
     });

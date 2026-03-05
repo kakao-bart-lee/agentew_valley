@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
 
 interface McActivity {
   id: number;
@@ -40,9 +41,7 @@ export function MCActivityFeed() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const apiBase = (window as any).__OBSERVATORY_API__ ?? 'http://localhost:3000';
-    fetch(`${apiBase}/api/v2/activities?limit=50`)
-      .then((r) => r.json())
+    fetchJsonWithAuth<ActivitiesResponse>(`${getApiBase()}/api/v2/activities?limit=50`)
       .then((d: ActivitiesResponse) => { setData(d); setLoading(false); })
       .catch(() => { setData({ activities: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' }); setLoading(false); });
   }, []);

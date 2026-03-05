@@ -121,6 +121,52 @@ describe('Analytics API', () => {
     });
   });
 
+  describe('GET /api/v1/analytics/cost/by-project', () => {
+    it('should return empty projects for empty DB', async () => {
+      const res = await request(instance.app).get('/api/v1/analytics/cost/by-project');
+      expect(res.status).toBe(200);
+      expect(res.body.projects).toEqual([]);
+    });
+
+    it('should group costs by project', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1', { project_id: 'moonlit' }));
+      instance.eventBus.publish(makeMetricsUsage(100, 0.10, 'agent-1', { session_id: 'sess-1' }));
+      instance.eventBus.publish(makeSessionStart('agent-2', 'sess-2', { project_id: 'moonlit' }));
+      instance.eventBus.publish(makeMetricsUsage(200, 0.20, 'agent-2', { session_id: 'sess-2' }));
+      instance.eventBus.publish(makeSessionStart('agent-3', 'sess-3', { project_id: 'sunrise' }));
+      instance.eventBus.publish(makeMetricsUsage(50, 0.05, 'agent-3', { session_id: 'sess-3' }));
+
+      const res = await request(instance.app).get('/api/v1/analytics/cost/by-project');
+      expect(res.body.projects).toHaveLength(2);
+
+      const moonlit = res.body.projects.find((project: { project_id: string }) => project.project_id === 'moonlit');
+      expect(moonlit.total_tokens).toBe(300);
+      expect(moonlit.agent_count).toBe(2);
+      expect(moonlit.cost_percentage).toBeCloseTo((0.30 / 0.35) * 100);
+    });
+  });
+
+  describe('GET /api/v1/analytics/cost/by-model', () => {
+    it('should return empty models for empty DB', async () => {
+      const res = await request(instance.app).get('/api/v1/analytics/cost/by-model');
+      expect(res.status).toBe(200);
+      expect(res.body.models).toEqual([]);
+    });
+
+    it('should group costs by model', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1', { model_id: 'claude-sonnet-4-6' }));
+      instance.eventBus.publish(makeMetricsUsage(100, 0.10, 'agent-1', { session_id: 'sess-1' }));
+      instance.eventBus.publish(makeSessionStart('agent-2', 'sess-2', { model_id: 'gpt-5-mini' }));
+      instance.eventBus.publish(makeMetricsUsage(200, 0.20, 'agent-2', { session_id: 'sess-2' }));
+
+      const res = await request(instance.app).get('/api/v1/analytics/cost/by-model');
+      expect(res.body.models).toHaveLength(2);
+      expect(res.body.models[0].model_id).toBe('gpt-5-mini');
+      expect(res.body.models[0].total_tokens).toBe(200);
+      expect(res.body.models[1].model_id).toBe('claude-sonnet-4-6');
+    });
+  });
+
   describe('GET /api/v1/analytics/cost/by-tool', () => {
     it('should return empty tools for empty DB', async () => {
       const res = await request(instance.app).get('/api/v1/analytics/cost/by-tool');

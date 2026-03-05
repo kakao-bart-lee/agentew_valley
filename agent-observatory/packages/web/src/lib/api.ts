@@ -8,3 +8,11 @@ export const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
   }
   return fetch(url, { ...options, headers });
 };
+
+export async function fetchJsonWithAuth<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetchWithAuth(url, options);
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
