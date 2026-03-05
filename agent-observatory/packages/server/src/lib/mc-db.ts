@@ -9,6 +9,10 @@ export function getMcDb(): Database.Database | null {
   return mcDb;
 }
 
+export function setMcDb(db: Database.Database): void {
+  mcDb = db;
+}
+
 export function getMcDbPath(): string | null {
   return mcDbPath;
 }

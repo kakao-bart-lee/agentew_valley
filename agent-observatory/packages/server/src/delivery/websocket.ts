@@ -22,10 +22,21 @@ export function createWebSocketServer(
   stateManager: StateManager,
   eventBus: EventBus,
   metricsAggregator: MetricsAggregator,
+  dashboardApiKey?: string,
 ): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
   });
+
+  if (dashboardApiKey) {
+    io.use((socket, next) => {
+      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
+      if (token !== dashboardApiKey) {
+        return next(new Error('Unauthorized'));
+      }
+      next();
+    });
+  }
 
   const clients = new Map<string, ClientState>();
 

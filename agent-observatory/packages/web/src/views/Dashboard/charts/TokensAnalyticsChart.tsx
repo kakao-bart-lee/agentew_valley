@@ -27,7 +27,7 @@ export function TokensAnalyticsChart({ data }: Props) {
                 <span className="text-xs text-slate-500 font-mono">Total: {formatLargeNumber(data.total_tokens)}</span>
             </div>
             <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <AreaChart data={chartData}>
                         <defs>
                             <linearGradient id="tokenGradient" x1="0" y1="0" x2="0" y2="1">

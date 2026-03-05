@@ -19,7 +19,7 @@ export function CacheEfficiencyChart({ data }: CacheEfficiencyChartProps) {
         <div>
             <h3 className="text-sm font-medium text-slate-400 mb-2">Cache Hit Rate (Last 60m)</h3>
             <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <AreaChart data={data}>
                         <defs>
                             <linearGradient id="cacheGrad" x1="0" y1="0" x2="0" y2="1">

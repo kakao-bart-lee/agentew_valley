@@ -30,7 +30,7 @@ export function ModelDistributionChart({ data }: ModelDistributionChartProps) {
             <h3 className="text-sm font-medium text-slate-400 mb-3">Model Distribution</h3>
             {/* 모델별 토큰 바 차트 */}
             <div className="h-36 mb-3">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 8, top: 0, bottom: 0 }}>
                         <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
                         <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={52} />

@@ -24,7 +24,7 @@ interface AgentStore {
 
 export const useAgentStore = create<AgentStore>((set) => ({
     agents: new Map(),
-    activeView: 'dashboard',
+    activeView: 'mission-control',
     selectedAgentId: null,
 
     connected: false,

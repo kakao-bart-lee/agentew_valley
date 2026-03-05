@@ -27,7 +27,7 @@ export function CostByTeamChart({ data }: Props) {
         <div className="mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Cost by Team</h3>
             <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={barData} layout="vertical" margin={{ left: 0, right: 30 }}>
                         <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} tickFormatter={v => `$${v.toFixed(3)}`} />
                         <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} width={70} />

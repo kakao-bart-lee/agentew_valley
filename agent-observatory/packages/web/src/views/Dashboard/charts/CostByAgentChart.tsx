@@ -29,7 +29,7 @@ export function CostByAgentChart({ data }: Props) {
         <div className="mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Cost by Agent</h3>
             <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <PieChart>
                         <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} innerRadius={35}>
                             {pieData.map((entry, i) => (

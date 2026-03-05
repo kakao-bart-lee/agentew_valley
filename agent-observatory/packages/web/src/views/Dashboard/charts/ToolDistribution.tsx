@@ -9,7 +9,7 @@ export function ToolDistribution({ data }: ToolDistributionProps) {
     return (
         <div className="h-48 mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Tool Category Distribution</h3>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
                     <XAxis type="number" hide />
                     <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={11} axisLine={false} tickLine={false} width={80} />

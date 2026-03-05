@@ -8,7 +8,7 @@ export function ActiveAgentsChart({ data }: ActiveAgentsChartProps) {
     return (
         <div className="h-44 mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Active Agents (Last 60m)</h3>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={data}>
                     <defs>
                         <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">

@@ -37,6 +37,7 @@ export const SOURCE_COLORS: Record<AgentSourceType, string> = {
     langchain: '#ec4899',
     crewai: '#10b981',
     custom: '#9ca3af',
+    mission_control: '#6366f1',
 };
 
 export const SOURCE_LABELS: Record<AgentSourceType, string> = {
@@ -46,6 +47,7 @@ export const SOURCE_LABELS: Record<AgentSourceType, string> = {
     langchain: 'LC',
     crewai: 'Crew',
     custom: '⚙️',
+    mission_control: 'MC',
 };
 
 /** model_id → 뱃지 배경색 */

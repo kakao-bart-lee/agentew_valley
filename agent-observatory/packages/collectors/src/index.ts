@@ -16,4 +16,7 @@ export type { AgentSDKCollectorConfig } from './agent-sdk/index.js';
 export { HTTPCollector } from './http/index.js';
 export type { HTTPCollectorConfig } from './http/index.js';
 
+export { MissionControlCollector } from './mission-control/index.js';
+export type { MissionControlCollectorConfig } from './mission-control/index.js';
+
 export type { Collector, CollectorConfig } from './base.js';

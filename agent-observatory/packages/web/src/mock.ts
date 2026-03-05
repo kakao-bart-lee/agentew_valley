@@ -152,6 +152,7 @@ export function generateMockMetrics(): MetricsSnapshot {
             langchain: 0,
             crewai: 0,
             custom: 0,
+            mission_control: 0,
         },
         model_distribution: {
             'claude-sonnet-4-6': { agent_count: 1, token_count: 12500 },

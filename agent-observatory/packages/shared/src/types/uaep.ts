@@ -13,7 +13,8 @@ export type AgentSourceType =
   | 'agent_sdk'
   | 'langchain'
   | 'crewai'
-  | 'custom';
+  | 'custom'
+  | 'mission_control';
 
 /** UAEP 이벤트 타입 (Phase 1 최소 세트) */
 export type UAEPEventType =
@@ -29,7 +30,10 @@ export type UAEPEventType =
   | 'user.permission'
   | 'subagent.spawn'
   | 'subagent.end'
-  | 'metrics.usage';
+  | 'metrics.usage'
+  | 'task.sync'
+  | 'activity.new'
+  | 'notification.new';
 
 /**
  * UAEP-min 이벤트 Envelope.

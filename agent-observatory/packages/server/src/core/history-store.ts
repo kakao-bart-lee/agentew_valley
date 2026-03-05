@@ -44,6 +44,69 @@ export class HistoryStore {
         total_cost_usd REAL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
+
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'inbox', -- inbox | assigned | in_progress | review | quality_review | done
+        priority TEXT DEFAULT 'medium', -- low | medium | high | urgent
+        assigned_to TEXT, -- agent_id
+        created_by TEXT,
+        created_at INTEGER NOT NULL, -- Unix timestamp
+        updated_at INTEGER NOT NULL, -- Unix timestamp
+        due_date INTEGER,
+        tags TEXT, -- JSON array
+        metadata TEXT -- JSON object
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
+      CREATE TABLE IF NOT EXISTS activities (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL, -- task_created | task_updated | comment_added | agent_status_change ...
+        entity_type TEXT NOT NULL, -- task | agent | comment
+        entity_id TEXT,
+        actor TEXT, -- Who performed the action
+        description TEXT, -- Human readable description
+        data TEXT, -- JSON context
+        created_at INTEGER NOT NULL -- Unix timestamp
+      );
+      CREATE INDEX IF NOT EXISTS idx_activities_entity ON activities(entity_type, entity_id);
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        recipient TEXT NOT NULL, -- agent_id
+        type TEXT NOT NULL, -- assignment | mention | status_change | due_date
+        title TEXT NOT NULL,
+        message TEXT,
+        source_type TEXT,
+        source_id TEXT,
+        read_at INTEGER, -- NULL if unread
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient, read_at);
+
+      CREATE TABLE IF NOT EXISTS webhooks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        events TEXT, -- JSON array
+        enabled INTEGER DEFAULT 1,
+        last_fired_at INTEGER,
+        last_status INTEGER,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        id TEXT PRIMARY KEY,
+        webhook_id TEXT NOT NULL,
+        status_code INTEGER,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (webhook_id) REFERENCES webhooks(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
     `);
 
     this.initFTS();
@@ -140,6 +203,118 @@ export class HistoryStore {
         `).run(tokens, cost, event.session_id);
       }
     }
+
+    // Handle high-level Task/Activity events
+    if (event.type === 'task.sync' && event.data) {
+      this.upsertTask(event.data);
+    }
+    if (event.type === 'activity.new' && event.data) {
+      this.upsertActivity(event.data);
+    }
+    if (event.type === 'notification.new' && event.data) {
+      this.upsertNotification(event.data);
+    }
+  }
+
+  private upsertTask(task: any): void {
+    const tagsStr = task.tags ? JSON.stringify(task.tags) : null;
+    const metaStr = task.metadata ? JSON.stringify(task.metadata) : null;
+
+    // Check current state to detect changes
+    const current = this.db.prepare(`SELECT assigned_to, status FROM tasks WHERE id = ?`).get(task.id) as { assigned_to: string, status: string } | undefined;
+
+    this.db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, due_date, tags, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        status = excluded.status,
+        priority = excluded.priority,
+        assigned_to = excluded.assigned_to,
+        updated_at = excluded.updated_at,
+        due_date = excluded.due_date,
+        tags = excluded.tags,
+        metadata = excluded.metadata
+    `).run(
+      task.id,
+      task.title,
+      task.description ?? null,
+      task.status ?? 'inbox',
+      task.priority ?? 'medium',
+      task.assigned_to ?? null,
+      task.created_by ?? null,
+      task.created_at ?? Math.floor(Date.now() / 1000),
+      task.updated_at ?? Math.floor(Date.now() / 1000),
+      task.due_date ?? null,
+      tagsStr,
+      metaStr,
+    );
+
+    // Notify on assignment change
+    if (task.assigned_to && task.assigned_to !== current?.assigned_to) {
+      this.upsertNotification({
+        recipient: task.assigned_to,
+        type: 'assignment',
+        title: 'New Task Assigned',
+        message: `You have been assigned to: ${task.title}`,
+        source_type: 'task',
+        source_id: task.id
+      });
+    }
+
+    // Notify on status change to 'review'
+    if (task.status === 'review' && task.status !== current?.status) {
+       this.upsertNotification({
+        recipient: 'observatory', // Broadcast to system or manager
+        type: 'status_change',
+        title: 'Task Ready for Review',
+        message: `Task "${task.title}" is ready for review by ${task.assigned_to}`,
+        source_type: 'task',
+        source_id: task.id
+      });
+    }
+  }
+
+  private upsertActivity(activity: any): void {
+    const dataStr = activity.data ? JSON.stringify(activity.data) : null;
+
+    this.db.prepare(`
+      INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        actor = excluded.actor,
+        description = excluded.description,
+        data = excluded.data
+    `).run(
+      activity.id,
+      activity.type,
+      activity.entity_type,
+      activity.entity_id ?? null,
+      activity.actor ?? null,
+      activity.description ?? null,
+      dataStr,
+      activity.created_at ?? Math.floor(Date.now() / 1000),
+    );
+  }
+
+  private upsertNotification(notif: any): void {
+    this.db.prepare(`
+      INSERT INTO notifications (id, recipient, type, title, message, source_type, source_id, read_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        read_at = excluded.read_at
+    `).run(
+      notif.id || `notif_${Math.random().toString(36).slice(2, 11)}`,
+      notif.recipient,
+      notif.type,
+      notif.title,
+      notif.message ?? null,
+      notif.source_type ?? null,
+      notif.source_id ?? null,
+      notif.read_at ?? null,
+      notif.created_at ?? Math.floor(Date.now() / 1000)
+    );
   }
 
   getByAgent(

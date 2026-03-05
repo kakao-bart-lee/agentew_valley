@@ -8,7 +8,7 @@ export function CostChart({ data }: CostChartProps) {
     return (
         <div className="h-44 mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Cost / Hour (Last 60m)</h3>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={data}>
                     <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
                     <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} tickFormatter={(value) => `$${value.toFixed(2)}`} />

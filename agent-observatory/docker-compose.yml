@@ -1,0 +1,19 @@
+services:
+  observatory:
+    build: .
+    image: agent-observatory:latest
+    container_name: agent-observatory
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - OBSERVATORY_DASHBOARD_API_KEY=my-secret-key
+      - MISSION_CONTROL_WATCH_PATHS=/app/workspace/tasks
+      - CLAUDE_CODE_WATCH_PATHS=/app/workspace/claude-logs
+      - OPENCLAW_WATCH_PATHS=/app/workspace/openclaw-logs
+      - OBSERVATORY_DB_PATH=/app/data/observatory.db
+      - OBSERVATORY_TASKS_V2_ENABLED=true
+    volumes:
+      - .:/app/workspace
+      - ./data:/app/data
+    restart: unless-stopped

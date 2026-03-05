@@ -1,5 +1,8 @@
 import express from 'express';
 import { createServer } from 'node:http';
+import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import type { Server as HttpServer } from 'node:http';
 import type { Express } from 'express';
@@ -14,13 +17,15 @@ import type { ApiConfig } from './delivery/api.js';
 import type { ShadowReportProvider } from './delivery/api.js';
 import { DEFAULT_FEATURE_FLAGS } from './config/feature-flags.js';
 import type { FeatureFlags } from './config/feature-flags.js';
-import { openMcDb, closeMcDb, getMcDb } from './lib/mc-db.js';
+import { openMcDb, closeMcDb, getMcDb, setMcDb } from './lib/mc-db.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
 import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
 import { createCollectorGateway } from './delivery/collector-gateway.js';
 import type { CollectorGateway } from './delivery/collector-gateway.js';
 import { createHooksRouter } from './delivery/hooks.js';
+
+const __dirname = resolve(fileURLToPath(import.meta.url), '..');
 
 export interface AppConfig {
   watchPaths?: string[];
@@ -36,6 +41,8 @@ export interface AppConfig {
   mcDbPath?: string;
   /** API keys for authenticating remote Collectors. Empty = open access. */
   collectorApiKeys?: string[];
+  /** Optional API key for dashboard access. If set, frontend must provide Bearer token. */
+  dashboardApiKey?: string;
 }
 
 export interface AppInstance {
@@ -71,8 +78,30 @@ export function createApp(config?: AppConfig): AppInstance {
   app.use(cors());
   app.use(express.json());
 
-  // Open Mission Control DB (read-only) — optional
-  openMcDb(config?.mcDbPath);
+  // Auth middleware (optional — enabled via dashboardApiKey)
+  if (config?.dashboardApiKey) {
+    console.info(`[server] Dashboard API Key authentication enabled`);
+    app.use((req, res, next) => {
+      if (req.method === 'OPTIONS') return next();
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Missing or invalid Authorization header', code: 'UNAUTHORIZED' });
+      }
+      const token = authHeader.split(' ')[1];
+      if (token !== config.dashboardApiKey) {
+        return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+      }
+      next();
+    });
+  }
+
+  // Use the same database for Mission Control (unified "Local Linear" store)
+  setMcDb(historyStore.getDb());
+
+  // Open external Mission Control DB (optional, will override if exists)
+  if (config?.mcDbPath) {
+    openMcDb(config.mcDbPath);
+  }
 
   const apiConfig: ApiConfig = {
     watchPaths: config?.watchPaths ?? [],
@@ -93,9 +122,22 @@ export function createApp(config?: AppConfig): AppInstance {
   app.use(createOpenApiRouter());
   app.use(createHooksRouter(eventBus));
 
+  // Static web assets (if build exists — production mode)
+  const webDistPath = resolve(__dirname, '../../web/dist');
+  if (existsSync(webDistPath)) {
+    console.info(`[server] Serving static web files from ${webDistPath}`);
+    app.use(express.static(webDistPath));
+    app.get('/*path', (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/') || req.path.startsWith('/collectors/')) {
+        return next();
+      }
+      res.sendFile(resolve(webDistPath, 'index.html'));
+    });
+  }
+
   // 4. HTTP + WebSocket
   const server = createServer(app);
-  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator);
+  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator, config?.dashboardApiKey);
 
   // 5. Collector WebSocket Gateway (/collectors namespace)
   const collectorApiKeys = config?.collectorApiKeys ?? [];

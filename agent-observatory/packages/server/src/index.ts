@@ -39,7 +39,7 @@ export type { FeatureFlagName, FeatureFlags } from './config/feature-flags.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
-import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector } from '@agent-observatory/collectors';
+import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector, MissionControlCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
 import { getFeatureFlagsFromEnv } from './config/feature-flags.js';
 import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
@@ -53,6 +53,7 @@ async function main(): Promise<void> {
   const tailOnly = process.env.OBSERVATORY_TAIL_ONLY !== 'false'; // 기본 true
   const mode: ObservatoryMode = (process.env.OBSERVATORY_MODE as ObservatoryMode) ?? 'local';
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
+  const dashboardApiKey = process.env.OBSERVATORY_DASHBOARD_API_KEY || undefined;
   const shadowModeFlags = getShadowModeFlagsFromEnv();
   const featureFlags = getFeatureFlagsFromEnv();
 
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
     dbPath,
     mcDbPath,
     collectorApiKeys,
+    dashboardApiKey,
     shadowModeEnabled: shadowModeFlags.shadowModeEnabled,
     shadowModeReadOnly: shadowModeFlags.shadowModeReadOnly,
     featureFlags,
@@ -72,6 +74,18 @@ async function main(): Promise<void> {
 
   if (mode === 'local') {
     // Local mode: run collectors in-process (existing behavior)
+
+    // Mission Control Collector (Local Linear Tasks)
+    try {
+      const mcPaths = (process.env.MISSION_CONTROL_WATCH_PATHS ?? '/Users/bclaw/workspace/agentic-dev-group').split(',');
+      const mc = new MissionControlCollector({ watchPaths: mcPaths });
+      mc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      await mc.start();
+      activeCollectors.push(mc);
+      console.log(`[server] Mission Control collector started (paths: ${mcPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] Mission Control collector failed to start:', err);
+    }
 
     // Claude Code Collector
     try {

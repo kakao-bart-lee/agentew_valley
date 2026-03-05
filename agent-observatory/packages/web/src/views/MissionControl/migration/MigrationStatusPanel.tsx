@@ -35,20 +35,43 @@ export function MigrationStatusPanel() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingShadow, setLoadingShadow] = useState(true);
 
-  const apiBase = (window as any).__OBSERVATORY_API__ ?? 'http://localhost:3000';
+  const apiBase = (window as any).__OBSERVATORY_API__ ?? window.location.origin;
+
+  const fetchWithAuth = (url: string) => {
+    const token = localStorage.getItem('OBSERVATORY_TOKEN') || (import.meta as any).env?.VITE_DASHBOARD_API_KEY;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return fetch(url, { headers });
+  };
 
   useEffect(() => {
-    fetch(`${apiBase}/api/v1/config`)
+    fetchWithAuth(`${apiBase}/api/v1/config`)
       .then((r) => r.json())
-      .then((d: ConfigResponse) => { setConfig(d); setLoadingConfig(false); })
-      .catch(() => { setLoadingConfig(false); });
-  }, []);
-
-  useEffect(() => {
-    fetch(`${apiBase}/api/v1/migration/shadow-report`)
-      .then((r) => r.json())
-      .then((d: ShadowReportResponse) => { setShadowReport(d); setLoadingShadow(false); })
-      .catch(() => { setLoadingShadow(false); });
+      .then((d: ConfigResponse) => {
+        setConfig(d);
+        setLoadingConfig(false);
+        // Only fetch shadow report if enabled in config
+        if (d.config.shadow_mode_enabled) {
+          fetchWithAuth(`${apiBase}/api/v1/migration/shadow-report`)
+            .then((r) => r.json())
+            .then((sd: ShadowReportResponse) => {
+              setShadowReport(sd);
+              setLoadingShadow(false);
+            })
+            .catch(() => {
+              setLoadingShadow(false);
+            });
+        } else {
+          setShadowReport({ code: 'SHADOW_MODE_DISABLED' });
+          setLoadingShadow(false);
+        }
+      })
+      .catch(() => {
+        setLoadingConfig(false);
+        setLoadingShadow(false);
+      });
   }, []);
 
   const flags = config?.feature_flags ?? [];

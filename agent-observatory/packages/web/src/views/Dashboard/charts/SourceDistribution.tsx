@@ -9,7 +9,7 @@ export function SourceDistribution({ data }: SourceDistributionProps) {
     return (
         <div className="h-48 mt-2 flex flex-col items-center">
             <h3 className="text-sm font-medium text-slate-400 mb-2 self-start">Agent Sources</h3>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
                     <Pie
                         data={data}

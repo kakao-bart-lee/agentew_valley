@@ -86,6 +86,11 @@ export function createApiRouter(
 ): Router {
   const router = Router();
 
+  // GET /api/v1/health
+  router.get('/api/v1/health', (_req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime() });
+  });
+
   // GET /api/v1/agents
   router.get('/api/v1/agents', (_req, res) => {
     const agents = stateManager.getAllAgents();
