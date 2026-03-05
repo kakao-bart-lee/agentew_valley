@@ -2,6 +2,7 @@ import { SocketProvider } from './contexts/SocketContext';
 import { DashboardView } from './views/Dashboard/DashboardView';
 import { PixelCanvasView } from './views/Pixel/PixelCanvasView';
 import { SessionsView } from './views/Sessions/SessionsView';
+import { MissionControlView } from './views/MissionControl/MissionControlView';
 import { StatusBar } from './views/Dashboard/StatusBar';
 import { useAgentStore } from './stores/agentStore';
 
@@ -19,6 +20,7 @@ function App() {
           <div className={activeView === 'dashboard' ? 'flex flex-col flex-1' : 'hidden'}><DashboardView /></div>
           <div className={activeView === 'pixel' ? 'flex flex-col flex-1' : 'hidden'}><PixelCanvasView /></div>
           <div className={activeView === 'sessions' ? 'flex flex-col flex-1' : 'hidden'}><SessionsView /></div>
+          <div className={activeView === 'mission-control' ? 'flex flex-col flex-1' : 'hidden'}><MissionControlView /></div>
         </div>
       </div>
     </SocketProvider>

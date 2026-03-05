@@ -7,12 +7,14 @@ import type { EventBus } from '../core/event-bus.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
 import {
   DEFAULT_FEATURE_FLAGS,
+  FEATURE_FLAG_ENV_VARS,
   isAuthV2Enabled,
   isKillSwitchAllV2Enabled,
   isTasksV2Enabled,
   isWebhooksV2Enabled,
 } from '../config/feature-flags.js';
-import type { FeatureFlags } from '../config/feature-flags.js';
+import type { FeatureFlags, FeatureFlagName } from '../config/feature-flags.js';
+import type { getMcDb as GetMcDb } from '../lib/mc-db.js';
 
 export interface ApiConfig {
   watchPaths: string[];
@@ -22,6 +24,8 @@ export interface ApiConfig {
   shadowModeReadOnly: boolean;
   shadowReportProvider: ShadowReportProvider;
   featureFlags: FeatureFlags;
+  /** Accessor for Mission Control SQLite DB (may return null if not configured) */
+  getMcDb?: () => ReturnType<typeof GetMcDb>;
 }
 
 export interface ShadowReportTopDiff {
@@ -293,7 +297,7 @@ export function createApiRouter(
   });
 
   // GET /api/v2/tasks
-  router.get('/api/v2/tasks', (_req, res) => {
+  router.get('/api/v2/tasks', (req, res) => {
     if (isKillSwitchAllV2Enabled(config.featureFlags)) {
       sendV2KillSwitchEnabled(res);
       return;
@@ -302,12 +306,154 @@ export function createApiRouter(
       sendFeatureFlagDisabled('tasks_v2', res);
       return;
     }
-    res.json({
-      domain: 'tasks',
-      version: 'v2',
-      tasks: [],
-      total: 0,
-    });
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ domain: 'tasks', version: 'v2', tasks: [], total: 0, flag_enabled: true, mc_db_connected: false });
+      return;
+    }
+
+    const status = req.query.status as string | undefined;
+    const assignedTo = req.query.assigned_to as string | undefined;
+    const priority = req.query.priority as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (status) { conditions.push('status = ?'); params.push(status); }
+    if (assignedTo) { conditions.push('assigned_to = ?'); params.push(assignedTo); }
+    if (priority) { conditions.push('priority = ?'); params.push(priority); }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    try {
+      const tasks = db
+        .prepare(`SELECT id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, due_date, tags, metadata FROM tasks ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+        .all(...params, limit, offset);
+      const totalRow = db
+        .prepare(`SELECT COUNT(*) as count FROM tasks ${where}`)
+        .get(...params) as { count: number };
+
+      res.json({ domain: 'tasks', version: 'v2', tasks, total: totalRow.count, flag_enabled: true, mc_db_connected: true });
+    } catch (err) {
+      res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
+    }
+  });
+
+  // GET /api/v2/activities
+  router.get('/api/v2/activities', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ activities: [], total: 0, mc_db_connected: false });
+      return;
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const since = req.query.since as string | undefined;
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+    if (since) {
+      const sinceTs = Math.floor(new Date(since).getTime() / 1000);
+      if (!isNaN(sinceTs)) { conditions.push('created_at > ?'); params.push(sinceTs); }
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    try {
+      const activities = db
+        .prepare(`SELECT id, type, entity_type, entity_id, actor, description, data, created_at FROM activities ${where} ORDER BY created_at DESC LIMIT ?`)
+        .all(...params, limit);
+      const totalRow = db
+        .prepare(`SELECT COUNT(*) as count FROM activities ${where}`)
+        .get(...params) as { count: number };
+
+      res.json({ activities, total: totalRow.count, mc_db_connected: true });
+    } catch (err) {
+      res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
+    }
+  });
+
+  // GET /api/v2/notifications
+  router.get('/api/v2/notifications', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ notifications: [], total: 0, mc_db_connected: false });
+      return;
+    }
+
+    const recipient = req.query.recipient as string | undefined;
+    const unreadOnly = req.query.unread_only === 'true';
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+    if (recipient) { conditions.push('recipient = ?'); params.push(recipient); }
+    if (unreadOnly) { conditions.push('read_at IS NULL'); }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    try {
+      const notifications = db
+        .prepare(`SELECT id, recipient, type, title, message, source_type, source_id, read_at, created_at FROM notifications ${where} ORDER BY created_at DESC LIMIT ?`)
+        .all(...params, limit);
+      const totalRow = db
+        .prepare(`SELECT COUNT(*) as count FROM notifications ${where}`)
+        .get(...params) as { count: number };
+
+      res.json({ notifications, total: totalRow.count, mc_db_connected: true });
+    } catch (err) {
+      res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
+    }
+  });
+
+  // GET /api/v2/webhooks
+  router.get('/api/v2/webhooks', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isWebhooksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('webhooks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ webhooks: [], total: 0, mc_db_connected: false });
+      return;
+    }
+
+    try {
+      const webhooks = db
+        .prepare(`SELECT w.id, w.name, w.url, w.events, w.enabled, w.last_fired_at, w.last_status, w.created_at,
+                   (SELECT COUNT(*) FROM webhook_deliveries wd WHERE wd.webhook_id = w.id) as delivery_count,
+                   (SELECT COUNT(*) FROM webhook_deliveries wd WHERE wd.webhook_id = w.id AND wd.status_code >= 200 AND wd.status_code < 300) as success_count
+                 FROM webhooks w ORDER BY w.created_at DESC`)
+        .all();
+      res.json({ webhooks, total: (webhooks as unknown[]).length, mc_db_connected: true });
+    } catch (err) {
+      res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
+    }
   });
 
   // POST /api/v2/webhooks/test
@@ -329,12 +475,22 @@ export function createApiRouter(
 
   // GET /api/v1/config
   router.get('/api/v1/config', (_req, res) => {
+    const featureFlagNames = Object.keys(config.featureFlags) as FeatureFlagName[];
+    const feature_flags = featureFlagNames.map((name) => ({
+      name,
+      enabled: config.featureFlags[name],
+      env_var: FEATURE_FLAG_ENV_VARS[name],
+    }));
+
     res.json({
       config: {
         watch_paths: config.watchPaths,
         metrics_interval_ms: config.metricsIntervalMs,
         timeseries_retention_minutes: config.timeseriesRetentionMinutes,
+        shadow_mode_enabled: config.shadowModeEnabled,
+        mc_db_connected: config.getMcDb != null && config.getMcDb() != null,
       },
+      feature_flags,
     });
   });
 

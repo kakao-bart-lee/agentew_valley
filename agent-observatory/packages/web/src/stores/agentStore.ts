@@ -3,7 +3,7 @@ import { AgentLiveState, AgentSourceType } from '../types/agent';
 
 interface AgentStore {
     agents: Map<string, AgentLiveState>;
-    activeView: 'dashboard' | 'pixel' | 'timeline' | 'sessions';
+    activeView: 'dashboard' | 'pixel' | 'timeline' | 'sessions' | 'mission-control';
     selectedAgentId: string | null;
 
     connected: boolean;
@@ -16,7 +16,7 @@ interface AgentStore {
     setAgent: (state: AgentLiveState) => void;
     removeAgent: (id: string) => void;
     selectAgent: (id: string | null) => void;
-    setView: (view: 'dashboard' | 'pixel' | 'timeline' | 'sessions') => void;
+    setView: (view: 'dashboard' | 'pixel' | 'timeline' | 'sessions' | 'mission-control') => void;
     setConnectionStatus: (connected: boolean, reconnecting?: boolean) => void;
     setFilters: (filters: Partial<Pick<AgentStore, 'sourceFilter' | 'teamFilter' | 'statusFilter'>>) => void;
     initSession: (agents: AgentLiveState[]) => void;

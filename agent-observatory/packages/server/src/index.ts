@@ -56,9 +56,12 @@ async function main(): Promise<void> {
   const shadowModeFlags = getShadowModeFlagsFromEnv();
   const featureFlags = getFeatureFlagsFromEnv();
 
+  const mcDbPath = process.env.MISSION_CONTROL_DB_PATH ?? undefined;
+
   const { app, server, eventBus, close } = createApp({
     watchPaths,
     dbPath,
+    mcDbPath,
     collectorApiKeys,
     shadowModeEnabled: shadowModeFlags.shadowModeEnabled,
     shadowModeReadOnly: shadowModeFlags.shadowModeReadOnly,
@@ -132,6 +135,11 @@ async function main(): Promise<void> {
       console.log(`[server] SQLite database: ${dbPath}`);
     } else {
       console.log('[server] SQLite database: in-memory (data will not persist across restarts)');
+    }
+    if (mcDbPath) {
+      console.log(`[server] Mission Control DB: ${mcDbPath}`);
+    } else {
+      console.log('[server] Mission Control DB: not configured (set MISSION_CONTROL_DB_PATH to enable)');
     }
     if (shadowModeFlags.shadowModeEnabled) {
       console.log(`[server] Shadow mode: ON (read-only=${shadowModeFlags.shadowModeReadOnly ? 'true' : 'false'})`);

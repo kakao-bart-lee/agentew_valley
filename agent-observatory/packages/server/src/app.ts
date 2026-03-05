@@ -14,6 +14,7 @@ import type { ApiConfig } from './delivery/api.js';
 import type { ShadowReportProvider } from './delivery/api.js';
 import { DEFAULT_FEATURE_FLAGS } from './config/feature-flags.js';
 import type { FeatureFlags } from './config/feature-flags.js';
+import { openMcDb, closeMcDb, getMcDb } from './lib/mc-db.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
 import { createOpenApiRouter } from './delivery/openapi.js';
 import { createWebSocketServer } from './delivery/websocket.js';
@@ -31,6 +32,8 @@ export interface AppConfig {
   featureFlags?: FeatureFlags;
   /** SQLite database file path. Defaults to :memory: */
   dbPath?: string;
+  /** Mission Control SQLite DB path (read-only). Falls back to MISSION_CONTROL_DB_PATH env var. */
+  mcDbPath?: string;
   /** API keys for authenticating remote Collectors. Empty = open access. */
   collectorApiKeys?: string[];
 }
@@ -68,6 +71,9 @@ export function createApp(config?: AppConfig): AppInstance {
   app.use(cors());
   app.use(express.json());
 
+  // Open Mission Control DB (read-only) — optional
+  openMcDb(config?.mcDbPath);
+
   const apiConfig: ApiConfig = {
     watchPaths: config?.watchPaths ?? [],
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
@@ -80,6 +86,7 @@ export function createApp(config?: AppConfig): AppInstance {
       topDiffs: [],
     })),
     featureFlags: config?.featureFlags ?? { ...DEFAULT_FEATURE_FLAGS },
+    getMcDb: () => getMcDb(),
   };
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
   app.use(createAnalyticsRouter(historyStore));
@@ -117,6 +124,7 @@ export function createApp(config?: AppConfig): AppInstance {
   const close = () => {
     collectorGateway.close();
     historyStore.close();
+    closeMcDb();
   };
 
   return { app, server, io, eventBus, stateManager, metricsAggregator, historyStore, collectorGateway, close };

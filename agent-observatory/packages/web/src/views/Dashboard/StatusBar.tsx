@@ -67,6 +67,15 @@ export function StatusBar() {
                     >
                         Sessions
                     </button>
+                    <button
+                        onClick={() => {
+                            setStoreView('mission-control');
+                            setSocketView('dashboard');
+                        }}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === 'mission-control' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                        Mission Control
+                    </button>
                 </div>
 
                 {/* Connection Status */}
