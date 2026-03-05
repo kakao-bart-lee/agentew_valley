@@ -41,6 +41,10 @@ describe('OpenAPI Documentation', () => {
     expect(paths).toContain('/api/v1/migration/shadow-report');
     expect(paths).toContain('/api/v2/auth/status');
     expect(paths).toContain('/api/v2/tasks');
+    expect(paths).toContain('/api/v2/tasks/{id}');
+    expect(paths).toContain('/api/v2/tasks/{id}/comments');
+    expect(paths).toContain('/api/v2/tasks/{id}/checkout');
+    expect(paths).toContain('/api/v2/goals');
     expect(paths).toContain('/api/v2/webhooks/test');
     expect(paths).toContain('/api/v1/config');
     expect(paths).toContain('/api/v1/events');

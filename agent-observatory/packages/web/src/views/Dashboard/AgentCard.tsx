@@ -3,7 +3,7 @@ import type { AgentLiveState } from '../../types/agent';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
-import { formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
+import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../utils/formatters';
 import { STATUS_COLORS, bgSTATUS_COLORS, SOURCE_COLORS, SOURCE_LABELS, CATEGORY_COLORS, getModelBadgeColor, getModelShortName } from '../../utils/colors';
 import { Activity, Clock, TerminalSquare, AlertCircle } from 'lucide-react';
 
@@ -11,7 +11,8 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
     const {
         agent_name, status, source, total_tokens, total_tool_calls, total_errors,
         current_tool, last_activity, session_start, model_id,
-        cache_read_tokens, total_input_tokens,
+        cache_read_tokens, total_input_tokens, health_status, context_window_usage,
+        tool_call_success_rate, last_error, last_run_status,
     } = agent;
 
     const cacheRate = useMemo(() => {
@@ -30,6 +31,12 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
         () => sortedToolEntries.reduce((sum, [, v]) => sum + v, 0),
         [sortedToolEntries],
     );
+    const contextPercent = typeof context_window_usage === 'number'
+        ? Math.round(context_window_usage * 100)
+        : null;
+    const toolSuccessPercent = typeof tool_call_success_rate === 'number'
+        ? Math.round(tool_call_success_rate * 100)
+        : null;
 
     return (
         <Card
@@ -65,6 +72,18 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                     <CardTitle className="text-xs font-medium text-slate-100 truncate" title={agent_name}>
                         {agent_name}
                     </CardTitle>
+                    <Badge
+                        variant="outline"
+                        className={`border-transparent text-[10px] px-1.5 py-0 h-4 shrink-0 ${
+                            health_status === 'error'
+                                ? 'bg-red-900/70 text-red-100'
+                                : health_status === 'caution'
+                                    ? 'bg-amber-900/70 text-amber-100'
+                                    : 'bg-emerald-900/70 text-emerald-100'
+                        }`}
+                    >
+                        {health_status}
+                    </Badge>
                 </div>
 
                 <Tooltip>
@@ -99,6 +118,7 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                 {/* Stats */}
                 <div className="flex items-center gap-x-3 text-xs text-slate-400 mb-1.5">
                     <span><span className="text-slate-500">Tok:</span> <span className="font-mono text-slate-300">{formatLargeNumber(total_tokens)}</span></span>
+                    <span><span className="text-slate-500">Cost:</span> <span className="font-mono text-slate-300">{formatCurrency(agent.total_cost_usd)}</span></span>
                     {cacheRate !== null ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -116,6 +136,56 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                     ) : null}
                     <span><span className="text-slate-500">Tools:</span> <span className="font-mono text-slate-300">{total_tool_calls}</span></span>
                 </div>
+
+                {(contextPercent !== null || toolSuccessPercent !== null) && (
+                    <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 mb-1.5">
+                        <div className="rounded bg-slate-900/70 px-2 py-1">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <span className="text-slate-500">Ctx</span>
+                                <span className={`${(context_window_usage ?? 0) >= 0.8 ? 'text-amber-300' : 'text-slate-200'}`}>
+                                    {contextPercent !== null ? `${contextPercent}%` : 'n/a'}
+                                </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                <div
+                                    className={`h-full rounded-full ${(context_window_usage ?? 0) >= 0.95 ? 'bg-red-400' : (context_window_usage ?? 0) >= 0.8 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                                    style={{ width: `${Math.max(Math.min(contextPercent ?? 0, 100), 0)}%` }}
+                                />
+                            </div>
+                        </div>
+                        <div className="rounded bg-slate-900/70 px-2 py-1">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <span className="text-slate-500">Tool OK</span>
+                                <span className={`${(tool_call_success_rate ?? 1) < 0.75 ? 'text-amber-300' : 'text-slate-200'}`}>
+                                    {toolSuccessPercent !== null ? `${toolSuccessPercent}%` : 'n/a'}
+                                </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                <div
+                                    className={`h-full rounded-full ${(tool_call_success_rate ?? 1) < 0.75 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                                    style={{ width: `${Math.max(Math.min(toolSuccessPercent ?? 0, 100), 0)}%` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {last_run_status && (
+                    <div className="mb-1.5 flex items-center gap-1 text-[10px] text-slate-500">
+                        <span>Last run:</span>
+                        <span className={`rounded px-1.5 py-0.5 ${
+                            last_run_status === 'error'
+                                ? 'bg-red-900/50 text-red-200'
+                                : last_run_status === 'waiting'
+                                    ? 'bg-amber-900/50 text-amber-200'
+                                    : last_run_status === 'completed'
+                                        ? 'bg-emerald-900/50 text-emerald-200'
+                                        : 'bg-slate-700 text-slate-300'
+                        }`}>
+                            {last_run_status}
+                        </span>
+                    </div>
+                )}
 
                 {/* Tool distribution mini bar */}
                 {toolTotal > 0 && (
@@ -155,6 +225,11 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                     <span>{formatRelativeTime(session_start)}</span>
                     <span className="ml-auto">{formatRelativeTime(last_activity)}</span>
                 </div>
+                {last_error && (
+                    <div className="mt-1 rounded bg-red-950/40 px-2 py-1 text-[10px] text-red-200 line-clamp-2">
+                        {last_error}
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

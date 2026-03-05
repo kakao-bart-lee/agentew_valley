@@ -30,9 +30,20 @@ function emptyDistribution(): Record<ToolCategory, number> {
   };
 }
 
+function getHealthStatus(agent: AgentLiveState): AgentLiveState['health_status'] {
+  if (agent.status === 'error' || agent.last_run_status === 'error' || (agent.context_window_usage ?? 0) >= 0.95) {
+    return 'error';
+  }
+  if ((agent.context_window_usage ?? 0) >= 0.8 || (agent.tool_call_success_rate ?? 1) < 0.75 || agent.total_errors > 0) {
+    return 'caution';
+  }
+  return 'normal';
+}
+
 export class StateManager {
   private agents = new Map<string, AgentLiveState>();
   private activeTools = new Map<string, Map<string, ActiveTool>>();
+  private recentToolOutcomes = new Map<string, boolean[]>();
   private changeHandlers: ChangeHandler[] = [];
   private removeHandlers: RemoveHandler[] = [];
 
@@ -117,7 +128,11 @@ export class StateManager {
       cache_read_tokens: 0,
       total_cost_usd: 0,
       total_tool_calls: 0,
+      tool_call_success_rate: 1,
+      recent_tool_call_count: 0,
       total_errors: 0,
+      last_run_status: 'idle',
+      health_status: 'normal',
       llm_response_count: 0,
       llm_total_text_length: 0,
       tool_distribution: emptyDistribution(),
@@ -130,6 +145,7 @@ export class StateManager {
 
     this.agents.set(event.agent_id, state);
     this.activeTools.set(event.agent_id, new Map());
+    this.recentToolOutcomes.set(event.agent_id, []);
     this.notifyChange(state);
   }
 
@@ -137,6 +153,7 @@ export class StateManager {
     const agentId = event.agent_id;
     this.agents.delete(agentId);
     this.activeTools.delete(agentId);
+    this.recentToolOutcomes.delete(agentId);
     this.notifyRemove(agentId);
   }
 
@@ -159,6 +176,7 @@ export class StateManager {
     agent.current_tool = toolName;
     agent.current_tool_category = category;
     agent.total_tool_calls++;
+    agent.last_run_status = 'running';
 
     if (event.data?.['status_detail']) {
       agent.status_detail = event.data['status_detail'] as string;
@@ -184,6 +202,8 @@ export class StateManager {
     }
 
     agent.tool_distribution[category] = (agent.tool_distribution[category] ?? 0) + 1;
+    agent.last_run_status = 'completed';
+    this.recordToolOutcome(event.agent_id, true);
 
     if (!agentTools || agentTools.size === 0) {
       agent.status = 'idle';
@@ -205,8 +225,12 @@ export class StateManager {
     if (!agent) return;
 
     agent.total_errors++;
+    agent.last_run_status = 'error';
+    this.recordToolOutcome(event.agent_id, false);
     if (event.data?.['error']) {
-      agent.status_detail = String(event.data['error']).slice(0, 200);
+      const error = String(event.data['error']).slice(0, 200);
+      agent.status_detail = error;
+      agent.last_error = error;
     }
 
     this.notifyChange(agent);
@@ -223,6 +247,16 @@ export class StateManager {
     if (event.data?.['status_detail'] !== undefined) {
       agent.status_detail = event.data['status_detail'] as string;
     }
+    if (typeof event.data?.['context_window_usage'] === 'number') {
+      agent.context_window_usage = event.data['context_window_usage'] as number;
+    }
+    if (status === 'waiting_permission' || status === 'waiting_input') {
+      agent.last_run_status = 'waiting';
+    } else if (status === 'error') {
+      agent.last_run_status = 'error';
+    } else if (status === 'idle') {
+      agent.last_run_status = 'idle';
+    }
 
     this.notifyChange(agent);
   }
@@ -232,6 +266,7 @@ export class StateManager {
     if (!agent) return;
 
     agent.status = 'thinking';
+    agent.last_run_status = 'running';
     this.notifyChange(agent);
   }
 
@@ -240,6 +275,7 @@ export class StateManager {
     if (!agent) return;
 
     agent.status = 'waiting_permission';
+    agent.last_run_status = 'waiting';
     this.notifyChange(agent);
   }
 
@@ -297,6 +333,9 @@ export class StateManager {
     const modelId = event.model_id ?? (event.data?.['model_id'] as string | undefined);
     if (modelId) {
       agent.model_id = modelId;
+    }
+    if (typeof event.data?.['context_window_usage'] === 'number') {
+      agent.context_window_usage = event.data['context_window_usage'] as number;
     }
 
     this.notifyChange(agent);
@@ -386,6 +425,7 @@ export class StateManager {
   }
 
   private notifyChange(state: AgentLiveState): void {
+    state.health_status = getHealthStatus(state);
     for (const handler of this.changeHandlers) {
       handler(state);
     }
@@ -395,5 +435,22 @@ export class StateManager {
     for (const handler of this.removeHandlers) {
       handler(agentId);
     }
+  }
+
+  private recordToolOutcome(agentId: string, succeeded: boolean): void {
+    const agent = this.agents.get(agentId);
+    if (!agent) return;
+
+    const outcomes = this.recentToolOutcomes.get(agentId) ?? [];
+    outcomes.push(succeeded);
+    while (outcomes.length > 25) {
+      outcomes.shift();
+    }
+
+    this.recentToolOutcomes.set(agentId, outcomes);
+    agent.recent_tool_call_count = outcomes.length;
+    agent.tool_call_success_rate = outcomes.length > 0
+      ? outcomes.filter(Boolean).length / outcomes.length
+      : 1;
   }
 }

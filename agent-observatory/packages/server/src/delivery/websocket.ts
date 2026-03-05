@@ -94,6 +94,7 @@ export function createWebSocketServer(
   stateManager.onChange((agentState) => {
     dashboardBatch.push(agentState);
     pixelBatch.push(agentState);
+    io.emit('agent.status', { agent: agentState });
 
     // timeline view gets immediate updates
     for (const [socketId, state] of clients) {
@@ -120,6 +121,37 @@ export function createWebSocketServer(
   eventBus.subscribe((event: UAEPEvent) => {
     // Always add to dashboard batch — flush sends only to dashboard-view clients
     dashboardEventBatch.push(event);
+
+    if (event.type === 'task.sync' && typeof event.data?.['id'] === 'string') {
+      const payload = {
+        task_id: event.data['id'] as string,
+      };
+      io.emit('task.updated', payload);
+      if (event.data?.['checkout_agent_id']) {
+        io.emit('task.checkout', payload);
+      }
+    }
+
+    if (event.type === 'activity.new' && typeof event.data?.['id'] === 'string') {
+      const activityPayload = {
+        id: event.data['id'] as string,
+        type: String(event.data?.['type'] ?? 'activity'),
+        entity_type: String(event.data?.['entity_type'] ?? 'unknown'),
+        entity_id: typeof event.data?.['entity_id'] === 'string' ? event.data['entity_id'] as string : undefined,
+        created_at: typeof event.data?.['created_at'] === 'number' ? event.data['created_at'] as number : Math.floor(Date.now() / 1000),
+      };
+      io.emit('activity.logged', activityPayload);
+
+      if (activityPayload.type === 'budget_alert') {
+        io.emit('cost.alert', {
+          agent_id: typeof event.data?.['entity_id'] === 'string' ? event.data['entity_id'] as string : event.agent_id,
+          severity: event.data?.['severity'] === 'critical' ? 'critical' : 'warning',
+          utilization_ratio: typeof event.data?.['utilization_ratio'] === 'number' ? event.data['utilization_ratio'] as number : undefined,
+          budget_monthly_cents: typeof event.data?.['budget_monthly_cents'] === 'number' ? event.data['budget_monthly_cents'] as number : undefined,
+          spent_monthly_cents: typeof event.data?.['spent_monthly_cents'] === 'number' ? event.data['spent_monthly_cents'] as number : undefined,
+        });
+      }
+    }
 
     // Subscribed agents get immediate events (non-dashboard views only)
     for (const [socketId, state] of clients) {

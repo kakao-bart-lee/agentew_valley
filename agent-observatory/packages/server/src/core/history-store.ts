@@ -1,5 +1,18 @@
 import Database from 'better-sqlite3';
-import type { UAEPEvent } from '@agent-observatory/shared';
+import type {
+  Goal,
+  GoalProgress,
+  TaskComment,
+  UAEPEvent,
+} from '@agent-observatory/shared';
+
+function makeRelationId(type: string, taskId: string, relatedTaskId: string): string {
+  return `${type}:${taskId}:${relatedTaskId}`;
+}
+
+function isCompletedTaskStatus(status: string): boolean {
+  return status === 'done';
+}
 
 export class HistoryStore {
   private db: Database.Database;
@@ -54,6 +67,7 @@ export class HistoryStore {
         status TEXT DEFAULT 'inbox', -- inbox | assigned | in_progress | review | quality_review | done
         priority TEXT DEFAULT 'medium', -- low | medium | high | urgent
         project TEXT,
+        goal_id TEXT,
         assigned_to TEXT, -- agent_id
         checkout_agent_id TEXT,
         checkout_at INTEGER,
@@ -62,11 +76,62 @@ export class HistoryStore {
         started_at INTEGER,
         updated_at INTEGER NOT NULL, -- Unix timestamp
         due_date INTEGER,
+        source_path TEXT,
         tags TEXT, -- JSON array
         metadata TEXT -- JSON object
       );
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
+      CREATE TABLE IF NOT EXISTS goals (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        level INTEGER NOT NULL DEFAULT 0,
+        parent_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        source_path TEXT,
+        FOREIGN KEY (parent_id) REFERENCES goals(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_goals_parent ON goals(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_goals_source_path ON goals(source_path);
+
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        author_agent_id TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES tasks(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS task_relations (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        related_task_id TEXT NOT NULL,
+        source_path TEXT,
+        FOREIGN KEY (task_id) REFERENCES tasks(id),
+        FOREIGN KEY (related_task_id) REFERENCES tasks(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_relations_task ON task_relations(task_id, type);
+      CREATE INDEX IF NOT EXISTS idx_task_relations_related ON task_relations(related_task_id, type);
+      CREATE INDEX IF NOT EXISTS idx_task_relations_source_path ON task_relations(source_path);
+
+      CREATE TABLE IF NOT EXISTS agent_runtime_state (
+        agent_id TEXT PRIMARY KEY,
+        total_tokens INTEGER DEFAULT 0,
+        total_cost_usd REAL DEFAULT 0,
+        last_error TEXT,
+        last_run_status TEXT DEFAULT 'idle',
+        context_window_usage REAL,
+        recent_tool_call_count INTEGER DEFAULT 0,
+        tool_call_success_rate REAL DEFAULT 1,
+        health_status TEXT DEFAULT 'normal',
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_runtime_health ON agent_runtime_state(health_status);
 
       CREATE TABLE IF NOT EXISTS agent_profiles (
         agent_id TEXT PRIMARY KEY,
@@ -132,9 +197,11 @@ export class HistoryStore {
       sessions: ['project_id TEXT', 'model_id TEXT'],
       tasks: [
         'project TEXT',
+        'goal_id TEXT',
         'checkout_agent_id TEXT',
         'checkout_at INTEGER',
         'started_at INTEGER',
+        'source_path TEXT',
       ],
     })) {
       for (const column of columns) {
@@ -146,8 +213,10 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
+      CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_checkout ON tasks(checkout_agent_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at);
+      CREATE INDEX IF NOT EXISTS idx_tasks_source_path ON tasks(source_path);
     `);
   }
 
@@ -275,28 +344,51 @@ export class HistoryStore {
     if (event.type === 'task.sync' && event.data) {
       this.upsertTask(event.data);
     }
+    if (event.type === 'task.snapshot' && Array.isArray(event.data?.['tasks'])) {
+      this.syncTaskSnapshot(
+        event.data['tasks'] as any[],
+        Array.isArray(event.data['source_paths']) ? event.data['source_paths'] as string[] : [],
+      );
+    }
+    if (event.type === 'goal.snapshot' && Array.isArray(event.data?.['goals'])) {
+      this.syncGoalSnapshot(
+        event.data['goals'] as any[],
+        Array.isArray(event.data['source_paths']) ? event.data['source_paths'] as string[] : [],
+      );
+    }
     if (event.type === 'activity.new' && event.data) {
       this.upsertActivity(event.data);
     }
     if (event.type === 'notification.new' && event.data) {
       this.upsertNotification(event.data);
     }
+
+    this.updateAgentRuntimeState(event);
   }
 
   private upsertTask(task: any): void {
-    const tagsStr = task.tags ? JSON.stringify(task.tags) : null;
-    const metaStr = task.metadata ? JSON.stringify(task.metadata) : null;
+    const tagsStr = typeof task.tags === 'string'
+      ? task.tags
+      : task.tags
+        ? JSON.stringify(task.tags)
+        : null;
+    const metaStr = typeof task.metadata === 'string'
+      ? task.metadata
+      : task.metadata
+        ? JSON.stringify(task.metadata)
+        : null;
     const now = Math.floor(Date.now() / 1000);
     const nextStatus = task.status ?? 'inbox';
     const nextUpdatedAt = task.updated_at ?? now;
 
     // Check current state to detect changes
     const current = this.db.prepare(`
-      SELECT assigned_to, status, started_at FROM tasks WHERE id = ?
+      SELECT assigned_to, status, started_at, checkout_agent_id FROM tasks WHERE id = ?
     `).get(task.id) as {
       assigned_to: string | null;
       status: string;
       started_at: number | null;
+      checkout_agent_id: string | null;
     } | undefined;
 
     const startedAt = typeof task.started_at === 'number'
@@ -306,24 +398,35 @@ export class HistoryStore {
           ? current.started_at
           : nextUpdatedAt
         : null;
+    const shouldReleaseCheckout = nextStatus === 'done' || nextStatus === 'review';
+    const checkoutAgentId = shouldReleaseCheckout
+      ? null
+      : task.checkout_agent_id ?? current?.checkout_agent_id ?? null;
+    const checkoutAt = shouldReleaseCheckout
+      ? null
+      : task.checkout_at ?? null;
 
     this.db.prepare(`
       INSERT INTO tasks (
-        id, title, description, status, priority, project, assigned_to,
+        id, title, description, status, priority, project, goal_id, assigned_to,
         checkout_agent_id, checkout_at, created_by, created_at, started_at,
-        updated_at, due_date, tags, metadata
+        updated_at, due_date, source_path, tags, metadata
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         description = excluded.description,
         status = excluded.status,
         priority = excluded.priority,
         project = excluded.project,
+        goal_id = excluded.goal_id,
         assigned_to = excluded.assigned_to,
+        checkout_agent_id = excluded.checkout_agent_id,
+        checkout_at = excluded.checkout_at,
         started_at = excluded.started_at,
         updated_at = excluded.updated_at,
         due_date = excluded.due_date,
+        source_path = COALESCE(excluded.source_path, tasks.source_path),
         tags = excluded.tags,
         metadata = excluded.metadata
     `).run(
@@ -333,17 +436,23 @@ export class HistoryStore {
       nextStatus,
       task.priority ?? 'medium',
       task.project ?? null,
+      task.goal_id ?? null,
       task.assigned_to ?? null,
-      task.checkout_agent_id ?? null,
-      task.checkout_at ?? null,
+      checkoutAgentId,
+      checkoutAt,
       task.created_by ?? null,
       task.created_at ?? now,
       startedAt,
       nextUpdatedAt,
       task.due_date ?? null,
+      task.source_path ?? null,
       tagsStr,
       metaStr,
     );
+
+    if (task.source_path && Array.isArray(task.dependencies)) {
+      this.replaceTaskDependencies(task.id, task.dependencies, task.source_path);
+    }
 
     // Notify on assignment change
     if (task.assigned_to && task.assigned_to !== current?.assigned_to) {
@@ -367,6 +476,150 @@ export class HistoryStore {
         source_type: 'task',
         source_id: task.id,
       });
+    }
+  }
+
+  private syncTaskSnapshot(tasks: any[], sourcePaths: string[]): void {
+    if (sourcePaths.length > 0) {
+      const placeholders = sourcePaths.map(() => '?').join(', ');
+      this.db.prepare(`
+        DELETE FROM tasks
+        WHERE source_path IS NOT NULL
+          AND source_path NOT IN (${placeholders})
+      `).run(...sourcePaths);
+      this.db.prepare(`
+        DELETE FROM task_relations
+        WHERE source_path IS NOT NULL
+          AND source_path NOT IN (${placeholders})
+      `).run(...sourcePaths);
+    } else {
+      this.db.prepare(`DELETE FROM tasks WHERE source_path IS NOT NULL`).run();
+      this.db.prepare(`DELETE FROM task_relations WHERE source_path IS NOT NULL`).run();
+    }
+
+    const bySourcePath = new Map<string, any[]>();
+    for (const task of tasks) {
+      if (!task || typeof task !== 'object' || typeof task['id'] !== 'string') {
+        continue;
+      }
+      const sourcePath = typeof task['source_path'] === 'string' ? task['source_path'] : '__snapshot__';
+      const bucket = bySourcePath.get(sourcePath);
+      if (bucket) {
+        bucket.push(task);
+      } else {
+        bySourcePath.set(sourcePath, [task]);
+      }
+    }
+
+    for (const [sourcePath, sourceTasks] of bySourcePath.entries()) {
+      const ids = sourceTasks.map((task) => task.id);
+      if (ids.length === 0) {
+        this.db.prepare(`DELETE FROM tasks WHERE source_path = ?`).run(sourcePath);
+        this.db.prepare(`DELETE FROM task_relations WHERE source_path = ?`).run(sourcePath);
+        continue;
+      }
+
+      const placeholders = ids.map(() => '?').join(', ');
+      this.db.prepare(`
+        DELETE FROM tasks
+        WHERE source_path = ?
+          AND id NOT IN (${placeholders})
+      `).run(sourcePath, ...ids);
+
+      for (const task of sourceTasks) {
+        this.upsertTask(task);
+      }
+    }
+  }
+
+  private syncGoalSnapshot(goals: any[], sourcePaths: string[]): void {
+    if (sourcePaths.length > 0) {
+      const placeholders = sourcePaths.map(() => '?').join(', ');
+      this.db.prepare(`
+        DELETE FROM goals
+        WHERE source_path IS NOT NULL
+          AND source_path NOT IN (${placeholders})
+      `).run(...sourcePaths);
+    } else {
+      this.db.prepare(`DELETE FROM goals WHERE source_path IS NOT NULL`).run();
+    }
+
+    const bySourcePath = new Map<string, any[]>();
+    for (const goal of goals) {
+      if (!goal || typeof goal !== 'object' || typeof goal['id'] !== 'string') {
+        continue;
+      }
+      const sourcePath = typeof goal['source_path'] === 'string' ? goal['source_path'] : '__snapshot__';
+      const bucket = bySourcePath.get(sourcePath);
+      if (bucket) {
+        bucket.push(goal);
+      } else {
+        bySourcePath.set(sourcePath, [goal]);
+      }
+    }
+
+    for (const [sourcePath, sourceGoals] of bySourcePath.entries()) {
+      const ids = sourceGoals.map((goal) => goal.id);
+      if (ids.length === 0) {
+        this.db.prepare(`DELETE FROM goals WHERE source_path = ?`).run(sourcePath);
+        continue;
+      }
+
+      const placeholders = ids.map(() => '?').join(', ');
+      this.db.prepare(`
+        DELETE FROM goals
+        WHERE source_path = ?
+          AND id NOT IN (${placeholders})
+      `).run(sourcePath, ...ids);
+
+      for (const goal of sourceGoals) {
+        this.upsertGoal(goal);
+      }
+    }
+  }
+
+  private upsertGoal(goal: any): void {
+    this.db.prepare(`
+      INSERT INTO goals (id, title, description, level, parent_id, status, source_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        level = excluded.level,
+        parent_id = excluded.parent_id,
+        status = excluded.status,
+        source_path = excluded.source_path
+    `).run(
+      goal.id,
+      goal.title,
+      goal.description ?? null,
+      typeof goal.level === 'number' ? goal.level : 0,
+      goal.parent_id ?? null,
+      goal.status ?? 'active',
+      goal.source_path ?? null,
+    );
+  }
+
+  private replaceTaskDependencies(taskId: string, dependencies: string[], sourcePath: string): void {
+    this.db.prepare(`
+      DELETE FROM task_relations
+      WHERE source_path = ?
+        AND (
+          (task_id = ? AND type = 'blocked_by')
+          OR (related_task_id = ? AND type = 'blocks')
+        )
+    `).run(sourcePath, taskId, taskId);
+
+    const insert = this.db.prepare(`
+      INSERT INTO task_relations (id, type, task_id, related_task_id, source_path)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        source_path = excluded.source_path
+    `);
+
+    for (const dependencyId of dependencies) {
+      insert.run(makeRelationId('blocked_by', taskId, dependencyId), 'blocked_by', taskId, dependencyId, sourcePath);
+      insert.run(makeRelationId('blocks', dependencyId, taskId), 'blocks', dependencyId, taskId, sourcePath);
     }
   }
 
@@ -431,12 +684,237 @@ export class HistoryStore {
     );
   }
 
+  private updateAgentRuntimeState(event: UAEPEvent): void {
+    const existing = this.db.prepare(`
+      SELECT total_tokens, total_cost_usd, last_error, last_run_status, context_window_usage,
+             recent_tool_call_count, tool_call_success_rate, health_status
+      FROM agent_runtime_state
+      WHERE agent_id = ?
+    `).get(event.agent_id) as {
+      total_tokens: number;
+      total_cost_usd: number;
+      last_error: string | null;
+      last_run_status: string | null;
+      context_window_usage: number | null;
+      recent_tool_call_count: number;
+      tool_call_success_rate: number | null;
+      health_status: string | null;
+    } | undefined;
+
+    let totalTokens = existing?.total_tokens ?? 0;
+    let totalCost = existing?.total_cost_usd ?? 0;
+    let lastError = existing?.last_error ?? null;
+    let lastRunStatus = existing?.last_run_status ?? 'idle';
+    let contextWindowUsage = existing?.context_window_usage ?? null;
+    let recentToolCallCount = existing?.recent_tool_call_count ?? 0;
+    let toolCallSuccessRate = existing?.tool_call_success_rate ?? 1;
+
+    if (event.type === 'metrics.usage') {
+      totalTokens += typeof event.data?.['tokens'] === 'number' ? event.data['tokens'] as number : 0;
+      totalCost += typeof event.data?.['cost'] === 'number' ? event.data['cost'] as number : 0;
+      const usage = event.data?.['context_window_usage'];
+      if (typeof usage === 'number') {
+        contextWindowUsage = usage;
+      }
+    }
+
+    if (event.type === 'tool.start') {
+      lastRunStatus = 'running';
+    }
+
+    if (event.type === 'tool.end' || event.type === 'tool.error') {
+      const previousSuccesses = Math.max(Math.round(toolCallSuccessRate * recentToolCallCount), 0);
+      const nextCount = Math.min(recentToolCallCount + 1, 25);
+      const nextSuccesses = event.type === 'tool.end'
+        ? Math.min(previousSuccesses + 1, nextCount)
+        : previousSuccesses;
+      recentToolCallCount = nextCount;
+      toolCallSuccessRate = nextCount > 0 ? nextSuccesses / nextCount : 1;
+      lastRunStatus = event.type === 'tool.end' ? 'completed' : 'error';
+      if (event.type === 'tool.error') {
+        lastError = typeof event.data?.['error'] === 'string' ? event.data['error'] as string : lastError;
+      }
+    }
+
+    if (event.type === 'agent.status') {
+      const status = event.data?.['status'];
+      if (typeof status === 'string') {
+        lastRunStatus = status === 'waiting_permission' || status === 'waiting_input'
+          ? 'waiting'
+          : status === 'error'
+            ? 'error'
+            : status === 'idle'
+              ? 'idle'
+              : lastRunStatus;
+      }
+      const usage = event.data?.['context_window_usage'];
+      if (typeof usage === 'number') {
+        contextWindowUsage = usage;
+      }
+    }
+
+    const healthStatus = lastRunStatus === 'error' || (contextWindowUsage ?? 0) >= 0.95
+      ? 'error'
+      : (contextWindowUsage ?? 0) >= 0.8 || toolCallSuccessRate < 0.75
+        ? 'caution'
+        : 'normal';
+
+    this.db.prepare(`
+      INSERT INTO agent_runtime_state (
+        agent_id,
+        total_tokens,
+        total_cost_usd,
+        last_error,
+        last_run_status,
+        context_window_usage,
+        recent_tool_call_count,
+        tool_call_success_rate,
+        health_status,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        total_tokens = excluded.total_tokens,
+        total_cost_usd = excluded.total_cost_usd,
+        last_error = excluded.last_error,
+        last_run_status = excluded.last_run_status,
+        context_window_usage = excluded.context_window_usage,
+        recent_tool_call_count = excluded.recent_tool_call_count,
+        tool_call_success_rate = excluded.tool_call_success_rate,
+        health_status = excluded.health_status,
+        updated_at = excluded.updated_at
+    `).run(
+      event.agent_id,
+      totalTokens,
+      totalCost,
+      lastError,
+      lastRunStatus,
+      contextWindowUsage,
+      recentToolCallCount,
+      toolCallSuccessRate,
+      healthStatus,
+      new Date().toISOString(),
+    );
+  }
+
   setAgentBudget(agentId: string, budgetMonthlyCents: number, agentName = agentId): void {
     this.upsertAgentProfile({
       agent_id: agentId,
       agent_name: agentName,
       budget_monthly_cents: budgetMonthlyCents,
     });
+  }
+
+  listTaskComments(taskId: string): TaskComment[] {
+    return this.db.prepare(`
+      SELECT id, task_id, author_agent_id, body, created_at
+      FROM task_comments
+      WHERE task_id = ?
+      ORDER BY created_at ASC
+    `).all(taskId) as TaskComment[];
+  }
+
+  addTaskComment(taskId: string, authorAgentId: string, body: string): TaskComment {
+    const comment = {
+      id: `comment_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      task_id: taskId,
+      author_agent_id: authorAgentId,
+      body,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+
+    this.db.prepare(`
+      INSERT INTO task_comments (id, task_id, author_agent_id, body, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(comment.id, comment.task_id, comment.author_agent_id, comment.body, comment.created_at);
+
+    return comment;
+  }
+
+  getGoalProgress(): GoalProgress[] {
+    const goals = this.db.prepare(`
+      SELECT id, title, description, level, parent_id, status, source_path
+      FROM goals
+      ORDER BY level ASC, title ASC
+    `).all() as Array<Goal & { source_path: string | null }>;
+
+    const taskRows = this.db.prepare(`
+      SELECT goal_id, status, project
+      FROM tasks
+      WHERE goal_id IS NOT NULL
+    `).all() as Array<{
+      goal_id: string;
+      status: string;
+      project: string | null;
+    }>;
+
+    const byGoal = new Map<string, GoalProgress>();
+    const childIds = new Map<string, string[]>();
+
+    for (const goal of goals) {
+      byGoal.set(goal.id, {
+        id: goal.id,
+        title: goal.title,
+        description: goal.description ?? undefined,
+        level: goal.level,
+        parent_id: goal.parent_id ?? undefined,
+        status: goal.status as Goal['status'],
+        source_path: goal.source_path ?? undefined,
+        total_tasks: 0,
+        completed_tasks: 0,
+        active_tasks: 0,
+        completion_ratio: 0,
+        projects: [],
+        children: [],
+      });
+
+      if (goal.parent_id) {
+        const siblings = childIds.get(goal.parent_id);
+        if (siblings) {
+          siblings.push(goal.id);
+        } else {
+          childIds.set(goal.parent_id, [goal.id]);
+        }
+      }
+    }
+
+    for (const row of taskRows) {
+      const goal = byGoal.get(row.goal_id);
+      if (!goal) continue;
+      goal.total_tasks += 1;
+      goal.completed_tasks += isCompletedTaskStatus(row.status) ? 1 : 0;
+      goal.active_tasks += isCompletedTaskStatus(row.status) ? 0 : 1;
+      if (row.project && !goal.projects.includes(row.project)) {
+        goal.projects.push(row.project);
+      }
+    }
+
+    const aggregate = (goalId: string): GoalProgress => {
+      const goal = byGoal.get(goalId)!;
+      for (const childId of childIds.get(goalId) ?? []) {
+        const child = aggregate(childId);
+        goal.children.push(child);
+        goal.total_tasks += child.total_tasks;
+        goal.completed_tasks += child.completed_tasks;
+        goal.active_tasks += child.active_tasks;
+        for (const project of child.projects) {
+          if (!goal.projects.includes(project)) {
+            goal.projects.push(project);
+          }
+        }
+      }
+      goal.completion_ratio = goal.total_tasks > 0
+        ? goal.completed_tasks / goal.total_tasks
+        : 0;
+      goal.projects.sort((left, right) => left.localeCompare(right));
+      return goal;
+    };
+
+    const roots = goals
+      .filter((goal) => !goal.parent_id || !byGoal.has(goal.parent_id))
+      .map((goal) => aggregate(goal.id));
+
+    return roots.sort((left, right) => left.title.localeCompare(right.title));
   }
 
   getByAgent(

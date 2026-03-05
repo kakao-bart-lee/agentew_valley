@@ -7,6 +7,11 @@
 import type { UAEPEvent } from './uaep.js';
 import type { AgentLiveState, AgentHierarchyNode } from './agent.js';
 import type { MetricsSnapshot } from './metrics.js';
+import type {
+  GoalProgress,
+  MissionControlTask,
+  TaskComment,
+} from './mission-control.js';
 
 // ─── REST API 응답 타입 ───
 
@@ -86,6 +91,8 @@ export interface ObservatoryConfig {
   metrics_interval_ms: number;
   /** 인메모리 시계열 보존 기간 (분) */
   timeseries_retention_minutes: number;
+  /** stale task 경고 임계값 (시간) */
+  stale_threshold_hours?: number;
 }
 
 // ─── Session Replay ───
@@ -266,9 +273,75 @@ export interface DashboardSummaryResponse {
   top_models: ModelCostEntry[];
   budget_alerts: BudgetAlertEntry[];
   stale_tasks: StaleTaskEntry[];
+  goal_progress: GoalProgress[];
   pending_alerts: number;
   alert_severity: 'ok' | 'warning' | 'critical';
   mc_db_connected: boolean;
+}
+
+export interface TasksResponse {
+  domain: 'tasks';
+  version: 'v2';
+  tasks: MissionControlTask[];
+  total: number;
+  flag_enabled?: boolean;
+  mc_db_connected: boolean;
+}
+
+export interface TaskResponse {
+  domain: 'tasks';
+  version: 'v2';
+  task: MissionControlTask | null;
+}
+
+export interface TaskCheckoutResponse extends TaskResponse {
+  status: 'checked_out' | 'released';
+}
+
+export interface GoalsResponse {
+  domain: 'goals';
+  version: 'v2';
+  goals: GoalProgress[];
+  total: number;
+  mc_db_connected: boolean;
+}
+
+export interface TaskCommentsResponse {
+  domain: 'tasks';
+  version: 'v2';
+  comments: TaskComment[];
+  total: number;
+  mc_db_connected: boolean;
+}
+
+export interface TaskCommentCreateRequest {
+  author_agent_id: string;
+  body: string;
+}
+
+export interface RealtimeTaskPayload {
+  task_id: string;
+  task?: MissionControlTask | null;
+}
+
+export interface RealtimeActivityPayload {
+  id: string;
+  type: string;
+  entity_type: string;
+  entity_id?: string;
+  created_at: number;
+}
+
+export interface RealtimeCostAlertPayload {
+  agent_id: string;
+  severity: 'warning' | 'critical';
+  utilization_ratio?: number;
+  budget_monthly_cents?: number;
+  spent_monthly_cents?: number;
+}
+
+export interface RealtimeAgentStatusPayload {
+  agent: AgentLiveState;
 }
 
 // ─── WebSocket 이벤트 페이로드 타입 ───
@@ -302,6 +375,11 @@ export interface ServerToClientEvents {
   'agent:remove': (payload: WSAgentRemovePayload) => void;
   'event': (payload: WSEventPayload) => void;
   'metrics:snapshot': (payload: WSMetricsSnapshotPayload) => void;
+  'task.updated': (payload: RealtimeTaskPayload) => void;
+  'task.checkout': (payload: RealtimeTaskPayload) => void;
+  'agent.status': (payload: RealtimeAgentStatusPayload) => void;
+  'cost.alert': (payload: RealtimeCostAlertPayload) => void;
+  'activity.logged': (payload: RealtimeActivityPayload) => void;
 }
 
 /** Client -> Server 이벤트 맵 */

@@ -32,6 +32,8 @@ export type UAEPEventType =
   | 'subagent.end'
   | 'metrics.usage'
   | 'task.sync'
+  | 'task.snapshot'
+  | 'goal.snapshot'
   | 'activity.new'
   | 'notification.new';
 
@@ -115,6 +117,8 @@ export const UAEP_EVENT_TYPES: readonly UAEPEventType[] = [
   'subagent.end',
   'metrics.usage',
   'task.sync',
+  'task.snapshot',
+  'goal.snapshot',
   'activity.new',
   'notification.new',
 ] as const;

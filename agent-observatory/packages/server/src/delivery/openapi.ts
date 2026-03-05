@@ -199,6 +199,68 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           },
         },
       },
+      '/api/v2/tasks/{id}': {
+        get: {
+          tags: ['Migration'],
+          summary: 'Get a single v2 task by id',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Task detail' },
+            404: { description: 'Task not found' },
+          },
+        },
+      },
+      '/api/v2/tasks/{id}/comments': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List task comments',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Task comments' },
+            404: { description: 'Task not found' },
+          },
+        },
+        post: {
+          tags: ['Migration'],
+          summary: 'Add a task comment',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            201: { description: 'Comment created' },
+            400: { description: 'Invalid comment payload' },
+            404: { description: 'Task not found' },
+          },
+        },
+      },
+      '/api/v2/tasks/{id}/checkout': {
+        post: {
+          tags: ['Migration'],
+          summary: 'Checkout a task',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Task checked out' },
+            404: { description: 'Task not found' },
+            409: { description: 'Checkout conflict' },
+          },
+        },
+        delete: {
+          tags: ['Migration'],
+          summary: 'Release a task checkout',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Task released' },
+            404: { description: 'Task not found' },
+          },
+        },
+      },
+      '/api/v2/goals': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List goal hierarchy with progress',
+          responses: {
+            200: { description: 'Goals list' },
+          },
+        },
+      },
       '/api/v2/webhooks/test': {
         post: {
           tags: ['Migration'],

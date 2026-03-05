@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { GoalProgress, GoalsResponse, MissionControlTask, TasksResponse } from '@agent-observatory/shared';
 import { TaskColumn } from './TaskColumn';
+import { TaskDetailPanel } from './TaskDetailPanel';
 import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
+import { useMissionControlStore } from '../../../stores/missionControlStore';
 
 const KANBAN_COLUMNS = ['inbox', 'assigned', 'in_progress', 'review', 'quality_review', 'done'] as const;
 const STATUS_LABELS: Record<string, string> = {
@@ -14,40 +17,11 @@ const STATUS_LABELS: Record<string, string> = {
 
 type GroupBy = 'status' | 'agent' | 'project';
 
-interface McTask {
-  id: string;
-  title: string;
-  description?: string;
-  status: string;
-  priority: string;
-  project?: string;
-  assigned_to?: string;
-  checkout_agent_id?: string;
-  checkout_at?: number;
-  created_by?: string;
-  created_at: number;
-  started_at?: number;
-  updated_at: number;
-  due_date?: number;
-  tags?: string;
-  metadata?: string;
-  is_stale?: boolean;
-}
-
-interface TasksResponse {
-  tasks: McTask[];
-  total: number;
-  flag_enabled?: boolean;
-  mc_db_connected?: boolean;
-  code?: string;
-  error?: string;
-}
-
 interface TaskColumnData {
   key: string;
   title: string;
   accent: string;
-  tasks: McTask[];
+  tasks: MissionControlTask[];
 }
 
 function formatProjectLabel(project?: string): string {
@@ -58,7 +32,30 @@ function formatProjectLabel(project?: string): string {
   return project;
 }
 
-function buildColumns(tasks: McTask[], groupBy: GroupBy): TaskColumnData[] {
+function flattenGoals(goals: GoalProgress[], depth = 0): Array<{ goal: GoalProgress; depth: number }> {
+  return goals.flatMap((goal) => [
+    { goal, depth },
+    ...flattenGoals(goal.children, depth + 1),
+  ]);
+}
+
+function collectGoalIds(goals: GoalProgress[], selectedGoalId: string): string[] {
+  for (const goal of goals) {
+    if (goal.id === selectedGoalId) {
+      return [
+        goal.id,
+        ...goal.children.flatMap((child) => collectGoalIds([child], child.id)),
+      ];
+    }
+    const nested = collectGoalIds(goal.children, selectedGoalId);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+  return [];
+}
+
+function buildColumns(tasks: MissionControlTask[], groupBy: GroupBy): TaskColumnData[] {
   if (groupBy === 'status') {
     return KANBAN_COLUMNS.map((status) => ({
       key: status,
@@ -68,7 +65,7 @@ function buildColumns(tasks: McTask[], groupBy: GroupBy): TaskColumnData[] {
     }));
   }
 
-  const groups = new Map<string, McTask[]>();
+  const groups = new Map<string, MissionControlTask[]>();
   const fallbackKey = groupBy === 'agent' ? '__unassigned__' : '__unscoped__';
 
   for (const task of tasks) {
@@ -101,85 +98,102 @@ function buildColumns(tasks: McTask[], groupBy: GroupBy): TaskColumnData[] {
 
 export function TaskBoard() {
   const [data, setData] = useState<TasksResponse | null>(null);
+  const [goalsData, setGoalsData] = useState<GoalsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [goalFilter, setGoalFilter] = useState<string>('all');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const versions = useMissionControlStore((state) => state.versions);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadTasks = async (isInitialLoad: boolean) => {
+    const load = async (isInitialLoad: boolean) => {
       if (isInitialLoad) {
         setLoading(true);
       }
 
       try {
-        const nextData = await fetchJsonWithAuth<TasksResponse>(
-          `${getApiBase()}/api/v2/tasks?limit=200`,
-        );
+        const [nextTasks, nextGoals] = await Promise.all([
+          fetchJsonWithAuth<TasksResponse>(`${getApiBase()}/api/v2/tasks?limit=200`),
+          fetchJsonWithAuth<GoalsResponse>(`${getApiBase()}/api/v2/goals`),
+        ]);
         if (!cancelled) {
-          setData(nextData);
+          setData(nextTasks);
+          setGoalsData(nextGoals);
           setLoading(false);
         }
       } catch {
         if (!cancelled) {
-          setData({ tasks: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' });
+          setData({
+            domain: 'tasks',
+            version: 'v2',
+            tasks: [],
+            total: 0,
+            mc_db_connected: false,
+          });
+          setGoalsData({
+            domain: 'goals',
+            version: 'v2',
+            goals: [],
+            total: 0,
+            mc_db_connected: false,
+          });
           setLoading(false);
         }
       }
     };
 
-    void loadTasks(true);
+    void load(true);
     const intervalId = window.setInterval(() => {
-      void loadTasks(false);
+      void load(false);
     }, 30_000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [versions.tasks, versions.goals]);
 
   const tasks = data?.tasks ?? [];
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const flatGoals = useMemo(() => flattenGoals(goalsData?.goals ?? []), [goalsData?.goals]);
+  const filteredGoalIds = useMemo(
+    () => goalFilter === 'all' ? null : collectGoalIds(goalsData?.goals ?? [], goalFilter),
+    [goalFilter, goalsData?.goals],
+  );
   const projectOptions = Array.from(
     new Set(tasks.map((task) => task.project).filter((project): project is string => Boolean(project))),
   ).sort((left, right) => left.localeCompare(right));
 
   useEffect(() => {
-    if (projectFilter === 'all') return;
-    if (!projectOptions.includes(projectFilter)) {
+    if (projectFilter !== 'all' && !projectOptions.includes(projectFilter)) {
       setProjectFilter('all');
     }
   }, [projectFilter, projectOptions]);
 
-  const filteredTasks = projectFilter === 'all'
-    ? tasks
-    : tasks.filter((task) => task.project === projectFilter);
-  const columns = buildColumns(filteredTasks, groupBy);
+  useEffect(() => {
+    if (goalFilter === 'all') return;
+    if (!tasks.some((task) => task.goal_id === goalFilter) && !flatGoals.some(({ goal }) => goal.id === goalFilter)) {
+      setGoalFilter('all');
+    }
+  }, [goalFilter, tasks, flatGoals]);
+
+  const filteredTasks = tasks
+    .filter((task) => projectFilter === 'all' || task.project === projectFilter)
+    .filter((task) => {
+      if (!filteredGoalIds) {
+        return true;
+      }
+      return task.goal_id ? filteredGoalIds.includes(task.goal_id) : false;
+    });
+
+  const effectiveGroupBy = goalFilter !== 'all' && groupBy === 'status' ? 'project' : groupBy;
+  const columns = buildColumns(filteredTasks, effectiveGroupBy);
 
   if (loading) {
     return <div className="p-4 text-sm text-slate-400">Loading tasks...</div>;
-  }
-
-  if (data?.code === 'V2_KILL_SWITCH_ENABLED') {
-    return (
-      <div className="rounded-lg border border-red-700 bg-red-900/30 p-4 text-sm text-red-300">
-        v2 Kill Switch 활성화됨 - 모든 v2 라우트가 비활성화되어 있습니다.
-      </div>
-    );
-  }
-
-  if (data?.code === 'FEATURE_FLAG_DISABLED') {
-    return (
-      <div className="rounded-lg border border-amber-700 bg-amber-900/30 p-4 text-sm text-amber-300">
-        <strong>Feature flag 비활성화</strong>
-        <p className="mt-1 text-amber-400/80">
-          Tasks v2 기능이 비활성화되어 있습니다.
-          <code className="ml-1 rounded bg-amber-900/50 px-1">OBSERVATORY_TASKS_V2_ENABLED=true</code>
-          환경변수를 설정하고 서버를 재시작하세요.
-        </p>
-      </div>
-    );
   }
 
   if (!data?.mc_db_connected) {
@@ -199,7 +213,8 @@ export function TaskBoard() {
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <span className="text-xs text-slate-500">
           총 {filteredTasks.length}개 태스크
-          {projectFilter !== 'all' && data ? ` · project: ${formatProjectLabel(projectFilter)}` : ''}
+          {goalFilter !== 'all' ? ' · goal scoped' : ''}
+          {projectFilter !== 'all' ? ` · project: ${formatProjectLabel(projectFilter)}` : ''}
         </span>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
@@ -238,22 +253,82 @@ export function TaskBoard() {
         </div>
       </div>
 
-      {columns.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">
-          표시할 태스크가 없습니다.
+      <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-slate-100">Goal Drill-down</h3>
+          <button
+            type="button"
+            onClick={() => setGoalFilter('all')}
+            className="text-xs text-slate-400 transition-colors hover:text-slate-200"
+          >
+            Clear
+          </button>
         </div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {columns.map((column) => (
-            <TaskColumn
-              key={column.key}
-              title={column.title}
-              accent={column.accent}
-              tasks={column.tasks}
-            />
-          ))}
+        {flatGoals.length === 0 ? (
+          <div className="text-sm text-slate-500">No goals synced yet.</div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {flatGoals.map(({ goal, depth }) => {
+              const isActive = goalFilter === goal.id;
+              return (
+                <button
+                  key={goal.id}
+                  type="button"
+                  onClick={() => setGoalFilter(goal.id)}
+                  className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors ${
+                    isActive
+                      ? 'border-cyan-500 bg-cyan-950/40'
+                      : 'border-slate-700 bg-slate-950/60 hover:border-slate-600'
+                  }`}
+                  style={{ marginLeft: depth * 12 }}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-100">{goal.title}</div>
+                    <div className="text-[11px] text-slate-500">
+                      {goal.completed_tasks}/{goal.total_tasks} complete
+                    </div>
+                  </div>
+                  <div className="ml-3 h-2 w-24 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-cyan-400"
+                      style={{ width: `${Math.round(goal.completion_ratio * 100)}%` }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-4">
+        <div className="min-w-0 flex-1">
+          {columns.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">
+              표시할 태스크가 없습니다.
+            </div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {columns.map((column) => (
+                <TaskColumn
+                  key={column.key}
+                  title={column.title}
+                  accent={column.accent}
+                  tasks={column.tasks}
+                  onSelectTask={(task) => setSelectedTaskId(task.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {selectedTask && (
+          <TaskDetailPanel
+            task={selectedTask}
+            onClose={() => setSelectedTaskId(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

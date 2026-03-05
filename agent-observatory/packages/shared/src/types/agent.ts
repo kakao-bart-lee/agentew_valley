@@ -16,6 +16,8 @@ export type AgentStatus =
   | 'waiting_permission'
   | 'error';
 
+export type AgentHealthStatus = 'normal' | 'caution' | 'error';
+
 /**
  * 도구 행동 카테고리.
  *
@@ -100,8 +102,26 @@ export interface AgentLiveState {
   /** 누적 도구 호출 수 */
   total_tool_calls: number;
 
+  /** 최근 N회 도구 호출 성공률 (0-1) */
+  tool_call_success_rate?: number;
+
+  /** 최근 N회 도구 호출 수 */
+  recent_tool_call_count?: number;
+
   /** 누적 에러 수 */
   total_errors: number;
+
+  /** 마지막 에러 요약 */
+  last_error?: string;
+
+  /** 최근 실행 상태 */
+  last_run_status?: 'idle' | 'running' | 'waiting' | 'completed' | 'error';
+
+  /** 컨텍스트 윈도우 사용률 (0-1) */
+  context_window_usage?: number;
+
+  /** 종합 건강 상태 */
+  health_status?: AgentHealthStatus;
 
   /** llm.end 이벤트 수 (LLM 응답 횟수) */
   llm_response_count: number;

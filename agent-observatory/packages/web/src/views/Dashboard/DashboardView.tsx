@@ -7,6 +7,7 @@ import { TooltipProvider } from '../../components/ui/tooltip';
 import { AgentDetailPanel } from './AgentDetailPanel';
 import { MissionControlSummarySection } from './MissionControlSummarySection';
 import { CostSummaryCard } from './CostSummaryCard';
+import { GoalProgressCard } from './GoalProgressCard';
 
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
@@ -108,7 +109,10 @@ export function DashboardView() {
 
                         </div>
 
-                        <CostSummaryCard />
+                        <div className="grid gap-6 xl:grid-cols-2">
+                            <CostSummaryCard />
+                            <GoalProgressCard />
+                        </div>
 
                         <MissionControlSummarySection />
                     </div>

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { io as ioc, type Socket as ClientSocket } from 'socket.io-client';
 import { createApp } from '../app.js';
 import type { AppInstance } from '../app.js';
-import { makeSessionStart, makeToolStart, makeToolEnd } from './helpers.js';
+import { makeEvent, makeSessionStart, makeToolStart, makeToolEnd } from './helpers.js';
 
 function waitFor<T>(socket: ClientSocket, event: string, timeout = 3000): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -165,5 +165,47 @@ describe('WebSocket Server', () => {
     await new Promise((r) => setTimeout(r, 200));
 
     expect(events.length).toBe(0);
+  });
+
+  it('should emit semantic task and activity websocket events', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    const taskUpdatedPromise = waitFor<{ task_id: string }>(socket, 'task.updated');
+    const activityPromise = waitFor<{ entity_id: string; type: string }>(socket, 'activity.logged');
+
+    instance.eventBus.publish(makeEvent({
+      type: 'task.sync',
+      source: 'mission_control',
+      agent_id: 'observatory',
+      session_id: 'mission_control_sync',
+      data: {
+        id: 'T-200',
+        title: 'Emit semantic event',
+        status: 'assigned',
+        priority: 'medium',
+        updated_at: Math.floor(Date.now() / 1000),
+      },
+    }));
+    instance.eventBus.publish(makeEvent({
+      type: 'activity.new',
+      source: 'mission_control',
+      agent_id: 'observatory',
+      session_id: 'mission_control_sync',
+      data: {
+        id: 'activity-1',
+        type: 'task_comment',
+        entity_type: 'task',
+        entity_id: 'T-200',
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    }));
+
+    const taskUpdated = await taskUpdatedPromise;
+    const activity = await activityPromise;
+
+    expect(taskUpdated.task_id).toBe('T-200');
+    expect(activity.entity_id).toBe('T-200');
+    expect(activity.type).toBe('task_comment');
   });
 });

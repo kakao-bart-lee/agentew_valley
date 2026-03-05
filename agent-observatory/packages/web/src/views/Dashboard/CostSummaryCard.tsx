@@ -8,6 +8,7 @@ import type {
 } from '@agent-observatory/shared';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
+import { useMissionControlStore } from '../../stores/missionControlStore';
 
 function formatProjectLabel(projectId: string): string {
   if (projectId.startsWith('/')) {
@@ -24,6 +25,7 @@ export function CostSummaryCard() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const summaryVersion = useMissionControlStore((state) => state.versions.summary);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +61,7 @@ export function CostSummaryCard() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [summaryVersion]);
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
