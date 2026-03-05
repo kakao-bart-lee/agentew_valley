@@ -136,8 +136,15 @@ export function createWebSocketServer(
       const activityPayload = {
         id: event.data['id'] as string,
         type: String(event.data?.['type'] ?? 'activity'),
-        entity_type: String(event.data?.['entity_type'] ?? 'unknown'),
+        actor: typeof event.data?.['actor'] === 'string' ? event.data['actor'] as string : undefined,
+        actor_type: (event.data?.['actor_type'] === 'agent'
+          || event.data?.['actor_type'] === 'user'
+          || event.data?.['actor_type'] === 'system'
+          ? event.data['actor_type']
+          : 'system') as 'agent' | 'user' | 'system',
+        entity_type: (typeof event.data?.['entity_type'] === 'string' ? event.data['entity_type'] : 'task') as 'task' | 'agent' | 'approval' | 'goal' | 'session',
         entity_id: typeof event.data?.['entity_id'] === 'string' ? event.data['entity_id'] as string : undefined,
+        description: typeof event.data?.['description'] === 'string' ? event.data['description'] as string : undefined,
         created_at: typeof event.data?.['created_at'] === 'number' ? event.data['created_at'] as number : Math.floor(Date.now() / 1000),
       };
       io.emit('activity.logged', activityPayload);

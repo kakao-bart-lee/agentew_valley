@@ -18,6 +18,7 @@ const makeAgent = (id: string, overrides: Partial<AgentLiveState> = {}): AgentLi
     total_cost_usd: 0,
     total_tool_calls: 0,
     total_errors: 0,
+    health_status: 'normal',
     llm_response_count: 0,
     llm_total_text_length: 0,
     tool_distribution: {

@@ -1,4 +1,9 @@
-import type { UAEPEvent } from '@agent-observatory/shared';
+import type {
+  AdapterCapabilities,
+  CollectOptions,
+  ObservatoryAdapter,
+  UAEPEvent,
+} from '@agent-observatory/shared';
 import { generateEventId } from '@agent-observatory/shared';
 import type { Collector, CollectorConfig } from '../base.js';
 import { MissionControlWatcher } from './watcher.js';
@@ -8,9 +13,17 @@ export interface MissionControlCollectorConfig extends CollectorConfig {
   watchPaths: string[];
 }
 
-export class MissionControlCollector implements Collector {
+export class MissionControlCollector implements Collector, ObservatoryAdapter {
   readonly name = 'MissionControlCollector';
+  readonly type = 'mission_control';
   readonly sourceType = 'mission_control' as const;
+  readonly capabilities: AdapterCapabilities = {
+    costTracking: true,
+    logStreaming: false,
+    statusUpdates: true,
+    goalParsing: true,
+    taskSync: true,
+  };
 
   private readonly watcher: MissionControlWatcher;
   private readonly config: MissionControlCollectorConfig;
@@ -91,9 +104,31 @@ export class MissionControlCollector implements Collector {
     await this.watcher.start();
   }
 
+  async collect(options: CollectOptions): Promise<void> {
+    if (options.watchPaths && options.watchPaths.length > 0) {
+      await this.start();
+      return;
+    }
+    await this.start();
+  }
+
   async stop(): Promise<void> {
     await this.watcher.stop();
     this.handlers = [];
+  }
+
+  async testConnection(): Promise<{ ok: boolean; message?: string }> {
+    if (this.config.watchPaths.length === 0) {
+      return {
+        ok: false,
+        message: 'Mission Control adapter has no watch paths configured.',
+      };
+    }
+
+    return {
+      ok: true,
+      message: `Watching ${this.config.watchPaths.length} Mission Control path(s).`,
+    };
   }
 
   private emit(event: UAEPEvent): void {

@@ -12,6 +12,16 @@ import type {
   MissionControlTask,
   TaskComment,
 } from './mission-control.js';
+import type {
+  ActivityActorType,
+  ActivityEntityType,
+  ActivityEntry,
+  AdapterConnectionResult,
+  AdapterSummary,
+  Approval,
+  ApprovalStatus,
+  ApprovalType,
+} from './governance.js';
 
 // ─── REST API 응답 타입 ───
 
@@ -275,8 +285,51 @@ export interface DashboardSummaryResponse {
   stale_tasks: StaleTaskEntry[];
   goal_progress: GoalProgress[];
   pending_alerts: number;
+  pending_approvals: number;
   alert_severity: 'ok' | 'warning' | 'critical';
   mc_db_connected: boolean;
+}
+
+export interface ApprovalsResponse {
+  domain: 'approvals';
+  version: 'v2';
+  approvals: Approval[];
+  total: number;
+  offset?: number;
+  limit?: number;
+  pending: number;
+  mc_db_connected: boolean;
+}
+
+export interface ApprovalResponse {
+  domain: 'approvals';
+  version: 'v2';
+  approval: Approval | null;
+  mc_db_connected?: boolean;
+}
+
+export interface ApprovalCreateRequest {
+  type: ApprovalType;
+  requested_by: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ApprovalUpdateRequest {
+  status: Exclude<ApprovalStatus, 'pending'>;
+  decision_note?: string;
+  decided_by?: string;
+}
+
+export interface ActivitiesResponse {
+  domain?: 'activities';
+  version?: 'v2';
+  activities: ActivityEntry[];
+  total: number;
+  offset?: number;
+  limit?: number;
+  mc_db_connected: boolean;
+  code?: string;
+  error?: string;
 }
 
 export interface TasksResponse {
@@ -327,9 +380,16 @@ export interface RealtimeTaskPayload {
 export interface RealtimeActivityPayload {
   id: string;
   type: string;
-  entity_type: string;
+  actor?: string;
+  actor_type: ActivityActorType;
+  entity_type: ActivityEntityType;
   entity_id?: string;
+  description?: string;
   created_at: number;
+}
+
+export interface RealtimeApprovalPayload {
+  approval: Approval;
 }
 
 export interface RealtimeCostAlertPayload {
@@ -342,6 +402,20 @@ export interface RealtimeCostAlertPayload {
 
 export interface RealtimeAgentStatusPayload {
   agent: AgentLiveState;
+}
+
+export interface AdaptersResponse {
+  domain: 'adapters';
+  version: 'v2';
+  adapters: AdapterSummary[];
+  total: number;
+}
+
+export interface AdapterTestResponse {
+  domain: 'adapters';
+  version: 'v2';
+  adapter: AdapterSummary;
+  result: AdapterConnectionResult;
 }
 
 // ─── WebSocket 이벤트 페이로드 타입 ───
@@ -380,6 +454,8 @@ export interface ServerToClientEvents {
   'agent.status': (payload: RealtimeAgentStatusPayload) => void;
   'cost.alert': (payload: RealtimeCostAlertPayload) => void;
   'activity.logged': (payload: RealtimeActivityPayload) => void;
+  'approval.created': (payload: RealtimeApprovalPayload) => void;
+  'approval.updated': (payload: RealtimeApprovalPayload) => void;
 }
 
 /** Client -> Server 이벤트 맵 */

@@ -25,6 +25,7 @@ export function generateMockAgents(): AgentLiveState[] {
             total_cost_usd: 0.18,
             total_tool_calls: 42,
             total_errors: 0,
+            health_status: 'normal',
             llm_response_count: 12,
             llm_total_text_length: 24000,
             tool_distribution: {
@@ -58,6 +59,7 @@ export function generateMockAgents(): AgentLiveState[] {
             total_cost_usd: 0.05,
             total_tool_calls: 12,
             total_errors: 1,
+            health_status: 'caution',
             llm_response_count: 5,
             llm_total_text_length: 5000,
             tool_distribution: {
@@ -91,6 +93,7 @@ export function generateMockAgents(): AgentLiveState[] {
             total_cost_usd: 1.25,
             total_tool_calls: 156,
             total_errors: 0,
+            health_status: 'normal',
             llm_response_count: 38,
             llm_total_text_length: 95000,
             tool_distribution: {

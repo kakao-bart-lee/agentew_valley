@@ -36,6 +36,18 @@ function ensureMissionControlSchema(db: Database.Database): void {
     }
   }
 
+  for (const column of [
+    "actor_type TEXT NOT NULL DEFAULT 'system'",
+    'entity_type TEXT',
+    'entity_id TEXT',
+  ]) {
+    try {
+      db.exec(`ALTER TABLE activities ADD COLUMN ${column}`);
+    } catch {
+      // Column already exists.
+    }
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
     CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id);
@@ -85,6 +97,34 @@ function ensureMissionControlSchema(db: Database.Database): void {
       health_status TEXT DEFAULT 'normal',
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      actor_type TEXT NOT NULL DEFAULT 'system',
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      actor TEXT,
+      description TEXT,
+      data TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_activities_entity ON activities(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_activities_actor_type ON activities(actor_type, created_at);
+
+    CREATE TABLE IF NOT EXISTS approvals (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      payload TEXT,
+      decision_note TEXT,
+      decided_by TEXT,
+      decided_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_approvals_type ON approvals(type, created_at);
   `);
 }
 

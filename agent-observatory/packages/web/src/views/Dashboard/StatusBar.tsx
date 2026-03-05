@@ -38,6 +38,22 @@ export function StatusBar() {
     const cacheHitRate = snapshot?.cache_hit_rate ?? 0;
     const showCache = cacheHitRate > 0 || (snapshot?.cache_read_tokens ?? 0) > 0;
     const pendingAlerts = summary?.pending_alerts ?? 0;
+    const pendingApprovals = summary?.pending_approvals ?? 0;
+
+    const navItems: Array<{
+        id: typeof activeView;
+        label: string;
+        socketView: 'dashboard' | 'pixel' | 'timeline';
+        badge?: number;
+    }> = [
+        { id: 'dashboard', label: 'Dashboard', socketView: 'dashboard' },
+        { id: 'pixel', label: 'Pixel', socketView: 'pixel' },
+        { id: 'sessions', label: 'Sessions', socketView: 'dashboard' },
+        { id: 'mission-control', label: 'Mission Control', socketView: 'dashboard' },
+        { id: 'approvals', label: 'Approvals', socketView: 'dashboard', badge: pendingApprovals },
+        { id: 'activity-log', label: 'Activity', socketView: 'dashboard' },
+        { id: 'adapters', label: 'Adapters', socketView: 'dashboard' },
+    ];
 
     useEffect(() => {
         let cancelled = false;
@@ -73,42 +89,25 @@ export function StatusBar() {
             <div className="flex gap-6 items-center flex-wrap">
                 {/* View Switcher */}
                 <div className="flex bg-slate-900 rounded-lg p-1 mr-2">
-                    <button
-                        onClick={() => {
-                            setStoreView('dashboard');
-                            setSocketView('dashboard');
-                        }}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === 'dashboard' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Dashboard
-                    </button>
-                    <button
-                        onClick={() => {
-                            setStoreView('pixel');
-                            setSocketView('pixel');
-                        }}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === 'pixel' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Pixel
-                    </button>
-                    <button
-                        onClick={() => {
-                            setStoreView('sessions');
-                            setSocketView('dashboard');
-                        }}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === 'sessions' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Sessions
-                    </button>
-                    <button
-                        onClick={() => {
-                            setStoreView('mission-control');
-                            setSocketView('dashboard');
-                        }}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === 'mission-control' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Mission Control
-                    </button>
+                    {navItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => {
+                                setStoreView(item.id);
+                                setSocketView(item.socketView);
+                            }}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === item.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                        >
+                            <span className="inline-flex items-center gap-2">
+                                <span>{item.label}</span>
+                                {item.badge && item.badge > 0 ? (
+                                    <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
+                                        {item.badge}
+                                    </span>
+                                ) : null}
+                            </span>
+                        </button>
+                    ))}
                 </div>
 
                 {/* Connection Status */}

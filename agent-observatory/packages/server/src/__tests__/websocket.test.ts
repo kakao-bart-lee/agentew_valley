@@ -208,4 +208,53 @@ describe('WebSocket Server', () => {
     expect(activity.entity_id).toBe('T-200');
     expect(activity.type).toBe('task_comment');
   });
+
+  it('should emit approval websocket events from approval lifecycle events', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    const createdPromise = waitFor<{ approval: { id: string; status: string } }>(socket, 'approval.created');
+    const updatedPromise = waitFor<{ approval: { id: string; status: string } }>(socket, 'approval.updated');
+
+    instance.eventBus.publish(makeEvent({
+      type: 'approval.created',
+      source: 'mission_control',
+      agent_id: 'agent-1',
+      session_id: 'mission_control_api',
+      data: {
+        approval: {
+          id: 'approval-1',
+          type: 'dangerous_action',
+          requested_by: 'agent-1',
+          status: 'pending',
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      },
+    }));
+
+    instance.eventBus.publish(makeEvent({
+      type: 'approval.updated',
+      source: 'mission_control',
+      agent_id: 'user',
+      session_id: 'mission_control_api',
+      data: {
+        approval: {
+          id: 'approval-1',
+          type: 'dangerous_action',
+          requested_by: 'agent-1',
+          status: 'approved',
+          decided_by: 'user',
+          decided_at: Math.floor(Date.now() / 1000),
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      },
+    }));
+
+    const created = await createdPromise;
+    const updated = await updatedPromise;
+
+    expect(created.approval.id).toBe('approval-1');
+    expect(created.approval.status).toBe('pending');
+    expect(updated.approval.status).toBe('approved');
+  });
 });
