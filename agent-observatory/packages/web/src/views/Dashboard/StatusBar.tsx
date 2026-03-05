@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { DashboardSummaryResponse } from '@agent-observatory/shared';
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
 import { useSocket } from '../../hooks/useSocket';
+import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
@@ -12,6 +14,7 @@ export function StatusBar() {
     const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
     const { snapshot } = useMetricsStore();
     const { setView: setSocketView } = useSocket();
+    const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
 
     // selector로 파생값 구독 — 동일 값 반환 시 리렌더 건너뜀
     const activeAgents = useAgentStore(
@@ -34,6 +37,36 @@ export function StatusBar() {
 
     const cacheHitRate = snapshot?.cache_hit_rate ?? 0;
     const showCache = cacheHitRate > 0 || (snapshot?.cache_read_tokens ?? 0) > 0;
+    const pendingAlerts = summary?.pending_alerts ?? 0;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadSummary = async () => {
+            try {
+                const nextSummary = await fetchJsonWithAuth<DashboardSummaryResponse>(
+                    `${getApiBase()}/api/v1/dashboard/summary`,
+                );
+                if (!cancelled) {
+                    setSummary(nextSummary);
+                }
+            } catch {
+                if (!cancelled) {
+                    setSummary(null);
+                }
+            }
+        };
+
+        void loadSummary();
+        const intervalId = window.setInterval(() => {
+            void loadSummary();
+        }, 30_000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(intervalId);
+        };
+    }, []);
 
     return (
         <Card className="flex flex-row items-center justify-between p-3 mx-4 mt-4 bg-slate-800 border-slate-700 text-slate-50">
@@ -108,6 +141,22 @@ export function StatusBar() {
                         <span className="text-slate-400">Errors (1h):</span>
                         <Badge variant={errors > 0 ? "destructive" : "secondary"} className={errors === 0 ? "bg-slate-700 hover:bg-slate-600" : ""}>
                             {errors}
+                        </Badge>
+                    </div>
+
+                    <div className="pl-4 flex items-center gap-2">
+                        <span className="text-slate-400">Alerts:</span>
+                        <Badge
+                            variant={summary?.alert_severity === 'critical' ? "destructive" : "secondary"}
+                            className={
+                                pendingAlerts === 0
+                                    ? "bg-slate-700 hover:bg-slate-600"
+                                    : summary?.alert_severity === 'warning'
+                                        ? "bg-amber-600/80 text-amber-50 hover:bg-amber-600"
+                                        : ""
+                            }
+                        >
+                            {pendingAlerts}
                         </Badge>
                     </div>
 

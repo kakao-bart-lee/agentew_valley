@@ -42,6 +42,8 @@ export interface SessionSummary {
   agent_name: string;
   source: string;
   team_id?: string;
+  project_id?: string;
+  model_id?: string;
   start_time: string;
   end_time?: string;
   total_events: number;
@@ -103,6 +105,8 @@ export interface SessionReplaySummary {
   agent_name: string;
   source: string;
   team_id?: string;
+  project_id?: string;
+  model_id?: string;
   start_time: string;
   end_time?: string;
   duration_ms: number;
@@ -152,6 +156,24 @@ export interface CostByAgentResponse {
   total_tokens: number;
 }
 
+/** 프로젝트별 비용 항목 */
+export interface ProjectCostEntry {
+  project_id: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  session_count: number;
+  agent_count: number;
+  cost_percentage: number;
+}
+
+/** GET /api/v1/analytics/cost/by-project 응답 */
+export interface CostByProjectResponse {
+  time_range: { from: string; to: string };
+  projects: ProjectCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
 /** 팀별 비용 항목 */
 export interface TeamCostEntry {
   team_id: string;
@@ -166,6 +188,24 @@ export interface TeamCostEntry {
 export interface CostByTeamResponse {
   time_range: { from: string; to: string };
   teams: TeamCostEntry[];
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
+/** 모델별 비용 항목 */
+export interface ModelCostEntry {
+  model_id: string;
+  total_cost_usd: number;
+  total_tokens: number;
+  session_count: number;
+  agent_count: number;
+  cost_percentage: number;
+}
+
+/** GET /api/v1/analytics/cost/by-model 응답 */
+export interface CostByModelResponse {
+  time_range: { from: string; to: string };
+  models: ModelCostEntry[];
   total_cost_usd: number;
   total_tokens: number;
 }
@@ -191,6 +231,44 @@ export interface TokenAnalyticsResponse {
   total_tokens: number;
   tokens_timeseries: { ts: string; tokens: number }[];
   by_agent: { agent_id: string; agent_name: string; total_tokens: number }[];
+}
+
+export interface BudgetAlertEntry {
+  agent_id: string;
+  agent_name: string;
+  budget_monthly_cents: number;
+  spent_monthly_cents: number;
+  spent_monthly_usd: number;
+  utilization_ratio: number;
+  severity: 'warning' | 'critical';
+}
+
+export interface StaleTaskEntry {
+  id: string;
+  title: string;
+  project?: string;
+  assigned_to?: string;
+  checkout_agent_id?: string;
+  started_at?: number;
+  updated_at: number;
+  stale_for_seconds: number;
+}
+
+export interface DashboardSummaryResponse {
+  time_range: { from: string; to: string };
+  cost_summary: {
+    total_cost_usd: number;
+    total_tokens: number;
+    total_sessions: number;
+  };
+  top_projects: ProjectCostEntry[];
+  top_agents: AgentCostEntry[];
+  top_models: ModelCostEntry[];
+  budget_alerts: BudgetAlertEntry[];
+  stale_tasks: StaleTaskEntry[];
+  pending_alerts: number;
+  alert_severity: 'ok' | 'warning' | 'critical';
+  mc_db_connected: boolean;
 }
 
 // ─── WebSocket 이벤트 페이로드 타입 ───

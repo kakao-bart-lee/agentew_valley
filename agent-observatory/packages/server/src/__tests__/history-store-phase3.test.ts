@@ -172,6 +172,25 @@ describe('HistoryStore Phase 3 queries', () => {
     });
   });
 
+  describe('getCostByProject', () => {
+    it('should group by project and exclude unscoped sessions', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1', { project_id: 'moonlit' }));
+      hs.append(makeMetricsUsage(100, 0.10, 'agent-1', { session_id: 'sess-1' }));
+      hs.append(makeSessionStart('agent-2', 'sess-2', { project_id: 'moonlit' }));
+      hs.append(makeMetricsUsage(50, 0.05, 'agent-2', { session_id: 'sess-2' }));
+      hs.append(makeSessionStart('agent-3', 'sess-3'));
+      hs.append(makeMetricsUsage(200, 0.20, 'agent-3', { session_id: 'sess-3' }));
+
+      const projects = hs.getCostByProject();
+      expect(projects).toHaveLength(1);
+      expect(projects[0].project_id).toBe('moonlit');
+      expect(projects[0].total_tokens).toBe(150);
+      expect(projects[0].agent_count).toBe(2);
+      expect(projects[0].session_count).toBe(2);
+    });
+  });
+
   describe('getCostByTeam', () => {
     it('should group by team and exclude teamless sessions', () => {
       hs = new HistoryStore();
@@ -188,6 +207,22 @@ describe('HistoryStore Phase 3 queries', () => {
       expect(teams[0].total_tokens).toBe(150);
       expect(teams[0].agent_count).toBe(2);
       expect(teams[0].session_count).toBe(2);
+    });
+  });
+
+  describe('getCostByModel', () => {
+    it('should group by model', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1', { model_id: 'claude-sonnet-4-6' }));
+      hs.append(makeMetricsUsage(100, 0.10, 'agent-1', { session_id: 'sess-1' }));
+      hs.append(makeSessionStart('agent-2', 'sess-2', { model_id: 'gpt-5-mini' }));
+      hs.append(makeMetricsUsage(200, 0.20, 'agent-2', { session_id: 'sess-2' }));
+
+      const models = hs.getCostByModel();
+      expect(models).toHaveLength(2);
+      expect(models[0].model_id).toBe('gpt-5-mini');
+      expect(models[0].total_tokens).toBe(200);
+      expect(models[1].model_id).toBe('claude-sonnet-4-6');
     });
   });
 
@@ -255,6 +290,45 @@ describe('HistoryStore Phase 3 queries', () => {
       expect(byAgent).toHaveLength(2);
       expect(byAgent[0].agent_id).toBe('agent-2'); // ordered by tokens DESC
       expect(byAgent[0].total_tokens).toBe(300);
+    });
+  });
+
+  describe('getBudgetAlerts', () => {
+    it('should flag agents over the warning threshold', () => {
+      hs = new HistoryStore();
+      hs.setAgentBudget('agent-1', 100, 'Moonlit');
+      hs.setAgentBudget('agent-2', 100, 'Sunrise');
+
+      hs.append(makeSessionStart('agent-1', 'sess-1', { ts: '2026-03-01T10:00:00Z' }));
+      hs.append(makeMetricsUsage(100, 0.90, 'agent-1', { session_id: 'sess-1' }));
+      hs.append(makeSessionStart('agent-2', 'sess-2', { ts: '2026-03-01T11:00:00Z' }));
+      hs.append(makeMetricsUsage(100, 0.40, 'agent-2', { session_id: 'sess-2' }));
+
+      const alerts = hs.getBudgetAlerts({
+        monthStart: '2026-03-01T00:00:00Z',
+        monthEnd: '2026-04-01T00:00:00Z',
+      });
+
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].agent_id).toBe('agent-1');
+      expect(alerts[0].spent_monthly_cents).toBe(90);
+      expect(alerts[0].severity).toBe('warning');
+    });
+
+    it('should escalate to critical at or above 100%', () => {
+      hs = new HistoryStore();
+      hs.setAgentBudget('agent-1', 100);
+      hs.append(makeSessionStart('agent-1', 'sess-1', { ts: '2026-03-01T10:00:00Z' }));
+      hs.append(makeMetricsUsage(100, 1.10, 'agent-1', { session_id: 'sess-1' }));
+
+      const alerts = hs.getBudgetAlerts({
+        monthStart: '2026-03-01T00:00:00Z',
+        monthEnd: '2026-04-01T00:00:00Z',
+      });
+
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].severity).toBe('critical');
+      expect(alerts[0].utilization_ratio).toBeGreaterThanOrEqual(1);
     });
   });
 });

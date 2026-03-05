@@ -27,6 +27,7 @@ describe('isValidSourceType', () => {
     expect(isValidSourceType('langchain')).toBe(true);
     expect(isValidSourceType('crewai')).toBe(true);
     expect(isValidSourceType('custom')).toBe(true);
+    expect(isValidSourceType('mission_control')).toBe(true);
   });
 
   it('should reject invalid source types', () => {
@@ -52,6 +53,9 @@ describe('isValidEventType', () => {
     expect(isValidEventType('subagent.spawn')).toBe(true);
     expect(isValidEventType('subagent.end')).toBe(true);
     expect(isValidEventType('metrics.usage')).toBe(true);
+    expect(isValidEventType('task.sync')).toBe(true);
+    expect(isValidEventType('activity.new')).toBe(true);
+    expect(isValidEventType('notification.new')).toBe(true);
   });
 
   it('should reject invalid event types', () => {

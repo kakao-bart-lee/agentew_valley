@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from 'chokidar';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { generateEventId } from '@agent-observatory/shared';
 
 export interface TaskParsed {
   id: string;
@@ -8,6 +8,7 @@ export interface TaskParsed {
   description?: string;
   status: string;
   priority: string;
+  project?: string;
   assigned_to?: string;
   updated_at: number;
 }
@@ -51,7 +52,7 @@ export class MissionControlWatcher {
   private async handleFile(filePath: string): Promise<void> {
     try {
       const content = await readFile(filePath, 'utf-8');
-      const tasks = this.parseMarkdown(content);
+      const tasks = this.parseMarkdown(content, filePath);
       if (this.callback) {
         this.callback(tasks);
       }
@@ -60,42 +61,53 @@ export class MissionControlWatcher {
     }
   }
 
-  private parseMarkdown(content: string): TaskParsed[] {
+  private parseMarkdown(content: string, filePath: string): TaskParsed[] {
     const tasks: TaskParsed[] = [];
     const lines = content.split('\n');
+    const now = Math.floor(Date.now() / 1000);
 
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       // Basic markdown task parser: - [ ] Title @assignee #priority status:done
       const taskMatch = line.match(/^\s*-\s*\[([ xX])\]\s*(.+)$/);
       if (taskMatch) {
         const isDone = taskMatch[1].toLowerCase() === 'x';
-        let rawTitle = taskMatch[2];
+        let rawTitle = taskMatch[2].trim();
+
+        const projectMatch = rawTitle.match(/^\(([^)]+)\)\s*/);
+        const project = projectMatch?.[1]?.trim() || undefined;
+        if (projectMatch) {
+          rawTitle = rawTitle.slice(projectMatch[0].length).trim();
+        }
 
         // Extract priority (#high, #medium, #low, #urgent)
-        const priorityMatch = rawTitle.match(/#(\w+)/);
-        const priority = priorityMatch ? priorityMatch[1] : 'medium';
-        rawTitle = rawTitle.replace(/#\w+/, '').trim();
+        const priorityMatch = rawTitle.match(/(?:^|\s)#(low|medium|high|urgent|critical)\b/i);
+        const priority = priorityMatch ? priorityMatch[1].toLowerCase() : 'medium';
+        rawTitle = rawTitle.replace(/(?:^|\s)#(low|medium|high|urgent|critical)\b/i, ' ').trim();
 
         // Extract assignee (@name)
-        const assigneeMatch = rawTitle.match(/@(\w+)/);
+        const assigneeMatch = rawTitle.match(/(?:^|\s)@([a-zA-Z0-9._-]+)/);
         const assignee = assigneeMatch ? assigneeMatch[1] : undefined;
-        rawTitle = rawTitle.replace(/@\w+/, '').trim();
+        rawTitle = rawTitle.replace(/(?:^|\s)@([a-zA-Z0-9._-]+)/, ' ').trim();
 
         // Extract explicit status (status:in_progress)
-        const statusMatch = rawTitle.match(/status:(\w+)/);
+        const statusMatch = rawTitle.match(/(?:^|\s)status:([a-z_]+)/i);
         let status = statusMatch ? statusMatch[1] : (isDone ? 'done' : 'inbox');
-        rawTitle = rawTitle.replace(/status:\w+/, '').trim();
+        rawTitle = rawTitle.replace(/(?:^|\s)status:([a-z_]+)/i, ' ').trim();
 
-        // Generate a stable ID based on title for now (should be improved)
-        const id = Buffer.from(rawTitle).toString('base64').slice(0, 16);
+        // File path + line number keeps IDs stable across syncs and avoids cross-file collisions.
+        const id = createHash('sha1')
+          .update(`${filePath}:${index + 1}:${project ?? ''}:${rawTitle}`)
+          .digest('hex')
+          .slice(0, 16);
 
         tasks.push({
           id,
           title: rawTitle,
           status,
           priority,
+          project,
           assigned_to: assignee,
-          updated_at: Math.floor(Date.now() / 1000),
+          updated_at: now,
         });
       }
     }

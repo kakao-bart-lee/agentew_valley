@@ -11,6 +11,7 @@ import { CostByToolChart } from './charts/CostByToolChart';
 import { TokensAnalyticsChart } from './charts/TokensAnalyticsChart';
 import { ModelDistributionChart } from './charts/ModelDistributionChart';
 import { CacheEfficiencyChart } from './charts/CacheEfficiencyChart';
+import { fetchJsonWithAuth } from '../../lib/api';
 import type {
     CostByAgentResponse,
     CostByTeamResponse,
@@ -41,10 +42,10 @@ export function MetricsPanel() {
 
         setAnalyticsError(null);
         Promise.all([
-            fetch(`${BASE_URL}/api/v1/analytics/cost/by-agent`).then(r => r.json()) as Promise<CostByAgentResponse>,
-            fetch(`${BASE_URL}/api/v1/analytics/cost/by-team`).then(r => r.json()) as Promise<CostByTeamResponse>,
-            fetch(`${BASE_URL}/api/v1/analytics/cost/by-tool`).then(r => r.json()) as Promise<CostByToolResponse>,
-            fetch(`${BASE_URL}/api/v1/analytics/tokens`).then(r => r.json()) as Promise<TokenAnalyticsResponse>,
+            fetchJsonWithAuth<CostByAgentResponse>(`${BASE_URL}/api/v1/analytics/cost/by-agent`),
+            fetchJsonWithAuth<CostByTeamResponse>(`${BASE_URL}/api/v1/analytics/cost/by-team`),
+            fetchJsonWithAuth<CostByToolResponse>(`${BASE_URL}/api/v1/analytics/cost/by-tool`),
+            fetchJsonWithAuth<TokenAnalyticsResponse>(`${BASE_URL}/api/v1/analytics/tokens`),
         ])
             .then(([byAgent, byTeam, byTool, tokens]) => {
                 setAnalytics({ byAgent, byTeam, byTool, tokens });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
 
 interface McNotification {
   id: number;
@@ -33,13 +34,10 @@ export function NotificationList() {
   const [loading, setLoading] = useState(true);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const apiBase = (window as any).__OBSERVATORY_API__ ?? 'http://localhost:3000';
-
   useEffect(() => {
-    const url = `${apiBase}/api/v2/notifications?limit=50${unreadOnly ? '&unread_only=true' : ''}`;
+    const url = `${getApiBase()}/api/v2/notifications?limit=50${unreadOnly ? '&unread_only=true' : ''}`;
     setLoading(true);
-    fetch(url)
-      .then((r) => r.json())
+    fetchJsonWithAuth<NotificationsResponse>(url)
       .then((d: NotificationsResponse) => { setData(d); setLoading(false); })
       .catch(() => { setData({ notifications: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' }); setLoading(false); });
   }, [unreadOnly]);

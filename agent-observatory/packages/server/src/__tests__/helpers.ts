@@ -75,10 +75,11 @@ export function makeMetricsUsage(
   agentId = 'agent-1',
   overrides: Partial<UAEPEvent> = {},
 ): UAEPEvent {
+  const overrideData = overrides.data ?? {};
   return makeEvent({
     type: 'metrics.usage',
     agent_id: agentId,
-    data: { tokens, cost },
+    data: { tokens, cost, ...overrideData },
     ...overrides,
   });
 }

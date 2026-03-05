@@ -6,6 +6,7 @@ import { ActivityFeed } from './ActivityFeed';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { AgentDetailPanel } from './AgentDetailPanel';
 import { MissionControlSummarySection } from './MissionControlSummarySection';
+import { CostSummaryCard } from './CostSummaryCard';
 
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
@@ -106,6 +107,8 @@ export function DashboardView() {
                             </div>
 
                         </div>
+
+                        <CostSummaryCard />
 
                         <MissionControlSummarySection />
                     </div>
