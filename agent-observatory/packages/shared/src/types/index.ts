@@ -17,6 +17,7 @@ export type {
   AgentStatus,
   ToolCategory,
   AgentLiveState,
+  AgentHealthStatus,
   AgentHierarchyNode,
 } from './agent.js';
 
@@ -29,6 +30,18 @@ export type {
   MetricsSnapshot,
   MetricsTimeseries,
 } from './metrics.js';
+
+export type {
+  GoalStatus,
+  Goal,
+  GoalProgress,
+  TaskRelationType,
+  TaskRelation,
+  TaskComment,
+  TaskRelationSummary,
+  TaskGoalSummary,
+  MissionControlTask,
+} from './mission-control.js';
 
 export type {
   AgentsListResponse,
@@ -60,6 +73,16 @@ export type {
   StaleTaskEntry,
   DashboardSummaryResponse,
   TokenAnalyticsResponse,
+  GoalsResponse,
+  TaskCommentsResponse,
+  TaskCommentCreateRequest,
+  TaskCheckoutResponse,
+  TasksResponse,
+  TaskResponse,
+  RealtimeTaskPayload,
+  RealtimeActivityPayload,
+  RealtimeCostAlertPayload,
+  RealtimeAgentStatusPayload,
   WSInitPayload,
   WSAgentStatePayload,
   WSAgentRemovePayload,

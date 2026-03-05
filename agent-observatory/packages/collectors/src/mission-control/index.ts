@@ -53,6 +53,34 @@ export class MissionControlCollector implements Collector {
         });
       }
     });
+
+    this.watcher.onSnapshot((snapshot) => {
+      this.emit({
+        ts: new Date().toISOString(),
+        event_id: generateEventId(),
+        source: 'mission_control',
+        agent_id: 'observatory',
+        session_id: 'mission_control_sync',
+        type: 'task.snapshot',
+        data: {
+          tasks: snapshot.tasks,
+          source_paths: snapshot.task_source_paths,
+        },
+      });
+
+      this.emit({
+        ts: new Date().toISOString(),
+        event_id: generateEventId(),
+        source: 'mission_control',
+        agent_id: 'observatory',
+        session_id: 'mission_control_sync',
+        type: 'goal.snapshot',
+        data: {
+          goals: snapshot.goals,
+          source_paths: snapshot.goal_source_paths,
+        },
+      });
+    });
   }
 
   onEvent(handler: (event: UAEPEvent) => void): void {

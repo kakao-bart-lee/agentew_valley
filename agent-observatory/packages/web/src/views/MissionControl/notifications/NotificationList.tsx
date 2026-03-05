@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
+import { useMissionControlStore } from '../../../stores/missionControlStore';
 
 interface McNotification {
-  id: number;
+  id: string;
   recipient: string;
   type: string;
   title: string;
-  message: string;
+  message?: string;
   source_type?: string;
-  source_id?: number;
+  source_id?: string;
   read_at?: number;
   created_at: number;
 }
@@ -33,14 +34,41 @@ export function NotificationList() {
   const [data, setData] = useState<NotificationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const notificationVersion = useMissionControlStore((state) => state.versions.notifications);
 
   useEffect(() => {
+    let cancelled = false;
     const url = `${getApiBase()}/api/v2/notifications?limit=50${unreadOnly ? '&unread_only=true' : ''}`;
-    setLoading(true);
-    fetchJsonWithAuth<NotificationsResponse>(url)
-      .then((d: NotificationsResponse) => { setData(d); setLoading(false); })
-      .catch(() => { setData({ notifications: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' }); setLoading(false); });
-  }, [unreadOnly]);
+
+    const loadNotifications = async (isInitialLoad: boolean) => {
+      if (isInitialLoad) {
+        setLoading(true);
+      }
+
+      try {
+        const nextData = await fetchJsonWithAuth<NotificationsResponse>(url);
+        if (!cancelled) {
+          setData(nextData);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setData({ notifications: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' });
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadNotifications(true);
+    const intervalId = window.setInterval(() => {
+      void loadNotifications(false);
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [unreadOnly, notificationVersion]);
 
   if (loading) return <div className="text-slate-400 text-sm p-4">Loading notifications...</div>;
 
@@ -97,7 +125,7 @@ export function NotificationList() {
                 <span className="text-sm font-medium text-slate-200 truncate">{n.title}</span>
                 <span className="text-[10px] bg-slate-600 text-slate-400 px-1.5 py-0.5 rounded whitespace-nowrap">{n.type}</span>
               </div>
-              <p className="text-xs text-slate-400 line-clamp-2">{n.message}</p>
+              {n.message && <p className="text-xs text-slate-400 line-clamp-2">{n.message}</p>}
               <span className="text-xs text-slate-500">To: {n.recipient}</span>
             </div>
             <span className="text-xs text-slate-600 whitespace-nowrap">

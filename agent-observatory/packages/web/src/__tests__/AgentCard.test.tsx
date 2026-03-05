@@ -31,7 +31,11 @@ const makeAgent = (overrides: Partial<AgentLiveState> = {}): AgentLiveState => (
     cache_read_tokens: 0,
     total_cost_usd: 0.0042,
     total_tool_calls: 7,
+    tool_call_success_rate: 1,
+    recent_tool_call_count: 0,
     total_errors: 0,
+    last_run_status: 'idle',
+    health_status: 'normal',
     llm_response_count: 3,
     llm_total_text_length: 1500,
     tool_distribution: EMPTY_TOOL_DIST,
@@ -70,6 +74,11 @@ describe('AgentCard', () => {
     it('도구 호출 수 표시', () => {
         render(<AgentCard agent={makeAgent({ total_tool_calls: 7 })} />);
         expect(screen.getByText('7')).toBeInTheDocument();
+    });
+
+    it('누적 비용 표시', () => {
+        render(<AgentCard agent={makeAgent({ total_cost_usd: 1.25 })} />);
+        expect(screen.getByText('$1.25')).toBeInTheDocument();
     });
 
     it('에러 없으면 에러 표시 없음', () => {
@@ -139,5 +148,11 @@ describe('AgentCard', () => {
         const { container } = render(<AgentCard agent={agent} />);
         const miniBar = container.querySelector('.h-1\\.5');
         expect(miniBar).toBeNull();
+    });
+
+    it('마지막 실행 상태 표시', () => {
+        render(<AgentCard agent={makeAgent({ last_run_status: 'waiting' })} />);
+        expect(screen.getByText('Last run:')).toBeInTheDocument();
+        expect(screen.getByText('waiting')).toBeInTheDocument();
     });
 });

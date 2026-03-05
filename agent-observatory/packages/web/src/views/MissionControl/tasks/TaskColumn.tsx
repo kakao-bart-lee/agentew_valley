@@ -1,24 +1,5 @@
 import { TaskCard } from './TaskCard';
-
-interface McTask {
-  id: string;
-  title: string;
-  description?: string;
-  status: string;
-  priority: string;
-  project?: string;
-  assigned_to?: string;
-  checkout_agent_id?: string;
-  checkout_at?: number;
-  created_by?: string;
-  created_at: number;
-  started_at?: number;
-  updated_at: number;
-  due_date?: number;
-  tags?: string;
-  metadata?: string;
-  is_stale?: boolean;
-}
+import type { MissionControlTask } from '@agent-observatory/shared';
 
 const COLUMN_ACCENTS: Record<string, string> = {
   inbox: 'text-slate-400',
@@ -35,10 +16,12 @@ export function TaskColumn({
   title,
   accent,
   tasks,
+  onSelectTask,
 }: {
   title: string;
   accent: string;
-  tasks: McTask[];
+  tasks: MissionControlTask[];
+  onSelectTask?: (task: MissionControlTask) => void;
 }) {
   const headerColor = COLUMN_ACCENTS[accent] ?? 'text-slate-300';
 
@@ -52,7 +35,7 @@ export function TaskColumn({
       </div>
       <div className="flex min-h-[100px] flex-col gap-2">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskCard key={task.id} task={task} onClick={() => onSelectTask?.(task)} />
         ))}
         {tasks.length === 0 && (
           <div className="px-1 text-xs italic text-slate-600">Empty</div>

@@ -1,22 +1,4 @@
-interface McTask {
-  id: string;
-  title: string;
-  description?: string;
-  status: string;
-  priority: string;
-  project?: string;
-  assigned_to?: string;
-  checkout_agent_id?: string;
-  checkout_at?: number;
-  created_by?: string;
-  created_at: number;
-  started_at?: number;
-  updated_at: number;
-  due_date?: number;
-  tags?: string;
-  metadata?: string;
-  is_stale?: boolean;
-}
+import type { MissionControlTask } from '@agent-observatory/shared';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'bg-slate-600 text-slate-200',
@@ -47,7 +29,7 @@ function formatAge(seconds: number): string {
   return `${seconds}s`;
 }
 
-export function TaskCard({ task }: { task: McTask }) {
+export function TaskCard({ task, onClick }: { task: MissionControlTask; onClick?: () => void }) {
   const tags: string[] = (() => {
     try {
       return task.tags ? JSON.parse(task.tags) : [];
@@ -63,7 +45,11 @@ export function TaskCard({ task }: { task: McTask }) {
     : 0;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-slate-600 bg-slate-700 p-3 transition-colors hover:border-slate-500">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full flex-col gap-2 rounded-lg border border-slate-600 bg-slate-700 p-3 text-left transition-colors hover:border-slate-500"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           {task.checkout_agent_id && (
@@ -98,6 +84,26 @@ export function TaskCard({ task }: { task: McTask }) {
             Stale {formatAge(staleForSeconds)}
           </span>
         )}
+        {task.is_blocked && (
+          <span className="rounded bg-rose-900/70 px-1.5 py-0.5 text-[10px] text-rose-200">
+            Blocked
+          </span>
+        )}
+        {task.goal && (
+          <span className="rounded bg-cyan-900/60 px-1.5 py-0.5 text-[10px] text-cyan-200">
+            {task.goal.title}
+          </span>
+        )}
+        {task.open_dependency_count > 0 && (
+          <span className="rounded bg-slate-600 px-1.5 py-0.5 text-[10px] text-slate-200">
+            deps {task.open_dependency_count}
+          </span>
+        )}
+        {task.comment_count > 0 && (
+          <span className="rounded bg-violet-900/60 px-1.5 py-0.5 text-[10px] text-violet-200">
+            comments {task.comment_count}
+          </span>
+        )}
         {tags.slice(0, 2).map((tag) => (
           <span key={tag} className="rounded bg-slate-600 px-1.5 py-0.5 text-[10px] text-slate-300">
             {tag}
@@ -115,6 +121,6 @@ export function TaskCard({ task }: { task: McTask }) {
           </span>
         )}
       </div>
-    </div>
+    </button>
   );
 }

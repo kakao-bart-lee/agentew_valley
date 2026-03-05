@@ -594,6 +594,126 @@ describe('REST API', () => {
         tasksInstance.io.close();
       }
     });
+
+    it('should expose goal progress and support comments plus checkout release', async () => {
+      const tasksInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          tasks_v2: true,
+        },
+      });
+
+      try {
+        tasksInstance.eventBus.publish(makeEvent({
+          type: 'goal.snapshot',
+          source: 'mission_control',
+          agent_id: 'observatory',
+          session_id: 'mission_control_sync',
+          data: {
+            goals: [
+              { id: 'G-100', title: 'Phase 2', level: 1, status: 'active', source_path: '/tmp/GOALS.md' },
+              { id: 'G-110', title: 'Goal Hierarchy', level: 2, parent_id: 'G-100', status: 'active', source_path: '/tmp/GOALS.md' },
+            ],
+            source_paths: ['/tmp/GOALS.md'],
+          },
+        }));
+        tasksInstance.eventBus.publish(makeEvent({
+          type: 'task.snapshot',
+          source: 'mission_control',
+          agent_id: 'observatory',
+          session_id: 'mission_control_sync',
+          data: {
+            source_paths: ['/tmp/TASK.md'],
+            tasks: [
+              {
+                id: 'T-100',
+                title: 'Build hierarchy',
+                status: 'in_progress',
+                priority: 'high',
+                goal_id: 'G-110',
+                project: 'moonlit',
+                dependencies: [],
+                source_path: '/tmp/TASK.md',
+                updated_at: Math.floor(Date.now() / 1000),
+              },
+            ],
+          },
+        }));
+
+        const goalsRes = await request(tasksInstance.app).get('/api/v2/goals');
+        expect(goalsRes.status).toBe(200);
+        expect(goalsRes.body.goals).toHaveLength(1);
+        expect(goalsRes.body.goals[0].children[0].id).toBe('G-110');
+        expect(goalsRes.body.goals[0].total_tasks).toBe(1);
+
+        const checkoutRes = await request(tasksInstance.app)
+          .post('/api/v2/tasks/T-100/checkout')
+          .send({ agent_id: 'agent-1' });
+        expect(checkoutRes.status).toBe(200);
+        expect(checkoutRes.body.task.checkout_agent_id).toBe('agent-1');
+
+        const commentRes = await request(tasksInstance.app)
+          .post('/api/v2/tasks/T-100/comments')
+          .send({ author_agent_id: 'agent-1', body: 'Blocked on review copy.' });
+        expect(commentRes.status).toBe(201);
+
+        const commentsRes = await request(tasksInstance.app).get('/api/v2/tasks/T-100/comments');
+        expect(commentsRes.status).toBe(200);
+        expect(commentsRes.body.comments).toHaveLength(1);
+        expect(commentsRes.body.comments[0].author_agent_id).toBe('agent-1');
+
+        const releaseRes = await request(tasksInstance.app).delete('/api/v2/tasks/T-100/checkout');
+        expect(releaseRes.status).toBe(200);
+        expect(releaseRes.body.task.checkout_agent_id).toBeUndefined();
+      } finally {
+        tasksInstance.close();
+        tasksInstance.server.close();
+        tasksInstance.io.close();
+      }
+    });
+
+    it('should respect OBSERVATORY_STALE_THRESHOLD_HOURS when computing stale tasks', async () => {
+      const previous = process.env.OBSERVATORY_STALE_THRESHOLD_HOURS;
+      process.env.OBSERVATORY_STALE_THRESHOLD_HOURS = '3';
+
+      const tasksInstance = createApp({
+        featureFlags: {
+          ...DEFAULT_FEATURE_FLAGS,
+          tasks_v2: true,
+        },
+      });
+
+      try {
+        tasksInstance.eventBus.publish(makeEvent({
+          type: 'task.sync',
+          source: 'mission_control',
+          agent_id: 'observatory',
+          session_id: 'mission_control_sync',
+          data: {
+            id: 'task-threshold',
+            title: 'Threshold test',
+            status: 'in_progress',
+            priority: 'medium',
+            created_at: Math.floor(Date.now() / 1000) - 7200,
+            started_at: Math.floor(Date.now() / 1000) - 7200,
+            updated_at: Math.floor(Date.now() / 1000) - 7200,
+          },
+        }));
+
+        const res = await request(tasksInstance.app).get('/api/v2/tasks');
+        expect(res.status).toBe(200);
+        expect(res.body.tasks[0].is_stale).toBe(false);
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OBSERVATORY_STALE_THRESHOLD_HOURS;
+        } else {
+          process.env.OBSERVATORY_STALE_THRESHOLD_HOURS = previous;
+        }
+        tasksInstance.close();
+        tasksInstance.server.close();
+        tasksInstance.io.close();
+      }
+    });
   });
 
   describe('POST /api/v1/events/batch', () => {

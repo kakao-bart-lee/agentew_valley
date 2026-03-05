@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
+import { useMissionControlStore } from '../../../stores/missionControlStore';
 
 interface McActivity {
-  id: number;
+  id: string;
   type: string;
   entity_type: string;
-  entity_id: number;
-  actor: string;
-  description: string;
+  entity_id?: string;
+  actor?: string;
+  description?: string;
   data?: string;
   created_at: number;
 }
@@ -39,12 +40,40 @@ function formatRelativeTime(unixTs: number): string {
 export function MCActivityFeed() {
   const [data, setData] = useState<ActivitiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const activityVersion = useMissionControlStore((state) => state.versions.activities);
 
   useEffect(() => {
-    fetchJsonWithAuth<ActivitiesResponse>(`${getApiBase()}/api/v2/activities?limit=50`)
-      .then((d: ActivitiesResponse) => { setData(d); setLoading(false); })
-      .catch(() => { setData({ activities: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' }); setLoading(false); });
-  }, []);
+    let cancelled = false;
+
+    const loadActivities = async (isInitialLoad: boolean) => {
+      if (isInitialLoad) {
+        setLoading(true);
+      }
+
+      try {
+        const nextData = await fetchJsonWithAuth<ActivitiesResponse>(`${getApiBase()}/api/v2/activities?limit=50`);
+        if (!cancelled) {
+          setData(nextData);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setData({ activities: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' });
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadActivities(true);
+    const intervalId = window.setInterval(() => {
+      void loadActivities(false);
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activityVersion]);
 
   if (loading) return <div className="text-slate-400 text-sm p-4">Loading activities...</div>;
 
@@ -80,10 +109,12 @@ export function MCActivityFeed() {
               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-medium ${typeColor}`}>{activity.type}</span>
-                  <span className="text-xs text-slate-500">{activity.entity_type} #{activity.entity_id}</span>
+                  {activity.entity_id && (
+                    <span className="text-xs text-slate-500">{activity.entity_type} #{activity.entity_id}</span>
+                  )}
                 </div>
-                <p className="text-sm text-slate-300 truncate">{activity.description}</p>
-                <span className="text-xs text-slate-500">by {activity.actor}</span>
+                <p className="text-sm text-slate-300 truncate">{activity.description ?? activity.type}</p>
+                {activity.actor && <span className="text-xs text-slate-500">by {activity.actor}</span>}
               </div>
               <span className="text-xs text-slate-600 whitespace-nowrap">
                 {formatRelativeTime(activity.created_at)}

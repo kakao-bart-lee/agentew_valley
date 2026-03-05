@@ -6,6 +6,7 @@ import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
+import type { GoalProgress, GoalStatus, MissionControlTask, TaskComment } from '@agent-observatory/shared';
 import {
   DEFAULT_FEATURE_FLAGS,
   FEATURE_FLAG_ENV_VARS,
@@ -59,7 +60,13 @@ const DEFAULT_CONFIG: ApiConfig = {
   featureFlags: { ...DEFAULT_FEATURE_FLAGS },
 };
 
-const STALE_TASK_THRESHOLD_SECONDS = 60 * 60;
+const COMPLETED_TASK_STATUSES = new Set(['done']);
+
+function getStaleThresholdSeconds(): number {
+  const raw = process.env.OBSERVATORY_STALE_THRESHOLD_HOURS;
+  const hours = raw ? Number(raw) : 1;
+  return Number.isFinite(hours) && hours > 0 ? Math.round(hours * 60 * 60) : 60 * 60;
+}
 
 type TaskRow = {
   id: string;
@@ -68,6 +75,9 @@ type TaskRow = {
   status: string;
   priority: string;
   project: string | null;
+  goal_id: string | null;
+  goal_title: string | null;
+  goal_status: string | null;
   assigned_to: string | null;
   checkout_agent_id: string | null;
   checkout_at: number | null;
@@ -76,23 +86,64 @@ type TaskRow = {
   started_at: number | null;
   updated_at: number;
   due_date: number | null;
+  source_path: string | null;
   tags: string | null;
   metadata: string | null;
-  is_stale?: number;
+  comment_count: number;
+  blocks_csv: string | null;
+  blocked_by_csv: string | null;
+  related_csv: string | null;
+  open_dependency_count: number;
+  is_blocked: number;
+  is_stale: number;
 };
 
 function getStaleCutoff(nowSeconds = Math.floor(Date.now() / 1000)): number {
-  return nowSeconds - STALE_TASK_THRESHOLD_SECONDS;
+  return nowSeconds - getStaleThresholdSeconds();
 }
 
-type TaskResponseRow = Omit<TaskRow, 'is_stale'> & { is_stale: boolean };
+function splitCsv(value: string | null): string[] {
+  return value ? value.split('||').filter(Boolean) : [];
+}
 
-function mapTaskRow(task: TaskRow, staleCutoff = getStaleCutoff()): TaskResponseRow {
+function mapTaskRow(task: TaskRow, staleCutoff = getStaleCutoff()): MissionControlTask {
   return {
-    ...task,
+    id: task.id,
+    title: task.title,
+    description: task.description ?? undefined,
+    status: task.status,
+    priority: task.priority,
+    project: task.project ?? undefined,
+    goal_id: task.goal_id ?? undefined,
+    goal: task.goal_id && task.goal_title
+      ? {
+          id: task.goal_id,
+          title: task.goal_title,
+          status: (task.goal_status ?? 'active') as GoalStatus,
+        }
+      : undefined,
+    assigned_to: task.assigned_to ?? undefined,
+    checkout_agent_id: task.checkout_agent_id ?? undefined,
+    checkout_at: task.checkout_at ?? undefined,
+    created_by: task.created_by ?? undefined,
+    created_at: task.created_at,
+    started_at: task.started_at ?? undefined,
+    updated_at: task.updated_at,
+    due_date: task.due_date ?? undefined,
+    source_path: task.source_path ?? undefined,
+    tags: task.tags ?? undefined,
+    metadata: task.metadata ?? undefined,
     is_stale: task.is_stale !== undefined
       ? Boolean(task.is_stale)
       : task.status === 'in_progress' && (task.started_at ?? task.updated_at) <= staleCutoff,
+    is_blocked: Boolean(task.is_blocked),
+    open_dependency_count: task.open_dependency_count ?? 0,
+    relation_summary: {
+      blocks: splitCsv(task.blocks_csv),
+      blocked_by: splitCsv(task.blocked_by_csv),
+      related: splitCsv(task.related_csv),
+    },
+    comment_count: task.comment_count ?? 0,
   };
 }
 
@@ -105,6 +156,9 @@ function getTaskSelectSql(where = ''): string {
       status,
       priority,
       project,
+      goal_id,
+      goals.title AS goal_title,
+      goals.status AS goal_status,
       assigned_to,
       checkout_agent_id,
       checkout_at,
@@ -113,23 +167,138 @@ function getTaskSelectSql(where = ''): string {
       started_at,
       updated_at,
       due_date,
+      source_path,
       tags,
       metadata,
+      COALESCE((SELECT COUNT(*) FROM task_comments comments WHERE comments.task_id = tasks.id), 0) AS comment_count,
+      (SELECT GROUP_CONCAT(related_task_id, '||') FROM task_relations rel WHERE rel.task_id = tasks.id AND rel.type = 'blocks') AS blocks_csv,
+      (SELECT GROUP_CONCAT(related_task_id, '||') FROM task_relations rel WHERE rel.task_id = tasks.id AND rel.type = 'blocked_by') AS blocked_by_csv,
+      (SELECT GROUP_CONCAT(related_task_id, '||') FROM task_relations rel WHERE rel.task_id = tasks.id AND rel.type = 'related') AS related_csv,
+      COALESCE((
+        SELECT COUNT(*)
+        FROM task_relations rel
+        JOIN tasks blocker ON blocker.id = rel.related_task_id
+        WHERE rel.task_id = tasks.id
+          AND rel.type = 'blocked_by'
+          AND blocker.status NOT IN ('done')
+      ), 0) AS open_dependency_count,
+      CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM task_relations rel
+          JOIN tasks blocker ON blocker.id = rel.related_task_id
+          WHERE rel.task_id = tasks.id
+            AND rel.type = 'blocked_by'
+            AND blocker.status NOT IN ('done')
+        ) THEN 1
+        ELSE 0
+      END AS is_blocked,
       CASE
         WHEN status = 'in_progress' AND COALESCE(started_at, updated_at) <= ? THEN 1
         ELSE 0
       END AS is_stale
     FROM tasks
+    LEFT JOIN goals ON goals.id = tasks.goal_id
     ${where}
   `;
 }
 
-function getTaskById(db: Database.Database, taskId: string): TaskResponseRow | null {
+function getTaskById(db: Database.Database, taskId: string): MissionControlTask | null {
   const row = db.prepare(`${getTaskSelectSql('WHERE id = ?')} LIMIT 1`).get(
     getStaleCutoff(),
     taskId,
   ) as TaskRow | undefined;
   return row ? mapTaskRow(row) : null;
+}
+
+function getGoalProgress(db: Database.Database): GoalProgress[] {
+  const goals = db.prepare(`
+    SELECT id, title, description, level, parent_id, status, source_path
+    FROM goals
+    ORDER BY level ASC, title ASC
+  `).all() as Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    level: number;
+    parent_id: string | null;
+    status: string;
+    source_path: string | null;
+  }>;
+
+  const taskRows = db.prepare(`
+    SELECT goal_id, status, project
+    FROM tasks
+    WHERE goal_id IS NOT NULL
+  `).all() as Array<{
+    goal_id: string;
+    status: string;
+    project: string | null;
+  }>;
+
+  const byGoal = new Map<string, GoalProgress>();
+  const children = new Map<string, string[]>();
+
+  for (const goal of goals) {
+    byGoal.set(goal.id, {
+      id: goal.id,
+      title: goal.title,
+      description: goal.description ?? undefined,
+      level: goal.level,
+      parent_id: goal.parent_id ?? undefined,
+      status: goal.status as GoalProgress['status'],
+      source_path: goal.source_path ?? undefined,
+      total_tasks: 0,
+      completed_tasks: 0,
+      active_tasks: 0,
+      completion_ratio: 0,
+      projects: [],
+      children: [],
+    });
+    if (goal.parent_id) {
+      const bucket = children.get(goal.parent_id);
+      if (bucket) {
+        bucket.push(goal.id);
+      } else {
+        children.set(goal.parent_id, [goal.id]);
+      }
+    }
+  }
+
+  for (const task of taskRows) {
+    const goal = byGoal.get(task.goal_id);
+    if (!goal) continue;
+    goal.total_tasks += 1;
+    goal.completed_tasks += COMPLETED_TASK_STATUSES.has(task.status) ? 1 : 0;
+    goal.active_tasks += COMPLETED_TASK_STATUSES.has(task.status) ? 0 : 1;
+    if (task.project && !goal.projects.includes(task.project)) {
+      goal.projects.push(task.project);
+    }
+  }
+
+  const aggregate = (goalId: string): GoalProgress => {
+    const goal = byGoal.get(goalId)!;
+    for (const childId of children.get(goalId) ?? []) {
+      const child = aggregate(childId);
+      goal.children.push(child);
+      goal.total_tasks += child.total_tasks;
+      goal.completed_tasks += child.completed_tasks;
+      goal.active_tasks += child.active_tasks;
+      for (const project of child.projects) {
+        if (!goal.projects.includes(project)) {
+          goal.projects.push(project);
+        }
+      }
+    }
+    goal.completion_ratio = goal.total_tasks > 0 ? goal.completed_tasks / goal.total_tasks : 0;
+    goal.projects.sort((left, right) => left.localeCompare(right));
+    return goal;
+  };
+
+  return goals
+    .filter((goal) => !goal.parent_id || !byGoal.has(goal.parent_id))
+    .map((goal) => aggregate(goal.id))
+    .sort((left, right) => left.title.localeCompare(right.title));
 }
 
 function getStaleTasks(db: Database.Database, limit = 10): Array<{
@@ -365,6 +534,7 @@ export function createApiRouter(
     const budgetAlerts = historyStore.getBudgetAlerts();
     const mcDb = config.getMcDb?.();
     const staleTasks = mcDb ? getStaleTasks(mcDb, 10) : [];
+    const goalProgress = mcDb ? getGoalProgress(mcDb) : [];
     const alertSeverity = budgetAlerts.some((alert) => alert.severity === 'critical')
       ? 'critical'
       : budgetAlerts.length > 0 || staleTasks.length > 0
@@ -390,6 +560,7 @@ export function createApiRouter(
       top_models: withPercentages(topModels).slice(0, 5),
       budget_alerts: budgetAlerts,
       stale_tasks: staleTasks,
+      goal_progress: goalProgress,
       pending_alerts: budgetAlerts.length + staleTasks.length,
       alert_severity: alertSeverity,
       mc_db_connected: mcDb != null,
@@ -486,6 +657,7 @@ export function createApiRouter(
     const assignedTo = req.query.assigned_to as string | undefined;
     const priority = req.query.priority as string | undefined;
     const project = req.query.project as string | undefined;
+    const goalId = req.query.goal_id as string | undefined;
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
     const offset = parseInt(req.query.offset as string, 10) || 0;
     const staleCutoff = getStaleCutoff();
@@ -497,6 +669,7 @@ export function createApiRouter(
     if (assignedTo) { conditions.push('assigned_to = ?'); params.push(assignedTo); }
     if (priority) { conditions.push('priority = ?'); params.push(priority); }
     if (project) { conditions.push('project = ?'); params.push(project); }
+    if (goalId) { conditions.push('goal_id = ?'); params.push(goalId); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -513,6 +686,32 @@ export function createApiRouter(
     } catch (err) {
       res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
     }
+  });
+
+  // GET /api/v2/tasks/:id
+  router.get('/api/v2/tasks/:id', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const task = getTaskById(db, req.params.id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' });
+      return;
+    }
+
+    res.json({ domain: 'tasks', version: 'v2', task });
   });
 
   // POST /api/v2/tasks/:id/checkout
@@ -580,12 +779,249 @@ export function createApiRouter(
     }
 
     const task = getTaskById(db, taskId);
+    if (task) {
+      eventBus.publish({
+        ts: new Date().toISOString(),
+        event_id: `evt-task-sync-${taskId}-${checkoutAt}`,
+        source: 'mission_control',
+        agent_id: agentId,
+        session_id: 'mission_control_api',
+        type: 'task.sync',
+        data: task as unknown as Record<string, unknown>,
+      });
+    }
+    eventBus.publish({
+      ts: new Date().toISOString(),
+      event_id: `evt-task-checkout-${taskId}-${checkoutAt}`,
+      source: 'mission_control',
+      agent_id: agentId,
+      session_id: 'mission_control_api',
+      type: 'activity.new',
+      data: {
+        id: `task_checkout_${taskId}_${checkoutAt}`,
+        type: 'task_checkout',
+        entity_type: 'task',
+        entity_id: taskId,
+        actor: agentId,
+        created_at: checkoutAt,
+      },
+    });
     res.json({
       domain: 'tasks',
       version: 'v2',
       status: 'checked_out',
       task,
     });
+  });
+
+  // DELETE /api/v2/tasks/:id/checkout
+  router.delete('/api/v2/tasks/:id/checkout', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const taskId = req.params.id;
+    const currentTask = getTaskById(db, taskId);
+    if (!currentTask) {
+      res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' });
+      return;
+    }
+
+    const releasedAt = Math.floor(Date.now() / 1000);
+    db.prepare(`
+      UPDATE tasks
+      SET checkout_agent_id = NULL, checkout_at = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(releasedAt, taskId);
+
+    const task = getTaskById(db, taskId);
+    if (task) {
+      eventBus.publish({
+        ts: new Date().toISOString(),
+        event_id: `evt-task-sync-release-${taskId}-${releasedAt}`,
+        source: 'mission_control',
+        agent_id: currentTask.checkout_agent_id ?? 'observatory',
+        session_id: 'mission_control_api',
+        type: 'task.sync',
+        data: task as unknown as Record<string, unknown>,
+      });
+    }
+    eventBus.publish({
+      ts: new Date().toISOString(),
+      event_id: `evt-task-release-${taskId}-${releasedAt}`,
+      source: 'mission_control',
+      agent_id: currentTask.checkout_agent_id ?? 'observatory',
+      session_id: 'mission_control_api',
+      type: 'activity.new',
+      data: {
+        id: `task_release_${taskId}_${releasedAt}`,
+        type: 'task_release',
+        entity_type: 'task',
+        entity_id: taskId,
+        actor: currentTask.checkout_agent_id ?? 'observatory',
+        created_at: releasedAt,
+      },
+    });
+
+    res.json({
+      domain: 'tasks',
+      version: 'v2',
+      status: 'released',
+      task,
+    });
+  });
+
+  // GET /api/v2/tasks/:id/comments
+  router.get('/api/v2/tasks/:id/comments', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ domain: 'tasks', version: 'v2', comments: [], total: 0, mc_db_connected: false });
+      return;
+    }
+
+    const task = getTaskById(db, req.params.id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' });
+      return;
+    }
+
+    const comments = db.prepare(`
+      SELECT id, task_id, author_agent_id, body, created_at
+      FROM task_comments
+      WHERE task_id = ?
+      ORDER BY created_at ASC
+    `).all(req.params.id) as TaskComment[];
+
+    res.json({ domain: 'tasks', version: 'v2', comments, total: comments.length, mc_db_connected: true });
+  });
+
+  // POST /api/v2/tasks/:id/comments
+  router.post('/api/v2/tasks/:id/comments', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const taskId = req.params.id;
+    const task = getTaskById(db, taskId);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' });
+      return;
+    }
+
+    const authorAgentId = typeof req.body?.author_agent_id === 'string' ? req.body.author_agent_id.trim() : '';
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!authorAgentId || !body) {
+      res.status(400).json({ error: 'author_agent_id and body are required', code: 'INVALID_COMMENT' });
+      return;
+    }
+
+    const createdAt = Math.floor(Date.now() / 1000);
+    const comment = {
+      id: `comment_${taskId}_${createdAt}_${Math.random().toString(36).slice(2, 8)}`,
+      task_id: taskId,
+      author_agent_id: authorAgentId,
+      body,
+      created_at: createdAt,
+    };
+
+    db.prepare(`
+      INSERT INTO task_comments (id, task_id, author_agent_id, body, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(comment.id, comment.task_id, comment.author_agent_id, comment.body, comment.created_at);
+
+    db.prepare(`
+      INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      `task_comment_${comment.id}`,
+      'task_comment',
+      'task',
+      taskId,
+      authorAgentId,
+      `Comment added to task "${taskId}"`,
+      JSON.stringify({ comment_id: comment.id }),
+      createdAt,
+    );
+
+    eventBus.publish({
+      ts: new Date().toISOString(),
+      event_id: `evt-task-comment-${comment.id}`,
+      source: 'mission_control',
+      agent_id: authorAgentId,
+      session_id: 'mission_control_api',
+      type: 'activity.new',
+      data: {
+        id: `task_comment_${comment.id}`,
+        type: 'task_comment',
+        entity_type: 'task',
+        entity_id: taskId,
+        actor: authorAgentId,
+        created_at: createdAt,
+      },
+    });
+    eventBus.publish({
+      ts: new Date().toISOString(),
+      event_id: `evt-task-sync-comment-${comment.id}`,
+      source: 'mission_control',
+      agent_id: authorAgentId,
+      session_id: 'mission_control_api',
+      type: 'task.sync',
+      data: (getTaskById(db, taskId) ?? task) as unknown as Record<string, unknown>,
+    });
+
+    res.status(201).json({ domain: 'tasks', version: 'v2', comments: [comment], total: 1, mc_db_connected: true });
+  });
+
+  // GET /api/v2/goals
+  router.get('/api/v2/goals', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ domain: 'goals', version: 'v2', goals: [], total: 0, mc_db_connected: false });
+      return;
+    }
+
+    const goals = getGoalProgress(db);
+    res.json({ domain: 'goals', version: 'v2', goals, total: goals.length, mc_db_connected: true });
   });
 
   // GET /api/v2/activities
@@ -735,6 +1171,7 @@ export function createApiRouter(
         timeseries_retention_minutes: config.timeseriesRetentionMinutes,
         shadow_mode_enabled: config.shadowModeEnabled,
         mc_db_connected: config.getMcDb != null && config.getMcDb() != null,
+        stale_threshold_hours: getStaleThresholdSeconds() / 3600,
       },
       feature_flags,
     });
@@ -763,6 +1200,7 @@ export function createApiRouter(
         watch_paths: config.watchPaths,
         metrics_interval_ms: config.metricsIntervalMs,
         timeseries_retention_minutes: config.timeseriesRetentionMinutes,
+        stale_threshold_hours: getStaleThresholdSeconds() / 3600,
       },
     });
   });

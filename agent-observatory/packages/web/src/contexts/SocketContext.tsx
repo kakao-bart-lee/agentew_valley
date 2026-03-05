@@ -9,8 +9,10 @@ import {
     type ReactNode,
 } from 'react';
 import { io, type Socket } from 'socket.io-client';
+import type { RealtimeActivityPayload } from '@agent-observatory/shared';
 import { useAgentStore } from '../stores/agentStore';
 import { useMetricsStore } from '../stores/metricsStore';
+import { useMissionControlStore } from '../stores/missionControlStore';
 import type { AgentLiveState } from '../types/agent';
 import type { MetricsSnapshot } from '../types/metrics';
 
@@ -41,6 +43,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // zustand 액션은 stable 참조 — 소켓 초기화에 안전하게 사용
     const { setConnectionStatus, initSession, setAgent, removeAgent } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
+    const bumpMissionControl = useMissionControlStore((state) => state.bump);
 
     useEffect(() => {
         const token = localStorage.getItem('OBSERVATORY_TOKEN') || (import.meta as any).env?.VITE_DASHBOARD_API_KEY;
@@ -70,12 +73,45 @@ export function SocketProvider({ children }: { children: ReactNode }) {
             setAgent(state);
         });
 
+        s.on('agent.status', ({ agent }: { agent: AgentLiveState }) => {
+            setAgent(agent);
+        });
+
         s.on('agent:remove', (data: { agent_id: string }) => {
             removeAgent(data.agent_id);
         });
 
         s.on('metrics:snapshot', (metrics: MetricsSnapshot) => {
             setSnapshot(metrics);
+        });
+
+        s.on('event', (event: { type?: string }) => {
+            if (event.type === 'goal.snapshot') {
+                bumpMissionControl(['goals', 'summary']);
+            }
+            if (event.type === 'task.snapshot') {
+                bumpMissionControl(['tasks', 'summary']);
+            }
+        });
+
+        s.on('task.updated', () => {
+            bumpMissionControl(['tasks', 'summary']);
+        });
+
+        s.on('task.checkout', () => {
+            bumpMissionControl(['tasks', 'summary', 'activities']);
+        });
+
+        s.on('activity.logged', (activity: RealtimeActivityPayload) => {
+            const keys: Array<'activities' | 'summary' | 'taskComments'> = ['activities', 'summary'];
+            if (activity.type === 'task_comment' && activity.entity_type === 'task') {
+                keys.push('taskComments');
+            }
+            bumpMissionControl(keys);
+        });
+
+        s.on('cost.alert', () => {
+            bumpMissionControl(['summary', 'activities', 'notifications']);
         });
 
         s.connect();
@@ -87,7 +123,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
             socketRef.current = null;
             setSocket(null);
         };
-    }, [setConnectionStatus, initSession, setAgent, removeAgent, setSnapshot]);
+    }, [setConnectionStatus, initSession, setAgent, removeAgent, setSnapshot, bumpMissionControl]);
 
     // socketRef 기반으로 안정적인(stable) 콜백 제공
     const subscribe = useCallback((agentId: string) => {
