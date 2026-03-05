@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { DashboardSummaryResponse } from '@agent-observatory/shared';
+import type {
+  DashboardSummaryResponse,
+  AgentCostEntry,
+  ModelCostEntry,
+  BudgetAlertEntry,
+  StaleTaskEntry,
+} from '@agent-observatory/shared';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
 
@@ -131,7 +137,7 @@ export function CostSummaryCard() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Top Agents</h3>
                 <div className="space-y-2 text-sm">
                   {summary.top_agents.length === 0 && <div className="text-slate-500">No agent data</div>}
-                  {summary.top_agents.slice(0, 3).map((agent) => (
+                  {summary.top_agents.slice(0, 3).map((agent: AgentCostEntry) => (
                     <div key={agent.agent_id} className="flex items-center justify-between gap-3">
                       <span className="truncate text-slate-200">{agent.agent_name}</span>
                       <span className="text-slate-400">{formatCurrency(agent.total_cost_usd)}</span>
@@ -144,7 +150,7 @@ export function CostSummaryCard() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Top Models</h3>
                 <div className="space-y-2 text-sm">
                   {summary.top_models.length === 0 && <div className="text-slate-500">No model data</div>}
-                  {summary.top_models.slice(0, 3).map((model) => (
+                  {summary.top_models.slice(0, 3).map((model: ModelCostEntry) => (
                     <div key={model.model_id} className="flex items-center justify-between gap-3">
                       <span className="truncate text-slate-200">{model.model_id}</span>
                       <span className="text-slate-400">{formatCurrency(model.total_cost_usd)}</span>
@@ -161,7 +167,7 @@ export function CostSummaryCard() {
                   <div className="text-slate-500">No active alerts</div>
                 ) : (
                   <>
-                    {summary.budget_alerts.slice(0, 3).map((alert) => (
+                    {summary.budget_alerts.slice(0, 3).map((alert: BudgetAlertEntry) => (
                       <div
                         key={alert.agent_id}
                         className={`rounded-lg border p-3 ${
@@ -177,7 +183,7 @@ export function CostSummaryCard() {
                       </div>
                     ))}
 
-                    {summary.stale_tasks.slice(0, 3).map((task) => (
+                    {summary.stale_tasks.slice(0, 3).map((task: StaleTaskEntry) => (
                       <div key={task.id} className="rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-amber-200">
                         <div className="font-medium">{task.title}</div>
                         <div className="mt-1 text-xs opacity-80">
