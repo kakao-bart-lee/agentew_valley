@@ -1,20 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TaskBoard } from './tasks/TaskBoard';
 import { MigrationStatusPanel } from './migration/MigrationStatusPanel';
 import { MCActivityFeed } from './activity/MCActivityFeed';
 import { NotificationList } from './notifications/NotificationList';
+import type { ApprovalsResponse } from '@agent-observatory/shared';
+import { ApprovalsView } from './approvals/ApprovalsView';
+import { AdapterSettingsView } from './adapters/AdapterSettingsView';
+import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
+import { useMissionControlStore, type MissionControlTab } from '../../stores/missionControlStore';
 
-type SubTab = 'tasks' | 'migration' | 'activity' | 'notifications';
-
-const SUBTABS: { id: SubTab; label: string }[] = [
+const SUBTABS: Array<{ id: MissionControlTab; label: string }> = [
   { id: 'tasks', label: 'Tasks' },
+  { id: 'approvals', label: 'Approvals' },
+  { id: 'adapters', label: 'Adapters' },
   { id: 'migration', label: 'Migration' },
   { id: 'activity', label: 'Activity' },
   { id: 'notifications', label: 'Notifications' },
 ];
 
 export function MissionControlView() {
-  const [activeTab, setActiveTab] = useState<SubTab>('tasks');
+  const activeTab = useMissionControlStore((state) => state.activeTab);
+  const setActiveTab = useMissionControlStore((state) => state.setActiveTab);
+  const approvalsVersion = useMissionControlStore((state) => state.versions.approvals);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPendingCount = async () => {
+      try {
+        const response = await fetchJsonWithAuth<ApprovalsResponse>(`${getApiBase()}/api/v2/approvals?status=pending&limit=1`);
+        if (!cancelled) {
+          setPendingApprovals(response.pending);
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingApprovals(0);
+        }
+      }
+    };
+
+    void loadPendingCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [approvalsVersion]);
 
   return (
     <div className="flex flex-col flex-1 p-4 gap-4">
@@ -36,6 +67,11 @@ export function MissionControlView() {
             }`}
           >
             {tab.label}
+            {tab.id === 'approvals' && pendingApprovals > 0 ? (
+              <span className="ml-2 rounded-full bg-amber-500/25 px-2 py-0.5 text-[11px] text-amber-200">
+                {pendingApprovals}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -43,6 +79,8 @@ export function MissionControlView() {
       {/* Sub-tab content */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'tasks' && <TaskBoard />}
+        {activeTab === 'approvals' && <ApprovalsView />}
+        {activeTab === 'adapters' && <AdapterSettingsView />}
         {activeTab === 'migration' && <MigrationStatusPanel />}
         {activeTab === 'activity' && <MCActivityFeed />}
         {activeTab === 'notifications' && <NotificationList />}

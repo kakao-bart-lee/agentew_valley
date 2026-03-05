@@ -103,8 +103,9 @@ export function TaskBoard() {
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [goalFilter, setGoalFilter] = useState<string>('all');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const versions = useMissionControlStore((state) => state.versions);
+  const selectedTaskId = useMissionControlStore((state) => state.selectedTaskId);
+  const selectTask = useMissionControlStore((state) => state.selectTask);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,7 +316,7 @@ export function TaskBoard() {
                   title={column.title}
                   accent={column.accent}
                   tasks={column.tasks}
-                  onSelectTask={(task) => setSelectedTaskId(task.id)}
+                  onSelectTask={(task) => selectTask(task.id)}
                 />
               ))}
             </div>
@@ -325,7 +326,7 @@ export function TaskBoard() {
         {selectedTask && (
           <TaskDetailPanel
             task={selectedTask}
-            onClose={() => setSelectedTaskId(null)}
+            onClose={() => selectTask(null)}
           />
         )}
       </div>

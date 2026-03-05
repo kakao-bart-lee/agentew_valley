@@ -121,7 +121,7 @@ export interface AgentLiveState {
   context_window_usage?: number;
 
   /** 종합 건강 상태 */
-  health_status?: AgentHealthStatus;
+  health_status: AgentHealthStatus;
 
   /** llm.end 이벤트 수 (LLM 응답 횟수) */
   llm_response_count: number;

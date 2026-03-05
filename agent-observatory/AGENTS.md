@@ -1,87 +1,99 @@
-# Agent Observatory — Phase 2 & 3 Continuous Development
+# Agent Observatory — Phase 3: Governance
 
 ## Mission
-Implement Phase 2 (Structure) and Phase 3 (Governance) of the Observatory Evolution plan.
+Implement Phase 3 (Governance) of the Observatory Evolution plan.
+Phase 1 (Foundation) and Phase 2 (Structure) are complete and merged.
+
 Read `docs/S-004-observatory-evolution.md` for the full spec.
 Read `docs/PAPERCLIP-ANALYSIS.md` for Paperclip architectural reference.
 
-## Current State (Phase 1 COMPLETE ✅)
-Phase 1 is merged into main. The following features are already implemented:
-- F-001: Project-based View & Grouping (Group by Status/Agent/Project toggle)
-- F-002: Multi-dimensional Cost Tracking (getCostByProject/Agent/Model)
-- F-003: Atomic Task Checkout (POST /api/v2/tasks/:id/checkout, 409 conflict)
-- F-004: Stale Task Detection & Budget Alert (80%/100% thresholds)
-- F-005: SQLite Persistent Storage (OBSERVATORY_DB_PATH env var)
-- Dummy Data Generator with cost events, activities, project tags
+## Current State (Phase 1 + 2 COMPLETE ✅)
+Already implemented:
+- F-001~F-005: Project grouping, cost tracking, atomic checkout, stale detection, persistent storage
+- F-006~F-010: Goal hierarchy, task comments, dependencies, agent health, real-time events
+- F-006.5: Checkout release API
+- F-004.1: Configurable stale threshold
 
-## Phase 2 — Structure (YOUR CURRENT TASK)
-
-### F-006: Goal Hierarchy
-- Create `goals` table (id, title, description, level, parent_id, status)
-- Parse GOALS.md files as Source of Truth
-- Add `goal_id` FK to tasks table
-- Frontend: Goal → Project → Task drill-down view
-- Dashboard: "Goal Progress" widget (completion bar per goal)
-
-### F-007: Task Comments
-- Create `task_comments` table (id, task_id, author_agent_id, body, created_at)
-- REST API: GET/POST /api/v2/tasks/:id/comments
-- Frontend: Comment thread in task detail panel
-- Principle: "Tasks are the communication channel"
-
-### F-008: Issue Relations & Dependencies
-- Create `task_relations` table (id, type, task_id, related_task_id)
-- Relation types: blocks, blocked_by, related
-- Parse `depends:T-001` syntax from TASK.md
-- Frontend: Dependency arrows or blocked flag display
-- Auto-clear blocked flag when blocking task completes
-
-### F-009: Agent Health & Context Monitoring
-- Agent runtime state tracking (total_tokens, total_cost, last_error, last_run_status)
-- Context Window usage gauge (when ACP session data is available)
-- Tool Call success/failure rate gauge (last N calls)
-- Agent card health badge (🟢 normal / 🟡 caution / 🔴 error)
-
-### F-010: Real-time Event Enhancement
-- Extend WebSocket event types: task.updated, task.checkout, agent.status, cost.alert, activity.logged
-- React Query cache invalidation on WebSocket events (selective invalidateQueries)
-- Auto-reconnect on disconnect + polling fallback
-
-### F-006.5: Checkout Release API (from Phase 1 review)
-- DELETE /api/v2/tasks/:id/checkout — release checkout lock
-- Auto-release on task status change to 'done' or 'review'
-
-### F-004.1: Configurable Stale Threshold (from Phase 1 review)
-- Support OBSERVATORY_STALE_THRESHOLD_HOURS env var (default: 1)
-
-## Phase 3 — Governance (AFTER Phase 2)
+## Phase 3 — Governance (YOUR TASK)
 
 ### F-011: Web-based Approval Gate
-- `approvals` table (id, type, requested_by, status, payload, decision_note, decided_at)
-- Types: dangerous_action, budget_override, new_agent
-- States: pending → approved / rejected / revision_requested
-- Frontend: Approval list + Approve/Deny/Comment buttons
-- Telegram notification integration
+- Create `approvals` table:
+  ```sql
+  CREATE TABLE approvals (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,           -- dangerous_action | budget_override | new_agent
+    requested_by TEXT NOT NULL,   -- agent_id
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected | revision_requested
+    payload TEXT,                 -- JSON: context about the request
+    decision_note TEXT,
+    decided_by TEXT,              -- agent_id or 'user'
+    decided_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  ```
+- REST API endpoints:
+  - `GET /api/v2/approvals` — list approvals (filter by status, type)
+  - `GET /api/v2/approvals/:id` — get single approval
+  - `POST /api/v2/approvals` — create approval request
+  - `PATCH /api/v2/approvals/:id` — update status (approve/reject/request_revision + decision_note)
+- Frontend:
+  - Approval list page with filter tabs (Pending / All)
+  - Approval detail: show payload context, Approve/Deny/Request Revision buttons
+  - Decision note text area
+  - Badge count on nav for pending approvals
+- WebSocket: emit `approval.created`, `approval.updated` events
+- Activity log: auto-record all approval state transitions
 
 ### F-012: Activity Log Enhancement
-- Extend activities table: actor_type (agent/user/system), entity_type, entity_id
-- Auto-record all mutating actions
-- Frontend: Activity timeline page + entity filters
+- Extend existing `activities` table with new columns:
+  - `actor_type TEXT` — agent | user | system
+  - `entity_type TEXT` — task | agent | approval | goal | session
+  - `entity_id TEXT` — reference to the affected entity
+- Auto-record all mutating API actions (task upsert, checkout, comment, approval)
+- REST API:
+  - `GET /api/v2/activities` — list activities with filters (entity_type, entity_id, actor_type, limit, offset)
+- Frontend:
+  - Activity Timeline page (new route)
+  - Filter by entity type, date range
+  - Infinite scroll or pagination
+  - Timeline entries: icon + actor + action + entity link + timestamp
 
 ### F-013: Adapter Registry
-- Refactor Collectors to ObservatoryAdapter interface
-- Interface: type, capabilities, collect(), testConnection()
-- Capabilities: { costTracking, logStreaming, statusUpdates }
-- Register: MissionControl, ClaudeCode, OpenClaw, OpenCode adapters
+- Create `ObservatoryAdapter` interface in shared types:
+  ```typescript
+  interface ObservatoryAdapter {
+    type: string;                    // e.g. 'mission_control', 'claude_code', 'openclaw', 'opencode'
+    capabilities: AdapterCapabilities;
+    collect(options: CollectOptions): Promise<void>;
+    testConnection(): Promise<{ ok: boolean; message?: string }>;
+  }
+  
+  interface AdapterCapabilities {
+    costTracking: boolean;
+    logStreaming: boolean;
+    statusUpdates: boolean;
+    goalParsing: boolean;
+    taskSync: boolean;
+  }
+  ```
+- Refactor existing MissionControl collector to implement this interface
+- Create stub adapters for: ClaudeCode, OpenClaw, OpenCode
+- REST API:
+  - `GET /api/v2/adapters` — list registered adapters with status
+  - `POST /api/v2/adapters/:type/test` — test adapter connection
+- Frontend:
+  - Adapter settings page showing each adapter's status, capabilities grid, and test button
+
+### Cleanup Tasks (from Phase 2 review)
+- Add `.omx/` to `.gitignore`
+- Ensure all mock data includes `health_status` field, then make `AgentLiveState.health_status` required again
 
 ## Development Rules
 1. Run `pnpm install` first.
 2. Run `pnpm build` before committing — must pass with zero errors.
-3. Commit frequently with clear messages (one commit per feature is fine).
-4. Write tests for new backend logic (API endpoints, store methods).
-5. Push the branch when done.
-6. When Phase 2 is complete, signal completion with:
-   ```
-   openclaw system event --text "Done: Observatory Phase 2 complete — Goals, Comments, Dependencies, Health Monitoring, Real-time Events implemented." --mode now
-   ```
-7. After Phase 2 review/merge, proceed to Phase 3 with the same pattern.
+3. Commit frequently with clear messages.
+4. Write tests for new backend logic (approval API, activity API, adapter registry).
+5. After all work is done:
+   - `git add -A && git commit` with descriptive message
+   - `git push origin feat/observatory-phase3`
+   - `openclaw system event --text "Done: Observatory Phase 3 complete — Approval Gate, Activity Log, Adapter Registry implemented." --mode now`

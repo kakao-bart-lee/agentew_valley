@@ -44,6 +44,20 @@ export type {
 } from './mission-control.js';
 
 export type {
+  ApprovalType,
+  ApprovalStatus,
+  Approval,
+  ActivityActorType,
+  ActivityEntityType,
+  ActivityEntry,
+  CollectOptions,
+  AdapterCapabilities,
+  AdapterConnectionResult,
+  ObservatoryAdapter,
+  AdapterSummary,
+} from './governance.js';
+
+export type {
   AgentsListResponse,
   AgentDetailResponse,
   AgentEventsResponse,
@@ -72,6 +86,13 @@ export type {
   BudgetAlertEntry,
   StaleTaskEntry,
   DashboardSummaryResponse,
+  ApprovalsResponse,
+  ApprovalResponse,
+  ApprovalCreateRequest,
+  ApprovalUpdateRequest,
+  ActivitiesResponse,
+  AdaptersResponse,
+  AdapterTestResponse,
   TokenAnalyticsResponse,
   GoalsResponse,
   TaskCommentsResponse,
@@ -81,6 +102,7 @@ export type {
   TaskResponse,
   RealtimeTaskPayload,
   RealtimeActivityPayload,
+  RealtimeApprovalPayload,
   RealtimeCostAlertPayload,
   RealtimeAgentStatusPayload,
   WSInitPayload,

@@ -18,5 +18,6 @@ export type { HTTPCollectorConfig } from './http/index.js';
 
 export { MissionControlCollector } from './mission-control/index.js';
 export type { MissionControlCollectorConfig } from './mission-control/index.js';
+export { ClaudeCodeAdapter, OpenClawAdapter, OpenCodeAdapter } from './adapters.js';
 
 export type { Collector, CollectorConfig } from './base.js';

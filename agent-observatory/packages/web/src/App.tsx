@@ -5,6 +5,9 @@ import { SessionsView } from './views/Sessions/SessionsView';
 import { MissionControlView } from './views/MissionControl/MissionControlView';
 import { StatusBar } from './views/Dashboard/StatusBar';
 import { useAgentStore } from './stores/agentStore';
+import { ApprovalsView } from './views/MissionControl/approvals/ApprovalsView';
+import { ActivityTimelineView } from './views/Timeline/ActivityTimelineView';
+import { AdapterSettingsView } from './views/MissionControl/adapters/AdapterSettingsView';
 
 function App() {
   const activeView = useAgentStore(state => state.activeView);
@@ -20,9 +23,10 @@ function App() {
           <div className={activeView === 'dashboard' ? 'flex flex-col flex-1' : 'hidden'}><DashboardView /></div>
           <div className={activeView === 'pixel' ? 'flex flex-col flex-1' : 'hidden'}><PixelCanvasView /></div>
           <div className={activeView === 'sessions' ? 'flex flex-col flex-1' : 'hidden'}><SessionsView /></div>
-          {activeView === 'mission-control' ? (
-            <div className="flex flex-col flex-1"><MissionControlView /></div>
-          ) : null}
+          <div className={activeView === 'mission-control' ? 'flex flex-col flex-1' : 'hidden'}><MissionControlView /></div>
+          <div className={activeView === 'approvals' ? 'flex flex-col flex-1' : 'hidden'}><ApprovalsView /></div>
+          <div className={activeView === 'activity-log' ? 'flex flex-col flex-1' : 'hidden'}><ActivityTimelineView /></div>
+          <div className={activeView === 'adapters' ? 'flex flex-col flex-1' : 'hidden'}><AdapterSettingsView /></div>
         </div>
       </div>
     </SocketProvider>

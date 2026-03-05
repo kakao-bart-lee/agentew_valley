@@ -35,7 +35,9 @@ export type UAEPEventType =
   | 'task.snapshot'
   | 'goal.snapshot'
   | 'activity.new'
-  | 'notification.new';
+  | 'notification.new'
+  | 'approval.created'
+  | 'approval.updated';
 
 /**
  * UAEP-min 이벤트 Envelope.
@@ -121,4 +123,6 @@ export const UAEP_EVENT_TYPES: readonly UAEPEventType[] = [
   'goal.snapshot',
   'activity.new',
   'notification.new',
+  'approval.created',
+  'approval.updated',
 ] as const;

@@ -716,6 +716,162 @@ describe('REST API', () => {
     });
   });
 
+  describe('governance v2 routes', () => {
+    it('should create, retrieve, update, and count approvals', async () => {
+        const governanceInstance = createApp({
+          featureFlags: {
+            ...DEFAULT_FEATURE_FLAGS,
+            tasks_v2: true,
+          },
+        });
+
+        try {
+          const createRes = await request(governanceInstance.app)
+            .post('/api/v2/approvals')
+            .send({
+              type: 'dangerous_action',
+              requested_by: 'agent-1',
+              payload: { command: 'rm -rf /tmp/example', reason: 'cleanup' },
+            });
+
+          expect(createRes.status).toBe(201);
+          expect(createRes.body.approval.status).toBe('pending');
+          expect(createRes.body.approval.payload.command).toBe('rm -rf /tmp/example');
+
+          const approvalId = createRes.body.approval.id as string;
+
+          const summaryPending = await request(governanceInstance.app).get('/api/v1/dashboard/summary');
+          expect(summaryPending.status).toBe(200);
+          expect(summaryPending.body.pending_approvals).toBe(1);
+
+          const listPending = await request(governanceInstance.app).get('/api/v2/approvals?status=pending');
+          expect(listPending.status).toBe(200);
+          expect(listPending.body.total).toBe(1);
+          expect(listPending.body.pending).toBe(1);
+
+          const detailRes = await request(governanceInstance.app).get(`/api/v2/approvals/${approvalId}`);
+          expect(detailRes.status).toBe(200);
+          expect(detailRes.body.approval.id).toBe(approvalId);
+          expect(detailRes.body.approval.payload.reason).toBe('cleanup');
+
+          const updateRes = await request(governanceInstance.app)
+            .patch(`/api/v2/approvals/${approvalId}`)
+            .send({
+              status: 'approved',
+              decision_note: 'Reviewed and approved.',
+              decided_by: 'user',
+            });
+
+          expect(updateRes.status).toBe(200);
+          expect(updateRes.body.approval.status).toBe('approved');
+          expect(updateRes.body.approval.decision_note).toBe('Reviewed and approved.');
+          expect(updateRes.body.approval.decided_by).toBe('user');
+
+          const summaryDone = await request(governanceInstance.app).get('/api/v1/dashboard/summary');
+          expect(summaryDone.status).toBe(200);
+          expect(summaryDone.body.pending_approvals).toBe(0);
+        } finally {
+          governanceInstance.close();
+          governanceInstance.server.close();
+          governanceInstance.io.close();
+        }
+    });
+
+    it('should filter activities by entity and actor metadata', async () => {
+        const governanceInstance = createApp({
+          featureFlags: {
+            ...DEFAULT_FEATURE_FLAGS,
+            tasks_v2: true,
+          },
+        });
+
+        try {
+          governanceInstance.eventBus.publish(makeEvent({
+            type: 'task.sync',
+            source: 'mission_control',
+            agent_id: 'observatory',
+            session_id: 'mission_control_sync',
+            data: {
+              id: 'T-400',
+              title: 'Audit trail coverage',
+              status: 'assigned',
+              priority: 'medium',
+              updated_at: Math.floor(Date.now() / 1000),
+            },
+          }));
+
+          const commentRes = await request(governanceInstance.app)
+            .post('/api/v2/tasks/T-400/comments')
+            .send({
+              author_agent_id: 'agent-audit',
+              body: 'Leaving an activity trail.',
+            });
+
+          expect(commentRes.status).toBe(201);
+
+          const approvalRes = await request(governanceInstance.app)
+            .post('/api/v2/approvals')
+            .send({
+              type: 'budget_override',
+              requested_by: 'agent-audit',
+              payload: { requested_budget_cents: 2500 },
+            });
+
+          expect(approvalRes.status).toBe(201);
+
+          const taskActivities = await request(governanceInstance.app)
+            .get('/api/v2/activities?entity_type=task&entity_id=T-400&actor_type=agent&limit=10');
+
+          expect(taskActivities.status).toBe(200);
+          expect(taskActivities.body.total).toBeGreaterThanOrEqual(1);
+          expect(taskActivities.body.activities.some((activity: { type: string; actor_type: string; entity_id: string }) =>
+            activity.type === 'task_comment'
+            && activity.actor_type === 'agent'
+            && activity.entity_id === 'T-400')).toBe(true);
+
+          const approvalActivities = await request(governanceInstance.app)
+            .get('/api/v2/activities?entity_type=approval&actor_type=agent&limit=10');
+
+          expect(approvalActivities.status).toBe(200);
+          expect(approvalActivities.body.activities.some((activity: { type: string; entity_type: string }) =>
+            activity.type === 'approval_requested'
+            && activity.entity_type === 'approval')).toBe(true);
+        } finally {
+          governanceInstance.close();
+          governanceInstance.server.close();
+          governanceInstance.io.close();
+        }
+    });
+
+    it('should list adapters and test a registered adapter', async () => {
+        const governanceInstance = createApp({
+          featureFlags: {
+            ...DEFAULT_FEATURE_FLAGS,
+            tasks_v2: true,
+          },
+        });
+
+        try {
+          const listRes = await request(governanceInstance.app).get('/api/v2/adapters');
+          expect(listRes.status).toBe(200);
+          expect(listRes.body.total).toBe(4);
+          expect(listRes.body.adapters.map((adapter: { type: string }) => adapter.type)).toEqual(
+            expect.arrayContaining(['mission_control', 'claude_code', 'openclaw', 'opencode']),
+          );
+
+          const testRes = await request(governanceInstance.app).post('/api/v2/adapters/claude_code/test');
+          expect(testRes.status).toBe(200);
+          expect(testRes.body.adapter.type).toBe('claude_code');
+          expect(testRes.body.adapter.status).toBe('stub');
+          expect(testRes.body.result.ok).toBe(false);
+        } finally {
+          governanceInstance.close();
+          governanceInstance.server.close();
+          governanceInstance.io.close();
+        }
+    });
+  });
+
   describe('POST /api/v1/events/batch', () => {
     it('should accept batch events', async () => {
       const events = [

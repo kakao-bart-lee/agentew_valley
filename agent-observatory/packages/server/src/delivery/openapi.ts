@@ -261,6 +261,73 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           },
         },
       },
+      '/api/v2/approvals': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List approval requests',
+          responses: {
+            200: { description: 'Approvals list' },
+          },
+        },
+        post: {
+          tags: ['Migration'],
+          summary: 'Create an approval request',
+          responses: {
+            201: { description: 'Approval created' },
+            400: { description: 'Invalid approval payload' },
+          },
+        },
+      },
+      '/api/v2/approvals/{id}': {
+        get: {
+          tags: ['Migration'],
+          summary: 'Get a single approval request',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Approval detail' },
+            404: { description: 'Approval not found' },
+          },
+        },
+        patch: {
+          tags: ['Migration'],
+          summary: 'Update an approval decision',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Approval updated' },
+            400: { description: 'Invalid approval decision' },
+            404: { description: 'Approval not found' },
+          },
+        },
+      },
+      '/api/v2/activities': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List activity log entries',
+          responses: {
+            200: { description: 'Activity timeline entries' },
+          },
+        },
+      },
+      '/api/v2/adapters': {
+        get: {
+          tags: ['Migration'],
+          summary: 'List registered adapters',
+          responses: {
+            200: { description: 'Adapter registry entries' },
+          },
+        },
+      },
+      '/api/v2/adapters/{type}/test': {
+        post: {
+          tags: ['Migration'],
+          summary: 'Test an adapter connection',
+          parameters: [{ name: 'type', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Adapter test result' },
+            404: { description: 'Adapter not found' },
+          },
+        },
+      },
       '/api/v2/webhooks/test': {
         post: {
           tags: ['Migration'],

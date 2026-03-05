@@ -2,11 +2,23 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import type Database from 'better-sqlite3';
 import type { StateManager } from '../core/state-manager.js';
+import { ObservatoryAdapterRegistry } from '../core/adapter-registry.js';
 import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
-import type { GoalProgress, GoalStatus, MissionControlTask, TaskComment } from '@agent-observatory/shared';
+import type {
+  ActivityActorType,
+  ActivityEntry,
+  ActivityEntityType,
+  Approval,
+  ApprovalStatus,
+  ApprovalType,
+  GoalProgress,
+  GoalStatus,
+  MissionControlTask,
+  TaskComment,
+} from '@agent-observatory/shared';
 import {
   DEFAULT_FEATURE_FLAGS,
   FEATURE_FLAG_ENV_VARS,
@@ -61,6 +73,12 @@ const DEFAULT_CONFIG: ApiConfig = {
 };
 
 const COMPLETED_TASK_STATUSES = new Set(['done']);
+const APPROVAL_TYPES = new Set<ApprovalType>(['dangerous_action', 'budget_override', 'new_agent']);
+const APPROVAL_DECISION_STATUSES = new Set<Exclude<ApprovalStatus, 'pending'>>([
+  'approved',
+  'rejected',
+  'revision_requested',
+]);
 
 function getStaleThresholdSeconds(): number {
   const raw = process.env.OBSERVATORY_STALE_THRESHOLD_HOURS;
@@ -98,12 +116,77 @@ type TaskRow = {
   is_stale: number;
 };
 
+type ApprovalRow = {
+  id: string;
+  type: string;
+  requested_by: string;
+  status: string;
+  payload: string | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  decided_at: number | null;
+  created_at: number;
+};
+
+type ActivityRow = {
+  id: string;
+  type: string;
+  actor_type: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  actor: string | null;
+  description: string | null;
+  data: string | null;
+  created_at: number;
+};
+
 function getStaleCutoff(nowSeconds = Math.floor(Date.now() / 1000)): number {
   return nowSeconds - getStaleThresholdSeconds();
 }
 
 function splitCsv(value: string | null): string[] {
   return value ? value.split('||').filter(Boolean) : [];
+}
+
+function safeParseJsonRecord(value: string | null): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Ignore malformed JSON blobs from older rows.
+  }
+  return undefined;
+}
+
+function mapApprovalRow(row: ApprovalRow): Approval {
+  return {
+    id: row.id,
+    type: row.type as ApprovalType,
+    requested_by: row.requested_by,
+    status: row.status as ApprovalStatus,
+    payload: safeParseJsonRecord(row.payload),
+    decision_note: row.decision_note ?? undefined,
+    decided_by: row.decided_by ?? undefined,
+    decided_at: row.decided_at ?? undefined,
+    created_at: row.created_at,
+  };
+}
+
+function mapActivityRow(row: ActivityRow): ActivityEntry {
+  return {
+    id: row.id,
+    type: row.type,
+    actor_type: (row.actor_type ?? 'system') as ActivityActorType,
+    entity_type: row.entity_type as ActivityEntityType,
+    entity_id: row.entity_id ?? undefined,
+    actor: row.actor ?? undefined,
+    description: row.description ?? undefined,
+    data: safeParseJsonRecord(row.data),
+    created_at: row.created_at,
+  };
 }
 
 function mapTaskRow(task: TaskRow, staleCutoff = getStaleCutoff()): MissionControlTask {
@@ -209,6 +292,24 @@ function getTaskById(db: Database.Database, taskId: string): MissionControlTask 
     taskId,
   ) as TaskRow | undefined;
   return row ? mapTaskRow(row) : null;
+}
+
+function getApprovalById(db: Database.Database, approvalId: string): Approval | null {
+  const row = db.prepare(`
+    SELECT id, type, requested_by, status, payload, decision_note, decided_by, decided_at, created_at
+    FROM approvals
+    WHERE id = ?
+  `).get(approvalId) as ApprovalRow | undefined;
+  return row ? mapApprovalRow(row) : null;
+}
+
+function getPendingApprovalCount(db: Database.Database): number {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM approvals
+    WHERE status = 'pending'
+  `).get() as { count: number };
+  return row.count;
 }
 
 function getGoalProgress(db: Database.Database): GoalProgress[] {
@@ -364,6 +465,48 @@ function sendV2KillSwitchEnabled(res: Response): void {
   });
 }
 
+function insertActivityRecord(db: Database.Database, activity: ActivityEntry): ActivityEntry {
+  db.prepare(`
+    INSERT INTO activities (id, type, actor_type, entity_type, entity_id, actor, description, data, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    activity.id,
+    activity.type,
+    activity.actor_type,
+    activity.entity_type,
+    activity.entity_id ?? null,
+    activity.actor ?? null,
+    activity.description ?? null,
+    activity.data ? JSON.stringify(activity.data) : null,
+    activity.created_at,
+  );
+
+  return activity;
+}
+
+function publishActivityEvent(
+  eventBus: EventBus,
+  activity: ActivityEntry,
+  options: {
+    agentId?: string;
+    sessionId?: string;
+    extra?: Record<string, unknown>;
+  } = {},
+): void {
+  eventBus.publish({
+    ts: new Date(activity.created_at * 1000).toISOString(),
+    event_id: `evt-activity-${activity.id}`,
+    source: 'mission_control',
+    agent_id: options.agentId ?? activity.actor ?? 'observatory',
+    session_id: options.sessionId ?? 'mission_control_api',
+    type: 'activity.new',
+    data: {
+      ...activity,
+      ...options.extra,
+    },
+  });
+}
+
 export function createApiRouter(
   stateManager: StateManager,
   historyStore: HistoryStore,
@@ -372,6 +515,26 @@ export function createApiRouter(
   config: ApiConfig = DEFAULT_CONFIG,
 ): Router {
   const router = Router();
+  const adapterRegistry = new ObservatoryAdapterRegistry(config.watchPaths);
+
+  const recordActivity = (
+    db: Database.Database,
+    activity: Omit<ActivityEntry, 'id'> & { id?: string },
+    options: {
+      agentId?: string;
+      extra?: Record<string, unknown>;
+    } = {},
+  ): ActivityEntry => {
+    const entry = insertActivityRecord(db, {
+      ...activity,
+      id: activity.id ?? `${activity.type}_${activity.entity_id ?? 'global'}_${activity.created_at}`,
+    });
+    publishActivityEvent(eventBus, entry, {
+      agentId: options.agentId,
+      extra: options.extra,
+    });
+    return entry;
+  };
 
   // GET /api/v1/health
   router.get('/api/v1/health', (_req, res) => {
@@ -535,6 +698,7 @@ export function createApiRouter(
     const mcDb = config.getMcDb?.();
     const staleTasks = mcDb ? getStaleTasks(mcDb, 10) : [];
     const goalProgress = mcDb ? getGoalProgress(mcDb) : [];
+    const pendingApprovals = mcDb ? getPendingApprovalCount(mcDb) : 0;
     const alertSeverity = budgetAlerts.some((alert) => alert.severity === 'critical')
       ? 'critical'
       : budgetAlerts.length > 0 || staleTasks.length > 0
@@ -562,6 +726,7 @@ export function createApiRouter(
       stale_tasks: staleTasks,
       goal_progress: goalProgress,
       pending_alerts: budgetAlerts.length + staleTasks.length,
+      pending_approvals: pendingApprovals,
       alert_severity: alertSeverity,
       mc_db_connected: mcDb != null,
     });
@@ -760,23 +925,19 @@ export function createApiRouter(
       return;
     }
 
-    try {
-      db.prepare(`
-        INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        `task_checkout_${taskId}_${checkoutAt}`,
-        'task_checkout',
-        'task',
-        taskId,
-        agentId,
-        `Task "${taskId}" was checked out by ${agentId}`,
-        JSON.stringify({ checkout_agent_id: agentId, checkout_at: checkoutAt }),
-        checkoutAt,
-      );
-    } catch {
-      // Ignore activity log write failures for external MC DBs with older schemas.
-    }
+    recordActivity(db, {
+      id: `task_checkout_${taskId}_${checkoutAt}`,
+      type: 'task_checkout',
+      actor_type: 'agent',
+      entity_type: 'task',
+      entity_id: taskId,
+      actor: agentId,
+      description: `Task "${taskId}" was checked out by ${agentId}`,
+      data: { checkout_agent_id: agentId, checkout_at: checkoutAt },
+      created_at: checkoutAt,
+    }, {
+      agentId,
+    });
 
     const task = getTaskById(db, taskId);
     if (task) {
@@ -790,22 +951,6 @@ export function createApiRouter(
         data: task as unknown as Record<string, unknown>,
       });
     }
-    eventBus.publish({
-      ts: new Date().toISOString(),
-      event_id: `evt-task-checkout-${taskId}-${checkoutAt}`,
-      source: 'mission_control',
-      agent_id: agentId,
-      session_id: 'mission_control_api',
-      type: 'activity.new',
-      data: {
-        id: `task_checkout_${taskId}_${checkoutAt}`,
-        type: 'task_checkout',
-        entity_type: 'task',
-        entity_id: taskId,
-        actor: agentId,
-        created_at: checkoutAt,
-      },
-    });
     res.json({
       domain: 'tasks',
       version: 'v2',
@@ -857,21 +1002,18 @@ export function createApiRouter(
         data: task as unknown as Record<string, unknown>,
       });
     }
-    eventBus.publish({
-      ts: new Date().toISOString(),
-      event_id: `evt-task-release-${taskId}-${releasedAt}`,
-      source: 'mission_control',
-      agent_id: currentTask.checkout_agent_id ?? 'observatory',
-      session_id: 'mission_control_api',
-      type: 'activity.new',
-      data: {
-        id: `task_release_${taskId}_${releasedAt}`,
-        type: 'task_release',
-        entity_type: 'task',
-        entity_id: taskId,
-        actor: currentTask.checkout_agent_id ?? 'observatory',
-        created_at: releasedAt,
-      },
+    recordActivity(db, {
+      id: `task_release_${taskId}_${releasedAt}`,
+      type: 'task_release',
+      actor_type: currentTask.checkout_agent_id ? 'agent' : 'system',
+      entity_type: 'task',
+      entity_id: taskId,
+      actor: currentTask.checkout_agent_id ?? 'observatory',
+      description: `Task "${taskId}" checkout was released`,
+      data: { released_at: releasedAt },
+      created_at: releasedAt,
+    }, {
+      agentId: currentTask.checkout_agent_id ?? 'observatory',
     });
 
     res.json({
@@ -960,35 +1102,18 @@ export function createApiRouter(
       VALUES (?, ?, ?, ?, ?)
     `).run(comment.id, comment.task_id, comment.author_agent_id, comment.body, comment.created_at);
 
-    db.prepare(`
-      INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      `task_comment_${comment.id}`,
-      'task_comment',
-      'task',
-      taskId,
-      authorAgentId,
-      `Comment added to task "${taskId}"`,
-      JSON.stringify({ comment_id: comment.id }),
-      createdAt,
-    );
-
-    eventBus.publish({
-      ts: new Date().toISOString(),
-      event_id: `evt-task-comment-${comment.id}`,
-      source: 'mission_control',
-      agent_id: authorAgentId,
-      session_id: 'mission_control_api',
-      type: 'activity.new',
-      data: {
-        id: `task_comment_${comment.id}`,
-        type: 'task_comment',
-        entity_type: 'task',
-        entity_id: taskId,
-        actor: authorAgentId,
-        created_at: createdAt,
-      },
+    recordActivity(db, {
+      id: `task_comment_${comment.id}`,
+      type: 'task_comment',
+      actor_type: 'agent',
+      entity_type: 'task',
+      entity_id: taskId,
+      actor: authorAgentId,
+      description: `Comment added to task "${taskId}"`,
+      data: { comment_id: comment.id },
+      created_at: createdAt,
+    }, {
+      agentId: authorAgentId,
     });
     eventBus.publish({
       ts: new Date().toISOString(),
@@ -1024,6 +1149,266 @@ export function createApiRouter(
     res.json({ domain: 'goals', version: 'v2', goals, total: goals.length, mc_db_connected: true });
   });
 
+  // GET /api/v2/approvals
+  router.get('/api/v2/approvals', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.json({ domain: 'approvals', version: 'v2', approvals: [], total: 0, pending: 0, mc_db_connected: false });
+      return;
+    }
+
+    const status = req.query.status as string | undefined;
+    const type = req.query.type as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 200);
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (status && status !== 'all') {
+      conditions.push('status = ?');
+      params.push(status);
+    }
+    if (type) {
+      conditions.push('type = ?');
+      params.push(type);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const approvals = db.prepare(`
+      SELECT id, type, requested_by, status, payload, decision_note, decided_by, decided_at, created_at
+      FROM approvals
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as ApprovalRow[];
+    const totalRow = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM approvals
+      ${where}
+    `).get(...params) as { count: number };
+
+    res.json({
+      domain: 'approvals',
+      version: 'v2',
+      approvals: approvals.map(mapApprovalRow),
+      total: totalRow.count,
+      pending: getPendingApprovalCount(db),
+      mc_db_connected: true,
+    });
+  });
+
+  // GET /api/v2/approvals/:id
+  router.get('/api/v2/approvals/:id', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const approval = getApprovalById(db, req.params.id);
+    if (!approval) {
+      res.status(404).json({ error: 'Approval not found', code: 'APPROVAL_NOT_FOUND' });
+      return;
+    }
+
+    res.json({ domain: 'approvals', version: 'v2', approval, mc_db_connected: true });
+  });
+
+  // POST /api/v2/approvals
+  router.post('/api/v2/approvals', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const type = typeof req.body?.type === 'string' ? req.body.type.trim() : '';
+    const requestedBy = typeof req.body?.requested_by === 'string' ? req.body.requested_by.trim() : '';
+    const payload = req.body?.payload && typeof req.body.payload === 'object'
+      ? req.body.payload as Record<string, unknown>
+      : undefined;
+
+    if (!APPROVAL_TYPES.has(type as ApprovalType) || !requestedBy) {
+      res.status(400).json({ error: 'type and requested_by are required', code: 'INVALID_APPROVAL_REQUEST' });
+      return;
+    }
+
+    const createdAt = Math.floor(Date.now() / 1000);
+    const id = `approval_${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
+    db.prepare(`
+      INSERT INTO approvals (id, type, requested_by, status, payload, created_at)
+      VALUES (?, ?, ?, 'pending', ?, ?)
+    `).run(id, type, requestedBy, payload ? JSON.stringify(payload) : null, createdAt);
+
+    const approval = getApprovalById(db, id);
+    if (!approval) {
+      res.status(500).json({ error: 'Failed to create approval', code: 'APPROVAL_CREATE_FAILED' });
+      return;
+    }
+
+    recordActivity(db, {
+      id: `approval_created_${id}`,
+      type: 'approval_created',
+      actor_type: 'agent',
+      entity_type: 'approval',
+      entity_id: id,
+      actor: requestedBy,
+      description: `Approval request ${id} was created`,
+      data: { approval_type: type },
+      created_at: createdAt,
+    }, {
+      agentId: requestedBy,
+      extra: {
+        approval,
+      },
+    });
+
+    res.status(201).json({ domain: 'approvals', version: 'v2', approval, mc_db_connected: true });
+  });
+
+  // PATCH /api/v2/approvals/:id
+  router.patch('/api/v2/approvals/:id', (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const db = config.getMcDb?.();
+    if (!db) {
+      res.status(503).json({ error: 'Mission Control DB not connected', code: 'MC_DB_NOT_CONNECTED' });
+      return;
+    }
+
+    const currentApproval = getApprovalById(db, req.params.id);
+    if (!currentApproval) {
+      res.status(404).json({ error: 'Approval not found', code: 'APPROVAL_NOT_FOUND' });
+      return;
+    }
+
+    const status = typeof req.body?.status === 'string' ? req.body.status.trim() : '';
+    const decisionNote = typeof req.body?.decision_note === 'string' ? req.body.decision_note.trim() : '';
+    const decidedBy = typeof req.body?.decided_by === 'string' && req.body.decided_by.trim()
+      ? req.body.decided_by.trim()
+      : 'user';
+
+    if (!APPROVAL_DECISION_STATUSES.has(status as Exclude<ApprovalStatus, 'pending'>)) {
+      res.status(400).json({ error: 'A terminal approval status is required', code: 'INVALID_APPROVAL_STATUS' });
+      return;
+    }
+
+    const decidedAt = Math.floor(Date.now() / 1000);
+    db.prepare(`
+      UPDATE approvals
+      SET status = ?, decision_note = ?, decided_by = ?, decided_at = ?
+      WHERE id = ?
+    `).run(status, decisionNote || null, decidedBy, decidedAt, req.params.id);
+
+    const approval = getApprovalById(db, req.params.id);
+    if (!approval) {
+      res.status(500).json({ error: 'Failed to update approval', code: 'APPROVAL_UPDATE_FAILED' });
+      return;
+    }
+
+    recordActivity(db, {
+      id: `approval_${status}_${req.params.id}_${decidedAt}`,
+      type: `approval_${status}`,
+      actor_type: decidedBy === 'user' ? 'user' : 'agent',
+      entity_type: 'approval',
+      entity_id: req.params.id,
+      actor: decidedBy,
+      description: `Approval ${req.params.id} was marked ${status}`,
+      data: {
+        previous_status: currentApproval.status,
+        decision_note: decisionNote || undefined,
+      },
+      created_at: decidedAt,
+    }, {
+      agentId: decidedBy,
+      extra: {
+        approval,
+      },
+    });
+
+    res.json({ domain: 'approvals', version: 'v2', approval, mc_db_connected: true });
+  });
+
+  // GET /api/v2/adapters
+  router.get('/api/v2/adapters', (_req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const adapters = adapterRegistry.list();
+    res.json({
+      domain: 'adapters',
+      version: 'v2',
+      adapters,
+      total: adapters.length,
+    });
+  });
+
+  // POST /api/v2/adapters/:type/test
+  router.post('/api/v2/adapters/:type/test', async (req, res) => {
+    if (isKillSwitchAllV2Enabled(config.featureFlags)) {
+      sendV2KillSwitchEnabled(res);
+      return;
+    }
+    if (!isTasksV2Enabled(config.featureFlags)) {
+      sendFeatureFlagDisabled('tasks_v2', res);
+      return;
+    }
+
+    const result = await adapterRegistry.test(req.params.type);
+    if (!result) {
+      res.status(404).json({ error: 'Adapter not found', code: 'ADAPTER_NOT_FOUND' });
+      return;
+    }
+
+    res.json({
+      domain: 'adapters',
+      version: 'v2',
+      adapter: result.adapter,
+      result: result.result,
+    });
+  });
+
   // GET /api/v2/activities
   router.get('/api/v2/activities', (req, res) => {
     if (isKillSwitchAllV2Enabled(config.featureFlags)) {
@@ -1037,12 +1422,20 @@ export function createApiRouter(
 
     const db = config.getMcDb?.();
     if (!db) {
-      res.json({ activities: [], total: 0, mc_db_connected: false });
+      res.json({ domain: 'activities', version: 'v2', activities: [], total: 0, offset: 0, limit: 50, mc_db_connected: false });
       return;
     }
 
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
-    const since = req.query.since as string | undefined;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const since = (req.query.since as string | undefined)
+      ?? (req.query.from as string | undefined)
+      ?? (req.query.date_from as string | undefined);
+    const until = (req.query.to as string | undefined)
+      ?? (req.query.date_to as string | undefined);
+    const actorType = req.query.actor_type as string | undefined;
+    const entityType = req.query.entity_type as string | undefined;
+    const entityId = req.query.entity_id as string | undefined;
 
     const conditions: string[] = [];
     const params: (string | number)[] = [];
@@ -1050,17 +1443,40 @@ export function createApiRouter(
       const sinceTs = Math.floor(new Date(since).getTime() / 1000);
       if (!isNaN(sinceTs)) { conditions.push('created_at > ?'); params.push(sinceTs); }
     }
+    if (until) {
+      const untilTs = Math.floor(new Date(until).getTime() / 1000);
+      if (!isNaN(untilTs)) { conditions.push('created_at <= ?'); params.push(untilTs); }
+    }
+    if (actorType) {
+      conditions.push('actor_type = ?');
+      params.push(actorType);
+    }
+    if (entityType) {
+      conditions.push('entity_type = ?');
+      params.push(entityType);
+    }
+    if (entityId) {
+      conditions.push('entity_id = ?');
+      params.push(entityId);
+    }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     try {
       const activities = db
-        .prepare(`SELECT id, type, entity_type, entity_id, actor, description, data, created_at FROM activities ${where} ORDER BY created_at DESC LIMIT ?`)
-        .all(...params, limit);
+        .prepare(`
+          SELECT id, type, actor_type, entity_type, entity_id, actor, description, data, created_at
+          FROM activities
+          ${where}
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `)
+        .all(...params, limit, offset)
+        .map((activity) => mapActivityRow(activity as ActivityRow));
       const totalRow = db
         .prepare(`SELECT COUNT(*) as count FROM activities ${where}`)
         .get(...params) as { count: number };
 
-      res.json({ activities, total: totalRow.count, mc_db_connected: true });
+      res.json({ domain: 'activities', version: 'v2', activities, total: totalRow.count, offset, limit, mc_db_connected: true });
     } catch (err) {
       res.status(500).json({ error: 'MC DB query failed', code: 'MC_DB_ERROR', detail: (err as Error).message });
     }

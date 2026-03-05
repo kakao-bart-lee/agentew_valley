@@ -144,6 +144,7 @@ export class HistoryStore {
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL, -- task_created | task_updated | comment_added | agent_status_change ...
+        actor_type TEXT NOT NULL DEFAULT 'system', -- agent | user | system
         entity_type TEXT NOT NULL, -- task | agent | comment
         entity_id TEXT,
         actor TEXT, -- Who performed the action
@@ -152,6 +153,21 @@ export class HistoryStore {
         created_at INTEGER NOT NULL -- Unix timestamp
       );
       CREATE INDEX IF NOT EXISTS idx_activities_entity ON activities(entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS idx_activities_actor_type ON activities(actor_type, created_at);
+
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        payload TEXT,
+        decision_note TEXT,
+        decided_by TEXT,
+        decided_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_approvals_type ON approvals(type, created_at);
 
       CREATE TABLE IF NOT EXISTS notifications (
         id TEXT PRIMARY KEY,
@@ -203,6 +219,11 @@ export class HistoryStore {
         'started_at INTEGER',
         'source_path TEXT',
       ],
+      activities: [
+        "actor_type TEXT NOT NULL DEFAULT 'system'",
+        'entity_type TEXT',
+        'entity_id TEXT',
+      ],
     })) {
       for (const column of columns) {
         this.ensureColumn(table, column);
@@ -217,6 +238,9 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_checkout ON tasks(checkout_agent_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at);
       CREATE INDEX IF NOT EXISTS idx_tasks_source_path ON tasks(source_path);
+      CREATE INDEX IF NOT EXISTS idx_activities_actor_type ON activities(actor_type, created_at);
+      CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_approvals_type ON approvals(type, created_at);
     `);
   }
 
@@ -627,15 +651,17 @@ export class HistoryStore {
     const dataStr = activity.data ? JSON.stringify(activity.data) : null;
 
     this.db.prepare(`
-      INSERT INTO activities (id, type, entity_type, entity_id, actor, description, data, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO activities (id, type, actor_type, entity_type, entity_id, actor, description, data, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
+        actor_type = excluded.actor_type,
         actor = excluded.actor,
         description = excluded.description,
         data = excluded.data
     `).run(
       activity.id,
       activity.type,
+      activity.actor_type ?? 'system',
       activity.entity_type,
       activity.entity_id ?? null,
       activity.actor ?? null,

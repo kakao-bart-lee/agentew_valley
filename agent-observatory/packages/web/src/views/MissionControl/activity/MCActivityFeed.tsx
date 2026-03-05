@@ -1,25 +1,7 @@
 import { useEffect, useState } from 'react';
+import type { ActivitiesResponse, ActivityEntry } from '@agent-observatory/shared';
 import { fetchJsonWithAuth, getApiBase } from '../../../lib/api';
 import { useMissionControlStore } from '../../../stores/missionControlStore';
-
-interface McActivity {
-  id: string;
-  type: string;
-  entity_type: string;
-  entity_id?: string;
-  actor?: string;
-  description?: string;
-  data?: string;
-  created_at: number;
-}
-
-interface ActivitiesResponse {
-  activities: McActivity[];
-  total: number;
-  mc_db_connected?: boolean;
-  code?: string;
-  error?: string;
-}
 
 const ACTIVITY_TYPE_COLORS: Record<string, string> = {
   task_created: 'text-emerald-400',
@@ -58,7 +40,7 @@ export function MCActivityFeed() {
         }
       } catch {
         if (!cancelled) {
-          setData({ activities: [], total: 0, error: 'Network error', code: 'NETWORK_ERROR' });
+          setData({ activities: [], total: 0, mc_db_connected: false, error: 'Network error', code: 'NETWORK_ERROR' });
           setLoading(false);
         }
       }
@@ -102,7 +84,7 @@ export function MCActivityFeed() {
         <div className="text-slate-500 text-sm">활동 내역이 없습니다.</div>
       )}
       <div className="flex flex-col gap-1">
-        {activities.map((activity) => {
+        {activities.map((activity: ActivityEntry) => {
           const typeColor = ACTIVITY_TYPE_COLORS[activity.type] ?? 'text-slate-400';
           return (
             <div key={activity.id} className="flex items-start gap-3 py-2 border-b border-slate-800">
