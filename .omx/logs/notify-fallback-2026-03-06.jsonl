@@ -1,0 +1,1 @@
+{"timestamp":"2026-03-06T14:11:05.258Z","type":"watcher_start","cwd":"/Users/bclaw/workspace/agentic/agentew_valley","notify_script":"/opt/homebrew/lib/node_modules/oh-my-codex/scripts/notify-hook.js","poll_ms":700,"once":false}

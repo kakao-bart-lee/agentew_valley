@@ -34,7 +34,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@agent-observatory/shared": "workspace:*",
+    "@agent-observatory/shared": "file:../shared",
     "chokidar": "^4.0.0",
     "express": "^5.2.1"
   },

@@ -1,0 +1,9 @@
+{
+  "pid": 35275,
+  "started_at": "2026-03-06T14:11:05.257Z",
+  "cwd": "/Users/bclaw/workspace/agentic/agentew_valley",
+  "notify_script": "/opt/homebrew/lib/node_modules/oh-my-codex/scripts/notify-hook.js",
+  "poll_ms": 700,
+  "tracked_files": 1,
+  "seen_turns": 0
+}

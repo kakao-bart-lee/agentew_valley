@@ -233,24 +233,24 @@ function mapTaskRow(task: TaskRow, staleCutoff = getStaleCutoff()): MissionContr
 function getTaskSelectSql(where = ''): string {
   return `
     SELECT
-      id,
-      title,
-      description,
-      status,
-      priority,
-      project,
-      goal_id,
+      tasks.id,
+      tasks.title,
+      tasks.description,
+      tasks.status,
+      tasks.priority,
+      tasks.project,
+      tasks.goal_id,
       goals.title AS goal_title,
       goals.status AS goal_status,
       assigned_to,
       checkout_agent_id,
       checkout_at,
       created_by,
-      created_at,
+      tasks.created_at,
       started_at,
-      updated_at,
+      tasks.updated_at,
       due_date,
-      source_path,
+      tasks.source_path,
       tags,
       metadata,
       COALESCE((SELECT COUNT(*) FROM task_comments comments WHERE comments.task_id = tasks.id), 0) AS comment_count,
@@ -277,7 +277,7 @@ function getTaskSelectSql(where = ''): string {
         ELSE 0
       END AS is_blocked,
       CASE
-        WHEN status = 'in_progress' AND COALESCE(started_at, updated_at) <= ? THEN 1
+        WHEN tasks.status = 'in_progress' AND COALESCE(started_at, tasks.updated_at) <= ? THEN 1
         ELSE 0
       END AS is_stale
     FROM tasks

@@ -8,7 +8,7 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Copy pnpm workspace files
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY package-lock.json* package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/collectors/package.json ./packages/collectors/
 COPY packages/server/package.json ./packages/server/
@@ -17,20 +17,12 @@ COPY packages/web/package.json ./packages/web/
 # Copy all source files first (required for workspace links)
 COPY . .
 
-# Install dependencies (allow pnpm to set up workspace links properly)
+# Install dependencies
 RUN pnpm install
 
-# Debug: Check workspace links
-RUN ls -la node_modules/@agent-observatory/ 2>&1 || echo "No @agent-observatory"
+RUN rm -f pnpm-workspace.yaml
 
-# Debug: Check workspace links
-RUN ls -la node_modules/@agent-observatory/ 2>&1 || echo "No @agent-observatory"
-
-# Build packages in sequence to ensure dependencies are built first
-RUN pnpm --filter @agent-observatory/shared build && \
-    pnpm --filter @agent-observatory/collectors build && \
-    pnpm --filter @agent-observatory/server build && \
-    pnpm --filter @agent-observatory/web build
+RUN cd packages/shared && npx tsc && cd ../collectors && npx tsc && cd ../server && npx tsc && cd ../web && npx tsc
 
 # --- Runtime Stage ---
 FROM node:20-slim
