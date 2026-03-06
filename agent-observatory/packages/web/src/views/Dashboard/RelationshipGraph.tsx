@@ -1,13 +1,14 @@
 import { useAgentStore } from '../../stores/agentStore';
 import { useEffect, useState } from 'react';
 import type { AgentLiveState, AgentHierarchyNode } from '../../types/agent';
+import { getApiBase } from '../../lib/api';
 
 interface RelationshipGraphProps {
     selectedAgentId?: string | null;
     onSelectAgent?: (id: string) => void;
 }
 
-const API_BASE = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+const API_BASE = getApiBase();
 
 export function RelationshipGraph({ selectedAgentId, onSelectAgent }: RelationshipGraphProps) {
     const { agents } = useAgentStore();

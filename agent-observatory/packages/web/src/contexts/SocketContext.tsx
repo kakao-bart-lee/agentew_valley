@@ -15,8 +15,7 @@ import { useMetricsStore } from '../stores/metricsStore';
 import { useMissionControlStore } from '../stores/missionControlStore';
 import type { AgentLiveState } from '../types/agent';
 import type { MetricsSnapshot } from '../types/metrics';
-
-const SOCKET_URL = import.meta.env?.VITE_WEBSOCKET_URL || window.location.origin;
+import { getSocketUrl } from '../lib/api';
 
 export interface SocketContextValue {
     socket: Socket | null;
@@ -55,7 +54,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const token = localStorage.getItem('OBSERVATORY_TOKEN') || (import.meta as any).env?.VITE_DASHBOARD_API_KEY;
-        const s = io(SOCKET_URL, {
+        const s = io(getSocketUrl(), {
             reconnectionDelayMax: 10000,
             autoConnect: false,
             auth: { token },

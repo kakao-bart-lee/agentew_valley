@@ -5,8 +5,9 @@ import { formatCurrency, formatLargeNumber, formatRelativeTime } from '../../uti
 import { SOURCE_COLORS, SOURCE_LABELS } from '../../utils/colors';
 import { Clock, Layers, Server, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { getApiBase } from '../../lib/api';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+const BASE_URL = getApiBase();
 
 interface SessionListViewProps {
     onSelectSession: (sessionId: string) => void;

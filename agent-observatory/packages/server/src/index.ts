@@ -47,7 +47,7 @@ import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
 type ObservatoryMode = 'local' | 'remote';
 
 async function main(): Promise<void> {
-  const port = parseInt(process.env.PORT ?? '3000', 10);
+  const port = parseInt(process.env.PORT ?? '3561', 10);
   const watchPaths = (process.env.WATCH_PATHS ?? '').split(',').filter(Boolean);
   const dbPath = process.env.OBSERVATORY_DB_PATH ?? undefined;
   const tailOnly = process.env.OBSERVATORY_TAIL_ONLY !== 'false'; // 기본 true

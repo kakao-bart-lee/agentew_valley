@@ -45,7 +45,7 @@ export function DashboardView() {
                                 </svg>
                             </div>
                             <h2 className="text-xl font-bold text-white mb-2">Connection Lost</h2>
-                            <p className="text-slate-400 mb-6 text-sm">Attempting to reconnect to localhost:3000...</p>
+                            <p className="text-slate-400 mb-6 text-sm">Attempting to reconnect...</p>
                             <div className="flex gap-2 w-full justify-center opacity-50">
                                 <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                                 <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getApiBase } from '../../../lib/api';
 
 interface FeatureFlagInfo {
   name: string;
@@ -35,7 +36,7 @@ export function MigrationStatusPanel() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingShadow, setLoadingShadow] = useState(true);
 
-  const apiBase = (window as any).__OBSERVATORY_API__ ?? window.location.origin;
+  const apiBase = getApiBase();
 
   const fetchWithAuth = (url: string) => {
     const token = localStorage.getItem('OBSERVATORY_TOKEN') || (import.meta as any).env?.VITE_DASHBOARD_API_KEY;

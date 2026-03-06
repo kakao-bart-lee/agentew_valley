@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * 실행 전 서버 2개를 자동 기동:
  *   1. Backend  — packages/server  (port 3001)
- *   2. Frontend — packages/web Vite (port 5173)
+ *   2. Frontend — packages/web Vite (port 8162)
  *
  * Usage:
  *   pnpm --filter @agent-observatory/web test:e2e
@@ -20,7 +20,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:8162',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -44,8 +44,8 @@ export default defineConfig({
     },
     // 2) Frontend dev server
     {
-      command: 'VITE_WEBSOCKET_URL=http://localhost:3001 VITE_MOCK=false pnpm dev --port 5173',
-      url: 'http://localhost:5173',
+      command: 'VITE_WEBSOCKET_URL=http://localhost:3001 VITE_MOCK=false pnpm dev --port 8162',
+      url: 'http://localhost:8162',
       reuseExistingServer: !process.env.CI,
       timeout: 15_000,
     },

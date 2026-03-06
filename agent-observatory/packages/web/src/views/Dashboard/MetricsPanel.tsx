@@ -11,7 +11,7 @@ import { CostByToolChart } from './charts/CostByToolChart';
 import { TokensAnalyticsChart } from './charts/TokensAnalyticsChart';
 import { ModelDistributionChart } from './charts/ModelDistributionChart';
 import { CacheEfficiencyChart } from './charts/CacheEfficiencyChart';
-import { fetchJsonWithAuth } from '../../lib/api';
+import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import type {
     CostByAgentResponse,
     CostByTeamResponse,
@@ -19,7 +19,7 @@ import type {
     TokenAnalyticsResponse,
 } from '@agent-observatory/shared';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+const BASE_URL = getApiBase();
 
 type MetricsTab = 'live' | 'analytics';
 

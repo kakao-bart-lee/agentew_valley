@@ -5,6 +5,7 @@ import { UAEPEvent } from '../../types/uaep';
 import { formatRelativeTime, formatLargeNumber, formatCurrency } from '../../utils/formatters';
 import { X, Activity, TerminalSquare, AlertCircle, Server, Layers } from 'lucide-react';
 import { STATUS_COLORS, SOURCE_COLORS } from '../../utils/colors';
+import { getApiBase } from '../../lib/api';
 
 interface AgentDetailPanelProps {
     agentId: string | null;
@@ -24,7 +25,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
         if (!agentId || import.meta.env?.VITE_MOCK === 'true') return;
 
         setLoading(true);
-        const apiBase = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+        const apiBase = getApiBase();
         fetch(`${apiBase}/api/v1/agents/${agentId}/events?limit=100`)
             .then(res => res.json())
             .then(data => {

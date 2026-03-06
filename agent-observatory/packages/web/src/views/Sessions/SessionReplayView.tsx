@@ -6,8 +6,9 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { formatCurrency } from '../../utils/formatters';
 import { SOURCE_COLORS, SOURCE_LABELS } from '../../utils/colors';
 import { ArrowLeft, Play, Pause, SkipBack, Gauge, Clock, Layers, Server, TerminalSquare } from 'lucide-react';
+import { getApiBase } from '../../lib/api';
 
-const BASE_URL = import.meta.env?.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+const BASE_URL = getApiBase();
 
 const SPEEDS = [0.5, 1, 2, 5, 10] as const;
 
