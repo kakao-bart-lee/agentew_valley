@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DashboardSummaryResponse } from '@agent-observatory/shared';
 import { useAgentStore, type TopLevelView } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
@@ -6,6 +6,11 @@ import { useMissionControlStore } from '../../stores/missionControlStore';
 import { useSocket } from '../../hooks/useSocket';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
+import {
+    LIVE_ACTIVITY_WINDOW_MS,
+    RECENT_ACTIVITY_WINDOW_MS,
+    summarizeAgentActivity,
+} from '../../utils/agentActivity';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
@@ -23,15 +28,17 @@ const CONTROL_TABS = ['approvals', 'activity', 'adapters', 'notifications'] as c
 
 export function StatusBar() {
     const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
+    const agents = useAgentStore((state) => state.agents);
     const { snapshot } = useMetricsStore();
     const { setView: setSocketView } = useSocket();
     const setMissionControlTab = useMissionControlStore((state) => state.setActiveTab);
     const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
+    const [activityNow, setActivityNow] = useState(() => Date.now());
 
-    const activeAgents = useAgentStore(
-        state => Array.from(state.agents.values()).filter(a => a.status !== 'idle').length,
+    const { liveNow, recent, loaded } = useMemo(
+        () => summarizeAgentActivity(agents.values(), activityNow),
+        [activityNow, agents],
     );
-    const totalAgents = useAgentStore(state => state.agents.size);
 
     const tpm = snapshot?.total_tokens_per_minute || 0;
     const cph = snapshot?.total_cost_per_hour || 0;
@@ -56,6 +63,16 @@ export function StatusBar() {
         { id: 'control', label: 'Control', description: 'Approvals, audit, adapters, notifications', socketView: 'dashboard', badge: pendingApprovals },
         { id: 'admin', label: 'Admin', description: 'Migration and debug surfaces', socketView: 'dashboard' },
     ];
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setActivityNow(Date.now());
+        }, 30_000);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -151,8 +168,18 @@ export function StatusBar() {
 
                 <div className="flex gap-4 text-sm items-center divide-x divide-slate-600">
                     <div className="pl-4 first:pl-0 flex items-center gap-2">
-                        <span className="text-slate-400">Active:</span>
-                        <span className="font-semibold">{activeAgents} / {totalAgents}</span>
+                        <span className="text-slate-400">Live (15m):</span>
+                        <span className="font-semibold">{liveNow}</span>
+                    </div>
+
+                    <div className="pl-4 flex items-center gap-2">
+                        <span className="text-slate-400">Recent (24h):</span>
+                        <span className="font-semibold">{recent}</span>
+                    </div>
+
+                    <div className="pl-4 flex items-center gap-2">
+                        <span className="text-slate-400">Loaded:</span>
+                        <span className="font-semibold">{loaded}</span>
                     </div>
 
                     <div className="pl-4 flex items-center gap-2">
@@ -226,6 +253,9 @@ export function StatusBar() {
                         </div>
                     )}
                 </div>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500">
+                Live uses a {Math.round(LIVE_ACTIVITY_WINDOW_MS / 60_000)}-minute activity window; Recent uses {Math.round(RECENT_ACTIVITY_WINDOW_MS / 3_600_000)} hours. Loaded includes historical backfill still present in memory.
             </div>
         </Card>
         </TooltipProvider>

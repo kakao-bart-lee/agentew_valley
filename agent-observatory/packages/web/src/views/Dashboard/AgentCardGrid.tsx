@@ -90,9 +90,9 @@ export function AgentCardGrid({ selectedAgentId, onSelectAgent }: AgentCardGridP
 
     if (agents.size === 0) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 text-slate-500 h-64 border border-dashed border-slate-700 rounded-lg">
-                <p>No active agents detected.</p>
-                <p className="text-sm">Watching connected directories...</p>
+                <div className="flex flex-col items-center justify-center p-12 text-slate-500 h-64 border border-dashed border-slate-700 rounded-lg">
+                <p>No observed agents detected.</p>
+                <p className="text-sm">Watching connected directories and backfill sources...</p>
             </div>
         );
     }

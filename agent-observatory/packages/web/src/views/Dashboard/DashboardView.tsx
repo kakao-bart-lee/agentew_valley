@@ -66,7 +66,7 @@ export function DashboardView({ mode = 'overview' }: DashboardViewProps) {
                         <div className="flex flex-col xl:flex-row gap-6">
                             <div className="flex-[2] flex flex-col gap-6">
                                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col min-h-[500px]">
-                                    <h2 className="text-lg font-semibold mb-4 shrink-0">Active Agents</h2>
+                                    <h2 className="text-lg font-semibold mb-4 shrink-0">Observed Agents <span className="text-sm font-normal text-slate-400">(live + recent + backfilled)</span></h2>
                                     <div className="flex-1 overflow-hidden min-h-0">
                                         <AgentCardGrid
                                             selectedAgentId={selectedAgentId}
