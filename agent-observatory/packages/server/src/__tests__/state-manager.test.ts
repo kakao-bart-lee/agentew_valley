@@ -12,13 +12,20 @@ import {
 describe('StateManager', () => {
   it('should create agent on session.start with status idle', () => {
     const sm = new StateManager();
-    sm.handleEvent(makeSessionStart('agent-1', 'sess-1'));
+    sm.handleEvent(makeSessionStart('agent-1', 'sess-1', {
+      project_id: 'moonlit',
+      task_id: 'task-42',
+      goal_id: 'goal-7',
+    }));
 
     const agent = sm.getAgent('agent-1');
     expect(agent).toBeDefined();
     expect(agent!.status).toBe('idle');
     expect(agent!.agent_id).toBe('agent-1');
     expect(agent!.session_id).toBe('sess-1');
+    expect(agent!.project_id).toBe('moonlit');
+    expect(agent!.task_id).toBe('task-42');
+    expect(agent!.goal_id).toBe('goal-7');
     expect(agent!.total_tool_calls).toBe(0);
     expect(agent!.total_tokens).toBe(0);
     expect(agent!.child_agent_ids).toEqual([]);

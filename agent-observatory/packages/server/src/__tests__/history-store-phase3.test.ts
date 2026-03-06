@@ -191,6 +191,57 @@ describe('HistoryStore Phase 3 queries', () => {
     });
   });
 
+  describe('getCostByTask', () => {
+    it('should group by inherited task context', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1'));
+      hs.append(makeMetricsUsage(100, 0.10, 'agent-1', {
+        session_id: 'sess-1',
+        project_id: 'moonlit',
+        task_id: 'task-42',
+      }));
+      hs.append(makeSessionStart('agent-2', 'sess-2'));
+      hs.append(makeMetricsUsage(50, 0.05, 'agent-2', {
+        session_id: 'sess-2',
+        task_id: 'task-42',
+      }));
+      hs.append(makeSessionStart('agent-3', 'sess-3'));
+      hs.append(makeMetricsUsage(200, 0.20, 'agent-3', { session_id: 'sess-3' }));
+
+      const tasks = hs.getCostByTask();
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].task_id).toBe('task-42');
+      expect(tasks[0].total_tokens).toBe(150);
+      expect(tasks[0].agent_count).toBe(2);
+      expect(tasks[0].session_count).toBe(2);
+    });
+  });
+
+  describe('getCostByGoal', () => {
+    it('should group by inherited goal context', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1'));
+      hs.append(makeMetricsUsage(100, 0.10, 'agent-1', {
+        session_id: 'sess-1',
+        goal_id: 'goal-7',
+      }));
+      hs.append(makeSessionStart('agent-2', 'sess-2'));
+      hs.append(makeMetricsUsage(50, 0.05, 'agent-2', {
+        session_id: 'sess-2',
+        goal_id: 'goal-7',
+      }));
+      hs.append(makeSessionStart('agent-3', 'sess-3'));
+      hs.append(makeMetricsUsage(200, 0.20, 'agent-3', { session_id: 'sess-3' }));
+
+      const goals = hs.getCostByGoal();
+      expect(goals).toHaveLength(1);
+      expect(goals[0].goal_id).toBe('goal-7');
+      expect(goals[0].total_tokens).toBe(150);
+      expect(goals[0].agent_count).toBe(2);
+      expect(goals[0].session_count).toBe(2);
+    });
+  });
+
   describe('getCostByTeam', () => {
     it('should group by team and exclude teamless sessions', () => {
       hs = new HistoryStore();

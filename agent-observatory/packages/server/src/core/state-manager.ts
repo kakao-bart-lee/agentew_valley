@@ -40,6 +40,10 @@ function getHealthStatus(agent: AgentLiveState): AgentLiveState['health_status']
   return 'normal';
 }
 
+function getOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 export class StateManager {
   private agents = new Map<string, AgentLiveState>();
   private activeTools = new Map<string, Map<string, ActiveTool>>();
@@ -91,6 +95,9 @@ export class StateManager {
 
     const agent = this.agents.get(event.agent_id);
     if (agent) {
+      agent.project_id = agent.project_id ?? getOptionalString(event.project_id ?? event.data?.['project_id']);
+      agent.task_id = agent.task_id ?? getOptionalString(event.task_id ?? event.data?.['task_id']);
+      agent.goal_id = agent.goal_id ?? getOptionalString(event.goal_id ?? event.data?.['goal_id']);
       agent.last_activity = event.ts;
     }
   }
@@ -116,6 +123,8 @@ export class StateManager {
       source: event.source,
       team_id: event.team_id,
       project_id: event.project_id,
+      task_id: getOptionalString(event.task_id ?? event.data?.['task_id']),
+      goal_id: getOptionalString(event.goal_id ?? event.data?.['goal_id']),
       status: 'idle',
       last_activity: event.ts,
       session_id: event.session_id,

@@ -36,6 +36,23 @@ describe('HistoryStore', () => {
     expect(events).toHaveLength(2);
   });
 
+  it('should persist work-context fields on events', () => {
+    hs = new HistoryStore();
+
+    const event = makeToolStart('Read', 'agent-1', undefined, {
+      session_id: 'sess-work',
+      project_id: 'moonlit',
+      task_id: 'task-42',
+      goal_id: 'goal-7',
+    });
+    hs.append(event);
+
+    const [stored] = hs.getBySession('sess-work');
+    expect(stored.project_id).toBe('moonlit');
+    expect(stored.task_id).toBe('task-42');
+    expect(stored.goal_id).toBe('goal-7');
+  });
+
   it('should return empty array for unknown agent', () => {
     hs = new HistoryStore();
     expect(hs.getByAgent('unknown')).toEqual([]);
@@ -161,6 +178,25 @@ describe('HistoryStore', () => {
       const summaries = hs.getSessionSummaries();
       expect(summaries[0].total_tokens).toBe(300);
       expect(summaries[0].total_cost_usd).toBeCloseTo(0.15);
+    });
+
+    it('should inherit first non-null work context onto the session rollup', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1'));
+      hs.append(makeToolStart('Read', 'agent-1', undefined, {
+        session_id: 'sess-1',
+        project_id: 'moonlit',
+        task_id: 'task-42',
+      }));
+      hs.append(makeMetricsUsage(100, 0.05, 'agent-1', {
+        session_id: 'sess-1',
+        goal_id: 'goal-7',
+      }));
+
+      const summaries = hs.getSessionSummaries();
+      expect(summaries[0].project_id).toBe('moonlit');
+      expect(summaries[0].task_id).toBe('task-42');
+      expect(summaries[0].goal_id).toBe('goal-7');
     });
   });
 

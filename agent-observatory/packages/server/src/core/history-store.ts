@@ -14,6 +14,24 @@ function isCompletedTaskStatus(status: string): boolean {
   return status === 'done';
 }
 
+type StoredWorkContext = {
+  project_id: string | null;
+  task_id: string | null;
+  goal_id: string | null;
+};
+
+function getOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function extractWorkContext(event: UAEPEvent): StoredWorkContext {
+  return {
+    project_id: getOptionalString(event.project_id ?? event.data?.['project_id']),
+    task_id: getOptionalString(event.task_id ?? event.data?.['task_id']),
+    goal_id: getOptionalString(event.goal_id ?? event.data?.['goal_id']),
+  };
+}
+
 export class HistoryStore {
   private db: Database.Database;
 
@@ -37,6 +55,9 @@ export class HistoryStore {
         span_id TEXT,
         parent_span_id TEXT,
         team_id TEXT,
+        project_id TEXT,
+        task_id TEXT,
+        goal_id TEXT,
         data TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_events_agent ON events(agent_id, ts);
@@ -51,6 +72,8 @@ export class HistoryStore {
         source TEXT NOT NULL,
         team_id TEXT,
         project_id TEXT,
+        task_id TEXT,
+        goal_id TEXT,
         model_id TEXT,
         start_time TEXT NOT NULL,
         end_time TEXT,
@@ -210,7 +233,8 @@ export class HistoryStore {
 
   private ensureSchemaCompatibility(): void {
     for (const [table, columns] of Object.entries({
-      sessions: ['project_id TEXT', 'model_id TEXT'],
+      events: ['project_id TEXT', 'task_id TEXT', 'goal_id TEXT'],
+      sessions: ['project_id TEXT', 'task_id TEXT', 'goal_id TEXT', 'model_id TEXT'],
       tasks: [
         'project TEXT',
         'goal_id TEXT',
@@ -231,7 +255,12 @@ export class HistoryStore {
     }
 
     this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, ts);
+      CREATE INDEX IF NOT EXISTS idx_events_task ON events(task_id, ts);
+      CREATE INDEX IF NOT EXISTS idx_events_goal ON events(goal_id, ts);
       CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_task ON sessions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_goal ON sessions(goal_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
       CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id);
@@ -286,10 +315,14 @@ export class HistoryStore {
 
   append(event: UAEPEvent): void {
     const dataStr = event.data ? JSON.stringify(event.data) : null;
+    const workContext = extractWorkContext(event);
 
     this.db.prepare(`
-      INSERT OR IGNORE INTO events (event_id, ts, type, source, agent_id, session_id, span_id, parent_span_id, team_id, data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO events (
+        event_id, ts, type, source, agent_id, session_id, span_id, parent_span_id, team_id,
+        project_id, task_id, goal_id, data
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.event_id,
       event.ts,
@@ -300,6 +333,9 @@ export class HistoryStore {
       event.span_id ?? null,
       event.parent_span_id ?? null,
       event.team_id ?? null,
+      workContext.project_id,
+      workContext.task_id,
+      workContext.goal_id,
       dataStr,
     );
 
@@ -308,6 +344,9 @@ export class HistoryStore {
   }
 
   private updateSession(event: UAEPEvent): void {
+    const workContext = extractWorkContext(event);
+    const modelId = getOptionalString(event.model_id ?? event.data?.['model_id']);
+
     if (event.type === 'session.start') {
       const budgetMonthlyCents = typeof event.data?.['budget_monthly_cents'] === 'number'
         ? Math.round(event.data['budget_monthly_cents'] as number)
@@ -315,18 +354,20 @@ export class HistoryStore {
 
       this.db.prepare(`
         INSERT OR IGNORE INTO sessions (
-          session_id, agent_id, agent_name, source, team_id, project_id, model_id,
+          session_id, agent_id, agent_name, source, team_id, project_id, task_id, goal_id, model_id,
           start_time, total_events, total_tokens, total_cost_usd
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
       `).run(
         event.session_id,
         event.agent_id,
         event.agent_name ?? event.agent_id,
         event.source,
         event.team_id ?? null,
-        event.project_id ?? null,
-        event.model_id ?? (event.data?.['model_id'] as string | undefined) ?? null,
+        workContext.project_id,
+        workContext.task_id,
+        workContext.goal_id,
+        modelId,
         event.ts,
       );
 
@@ -348,20 +389,33 @@ export class HistoryStore {
       UPDATE sessions SET total_events = total_events + 1 WHERE session_id = ?
     `).run(event.session_id);
 
+    if (workContext.project_id || workContext.task_id || workContext.goal_id || modelId) {
+      this.db.prepare(`
+        UPDATE sessions
+        SET project_id = COALESCE(project_id, ?),
+            task_id = COALESCE(task_id, ?),
+            goal_id = COALESCE(goal_id, ?),
+            model_id = COALESCE(model_id, ?)
+        WHERE session_id = ?
+      `).run(
+        workContext.project_id,
+        workContext.task_id,
+        workContext.goal_id,
+        modelId,
+        event.session_id,
+      );
+    }
+
     // Update token/cost from metrics.usage events
     if (event.type === 'metrics.usage' && event.data) {
       const tokens = typeof event.data['tokens'] === 'number' ? event.data['tokens'] : 0;
       const cost = typeof event.data['cost'] === 'number' ? event.data['cost'] : 0;
-      const projectId = event.project_id ?? (event.data['project_id'] as string | undefined);
-      const modelId = event.model_id ?? (event.data['model_id'] as string | undefined);
       this.db.prepare(`
         UPDATE sessions
         SET total_tokens = total_tokens + ?,
-            total_cost_usd = total_cost_usd + ?,
-            project_id = COALESCE(project_id, ?),
-            model_id = COALESCE(model_id, ?)
+            total_cost_usd = total_cost_usd + ?
         WHERE session_id = ?
-      `).run(tokens, cost, projectId ?? null, modelId ?? null, event.session_id);
+      `).run(tokens, cost, event.session_id);
     }
 
     // Handle high-level Task/Activity events
@@ -1201,6 +1255,84 @@ export class HistoryStore {
     }[];
   }
 
+  /** Get cost grouped by task (excludes sessions without task_id) */
+  getCostByTask(opts?: { from?: string; to?: string }): {
+    task_id: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    session_count: number;
+    agent_count: number;
+  }[] {
+    const conditions = ['task_id IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT task_id,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as session_count,
+             COUNT(DISTINCT agent_id) as agent_count
+      FROM sessions ${where}
+      GROUP BY task_id
+      ORDER BY total_cost_usd DESC, task_id ASC
+    `).all(...params) as {
+      task_id: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      session_count: number;
+      agent_count: number;
+    }[];
+  }
+
+  /** Get cost grouped by goal (excludes sessions without goal_id) */
+  getCostByGoal(opts?: { from?: string; to?: string }): {
+    goal_id: string;
+    total_cost_usd: number;
+    total_tokens: number;
+    session_count: number;
+    agent_count: number;
+  }[] {
+    const conditions = ['goal_id IS NOT NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    return this.db.prepare(`
+      SELECT goal_id,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COUNT(*) as session_count,
+             COUNT(DISTINCT agent_id) as agent_count
+      FROM sessions ${where}
+      GROUP BY goal_id
+      ORDER BY total_cost_usd DESC, goal_id ASC
+    `).all(...params) as {
+      goal_id: string;
+      total_cost_usd: number;
+      total_tokens: number;
+      session_count: number;
+      agent_count: number;
+    }[];
+  }
+
   /** Get cost grouped by model (excludes sessions without model_id) */
   getCostByModel(opts?: { from?: string; to?: string }): {
     model_id: string;
@@ -1446,6 +1578,9 @@ export class HistoryStore {
       span_id: row.span_id ?? undefined,
       parent_span_id: row.parent_span_id ?? undefined,
       team_id: row.team_id ?? undefined,
+      project_id: row.project_id ?? undefined,
+      task_id: row.task_id ?? undefined,
+      goal_id: row.goal_id ?? undefined,
       type: row.type as UAEPEvent['type'],
       data: row.data ? JSON.parse(row.data) as Record<string, unknown> : undefined,
     };
@@ -1463,6 +1598,9 @@ interface EventRow {
   span_id: string | null;
   parent_span_id: string | null;
   team_id: string | null;
+  project_id: string | null;
+  task_id: string | null;
+  goal_id: string | null;
   data: string | null;
 }
 
@@ -1473,6 +1611,8 @@ interface SessionRow {
   source: string;
   team_id: string | null;
   project_id: string | null;
+  task_id: string | null;
+  goal_id: string | null;
   model_id: string | null;
   start_time: string;
   end_time: string | null;
