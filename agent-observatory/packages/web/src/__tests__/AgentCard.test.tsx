@@ -68,7 +68,7 @@ describe('AgentCard', () => {
 
     it('캐시 히트율 표시 (cache_read_tokens > 0)', () => {
         render(<AgentCard agent={makeAgent({ total_input_tokens: 100, cache_read_tokens: 71 })} />);
-        expect(screen.getByText(/\d+%/)).toBeInTheDocument();
+        expect(screen.getByText('42%')).toBeInTheDocument();
     });
 
     it('도구 호출 수 표시', () => {
@@ -138,15 +138,14 @@ describe('AgentCard', () => {
             tool_distribution: { ...EMPTY_TOOL_DIST, file_read: 5, command: 3 },
         });
         const { container } = render(<AgentCard agent={agent} />);
-        // 높이 h-1인 미니바 div가 존재하는지 확인
-        const miniBar = container.querySelector('.h-1');
+        const miniBar = container.querySelector('.flex.h-1.w-full.rounded-full');
         expect(miniBar).toBeInTheDocument();
     });
 
     it('tool_distribution이 비어있으면 미니바 없음', () => {
         const agent = makeAgent({ tool_distribution: EMPTY_TOOL_DIST });
         const { container } = render(<AgentCard agent={agent} />);
-        const miniBar = container.querySelector('.h-1\\.5');
+        const miniBar = container.querySelector('.flex.h-1.w-full.rounded-full');
         expect(miniBar).toBeNull();
     });
 

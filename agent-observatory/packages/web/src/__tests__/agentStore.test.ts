@@ -31,11 +31,10 @@ const makeAgent = (id: string, overrides: Partial<AgentLiveState> = {}): AgentLi
 
 describe('agentStore', () => {
     beforeEach(() => {
-        // 매 테스트 전 스토어 초기화
         useAgentStore.setState({
             agents: new Map(),
             selectedAgentId: null,
-            activeView: 'dashboard',
+            activeView: 'overview',
             connected: false,
             reconnecting: false,
             sourceFilter: [],
@@ -140,6 +139,13 @@ describe('agentStore', () => {
             useAgentStore.getState().selectAgent('a1');
             useAgentStore.getState().selectAgent(null);
             expect(useAgentStore.getState().selectedAgentId).toBeNull();
+        });
+    });
+
+    describe('setView', () => {
+        it('top-level domain view를 전환한다', () => {
+            useAgentStore.getState().setView('control');
+            expect(useAgentStore.getState().activeView).toBe('control');
         });
     });
 

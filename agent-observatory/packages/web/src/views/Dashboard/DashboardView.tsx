@@ -15,11 +15,17 @@ import { useMetricsStore } from '../../stores/metricsStore';
 // 기본적으로 항상 실서버에 연결 (MOCK 명시적 true일때만 Mock 전환)
 const USE_MOCK = import.meta.env?.VITE_MOCK === 'true';
 
-export function DashboardView() {
+interface DashboardViewProps {
+    mode?: 'overview' | 'observe';
+}
+
+export function DashboardView({ mode = 'overview' }: DashboardViewProps) {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
     const { initSession, setConnectionStatus, connected } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
+    const showGoalProgress = mode === 'overview';
+    const showWorkSummary = mode === 'overview';
 
     // 임시: 서버 연동 전 UI 확인을 위해 기본적으로 Mock 데이터를 주입합니다. (VITE_MOCK=false일 때만 비활성화)
     useEffect(() => {
@@ -28,7 +34,7 @@ export function DashboardView() {
             setConnectionStatus(true);
             initSession(generateMockAgents());
             setSnapshot(generateMockMetrics());
-        }).catch(err => console.error("Failed to load mock data:", err));
+        }).catch(err => console.error('Failed to load mock data:', err));
     }, [initSession, setConnectionStatus, setSnapshot]);
 
     return (
@@ -55,16 +61,10 @@ export function DashboardView() {
                     </div>
                 )}
 
-                {/* 1. Global Summarization Bar was moved to App.tsx */}
-
-                {/* 2. Main Content Grid */}
                 <div className="flex-1 p-4 md:p-6 mx-auto w-full max-w-[1500px]">
                     <div className="flex flex-col gap-6">
                         <div className="flex flex-col xl:flex-row gap-6">
-
-                            {/* Left/Main Column */}
                             <div className="flex-[2] flex flex-col gap-6">
-                                {/* Agent Cards Sub-Section */}
                                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col min-h-[500px]">
                                     <h2 className="text-lg font-semibold mb-4 shrink-0">Active Agents</h2>
                                     <div className="flex-1 overflow-hidden min-h-0">
@@ -75,7 +75,6 @@ export function DashboardView() {
                                     </div>
                                 </div>
 
-                                {/* Relationship Graph Sub-Section (Desktop only) */}
                                 <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 hidden lg:flex flex-col min-h-[250px]">
                                     <h2 className="text-lg font-semibold mb-4 shrink-0">Agent Network <span className="text-sm font-normal text-slate-400">(Relationship Graph)</span></h2>
                                     <div className="flex-1 overflow-hidden">
@@ -87,9 +86,7 @@ export function DashboardView() {
                                 </div>
                             </div>
 
-                            {/* Metrics & Activity Section (Desktop right side) */}
                             <div className="flex-1 flex flex-col xl:flex-col lg:flex-row gap-4 xl:max-w-md w-full">
-
                                 <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col overflow-hidden min-h-[350px]">
                                     <h2 className="text-lg font-semibold mb-4 shrink-0">Metrics Panel</h2>
                                     <div className="flex-1 overflow-hidden min-h-0">
@@ -106,19 +103,17 @@ export function DashboardView() {
                                     </div>
                                 </div>
                             </div>
-
                         </div>
 
-                        <div className="grid gap-6 xl:grid-cols-2">
+                        <div className={`grid gap-6 ${showGoalProgress ? 'xl:grid-cols-2' : ''}`}>
                             <CostSummaryCard />
-                            <GoalProgressCard />
+                            {showGoalProgress ? <GoalProgressCard /> : null}
                         </div>
 
-                        <MissionControlSummarySection />
+                        {showWorkSummary ? <MissionControlSummarySection /> : null}
                     </div>
                 </div>
 
-                {/* Sliding Overlay Panel for Agent Details */}
                 <AgentDetailPanel
                     agentId={selectedAgentId}
                     onClose={() => setSelectedAgentId(null)}

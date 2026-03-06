@@ -1,22 +1,33 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DashboardSummaryResponse } from '@agent-observatory/shared';
-import { useAgentStore } from '../../stores/agentStore';
+import { useAgentStore, type TopLevelView } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
+import { useMissionControlStore } from '../../stores/missionControlStore';
 import { useSocket } from '../../hooks/useSocket';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
 import { Badge } from '../../components/ui/badge';
 import { Card } from '../../components/ui/card';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { getModelBadgeColor, getModelShortName } from '../../utils/colors';
+
+type DomainNavItem = {
+    id: TopLevelView;
+    label: string;
+    description: string;
+    socketView: 'dashboard' | 'pixel' | 'timeline';
+    badge?: number;
+};
+
+const CONTROL_TABS = ['approvals', 'activity', 'adapters', 'notifications'] as const;
 
 export function StatusBar() {
     const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
     const { snapshot } = useMetricsStore();
     const { setView: setSocketView } = useSocket();
+    const setMissionControlTab = useMissionControlStore((state) => state.setActiveTab);
     const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
 
-    // selector로 파생값 구독 — 동일 값 반환 시 리렌더 건너뜀
     const activeAgents = useAgentStore(
         state => Array.from(state.agents.values()).filter(a => a.status !== 'idle').length,
     );
@@ -26,33 +37,24 @@ export function StatusBar() {
     const cph = snapshot?.total_cost_per_hour || 0;
     const errors = snapshot?.total_errors_last_hour || 0;
 
-    // 모델 분포: 에이전트 수 기준 상위 3개만 표시
-    const modelChips = useMemo(() => {
-        if (!snapshot?.model_distribution) return [];
-        return Object.entries(snapshot.model_distribution)
+    const modelChips = snapshot?.model_distribution
+        ? Object.entries(snapshot.model_distribution)
             .filter(([, v]) => v.agent_count > 0)
             .sort(([, a], [, b]) => b.agent_count - a.agent_count)
-            .slice(0, 3);
-    }, [snapshot?.model_distribution]);
+            .slice(0, 3)
+        : [];
 
     const cacheHitRate = snapshot?.cache_hit_rate ?? 0;
     const showCache = cacheHitRate > 0 || (snapshot?.cache_read_tokens ?? 0) > 0;
     const pendingAlerts = summary?.pending_alerts ?? 0;
     const pendingApprovals = summary?.pending_approvals ?? 0;
 
-    const navItems: Array<{
-        id: typeof activeView;
-        label: string;
-        socketView: 'dashboard' | 'pixel' | 'timeline';
-        badge?: number;
-    }> = [
-        { id: 'dashboard', label: 'Dashboard', socketView: 'dashboard' },
-        { id: 'pixel', label: 'Pixel', socketView: 'pixel' },
-        { id: 'sessions', label: 'Sessions', socketView: 'dashboard' },
-        { id: 'mission-control', label: 'Mission Control', socketView: 'dashboard' },
-        { id: 'approvals', label: 'Approvals', socketView: 'dashboard', badge: pendingApprovals },
-        { id: 'activity-log', label: 'Activity', socketView: 'dashboard' },
-        { id: 'adapters', label: 'Adapters', socketView: 'dashboard' },
+    const navItems: DomainNavItem[] = [
+        { id: 'overview', label: 'Overview', description: 'Cross-domain summary', socketView: 'dashboard' },
+        { id: 'observe', label: 'Observe', description: 'Live agents, sessions, replay, pixel', socketView: 'dashboard' },
+        { id: 'work', label: 'Work', description: 'Tasks, goals, coordination', socketView: 'dashboard' },
+        { id: 'control', label: 'Control', description: 'Approvals, audit, adapters, notifications', socketView: 'dashboard', badge: pendingApprovals },
+        { id: 'admin', label: 'Admin', description: 'Migration and debug surfaces', socketView: 'dashboard' },
     ];
 
     useEffect(() => {
@@ -84,42 +86,69 @@ export function StatusBar() {
         };
     }, []);
 
+    const handleDomainClick = (item: DomainNavItem) => {
+        setStoreView(item.id);
+        setSocketView(item.socketView);
+
+        if (item.id === 'work') {
+            setMissionControlTab('tasks');
+            return;
+        }
+
+        if (item.id === 'control') {
+            const currentTab = useMissionControlStore.getState().activeTab;
+            if (!CONTROL_TABS.includes(currentTab as typeof CONTROL_TABS[number])) {
+                setMissionControlTab('approvals');
+            }
+            return;
+        }
+
+        if (item.id === 'admin') {
+            setMissionControlTab('migration');
+        }
+    };
+
     return (
-        <Card className="flex flex-row items-center justify-between p-3 mx-4 mt-4 bg-slate-800 border-slate-700 text-slate-50">
-            <div className="flex gap-6 items-center flex-wrap">
-                {/* View Switcher */}
+        <TooltipProvider delayDuration={250}>
+            <Card className="flex flex-row items-center justify-between p-3 mx-4 mt-4 bg-slate-800 border-slate-700 text-slate-50">
+                <div className="flex gap-6 items-center flex-wrap">
+                <div className="flex flex-col gap-1 mr-2">
+                    <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">Agent Observatory</div>
+                    <div className="text-xs text-slate-400">One product, five surfaces: Overview · Observe · Work · Control · Admin</div>
+                </div>
+
                 <div className="flex bg-slate-900 rounded-lg p-1 mr-2">
                     {navItems.map((item) => (
-                        <button
-                            key={item.id}
-                            onClick={() => {
-                                setStoreView(item.id);
-                                setSocketView(item.socketView);
-                            }}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === item.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                <span>{item.label}</span>
-                                {item.badge && item.badge > 0 ? (
-                                    <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
-                                        {item.badge}
+                        <Tooltip key={item.id}>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={() => handleDomainClick(item)}
+                                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === item.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <span>{item.label}</span>
+                                        {item.badge && item.badge > 0 ? (
+                                            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
+                                                {item.badge}
+                                            </span>
+                                        ) : null}
                                     </span>
-                                ) : null}
-                            </span>
-                        </button>
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{item.description}</p>
+                            </TooltipContent>
+                        </Tooltip>
                     ))}
                 </div>
 
-                {/* Connection Status */}
                 <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${connected ? 'bg-emerald-500' : reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
-                        }`} />
+                    <div className={`w-3 h-3 rounded-full ${connected ? 'bg-emerald-500' : reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
                     <span className="text-sm font-medium">
                         {connected ? 'Connected' : reconnecting ? 'Reconnecting...' : 'Disconnected'}
                     </span>
                 </div>
 
-                {/* Global Metrics */}
                 <div className="flex gap-4 text-sm items-center divide-x divide-slate-600">
                     <div className="pl-4 first:pl-0 flex items-center gap-2">
                         <span className="text-slate-400">Active:</span>
@@ -138,7 +167,7 @@ export function StatusBar() {
 
                     <div className="pl-4 flex items-center gap-2">
                         <span className="text-slate-400">Errors (1h):</span>
-                        <Badge variant={errors > 0 ? "destructive" : "secondary"} className={errors === 0 ? "bg-slate-700 hover:bg-slate-600" : ""}>
+                        <Badge variant={errors > 0 ? 'destructive' : 'secondary'} className={errors === 0 ? 'bg-slate-700 hover:bg-slate-600' : ''}>
                             {errors}
                         </Badge>
                     </div>
@@ -146,13 +175,13 @@ export function StatusBar() {
                     <div className="pl-4 flex items-center gap-2">
                         <span className="text-slate-400">Alerts:</span>
                         <Badge
-                            variant={summary?.alert_severity === 'critical' ? "destructive" : "secondary"}
+                            variant={summary?.alert_severity === 'critical' ? 'destructive' : 'secondary'}
                             className={
                                 pendingAlerts === 0
-                                    ? "bg-slate-700 hover:bg-slate-600"
+                                    ? 'bg-slate-700 hover:bg-slate-600'
                                     : summary?.alert_severity === 'warning'
-                                        ? "bg-amber-600/80 text-amber-50 hover:bg-amber-600"
-                                        : ""
+                                        ? 'bg-amber-600/80 text-amber-50 hover:bg-amber-600'
+                                        : ''
                             }
                         >
                             {pendingAlerts}
@@ -199,5 +228,6 @@ export function StatusBar() {
                 </div>
             </div>
         </Card>
+        </TooltipProvider>
     );
 }

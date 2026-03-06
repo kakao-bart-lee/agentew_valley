@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import { AgentLiveState, AgentSourceType } from '../types/agent';
 
+export type TopLevelView = 'overview' | 'observe' | 'work' | 'control' | 'admin';
+export type ActiveView = TopLevelView | 'pixel' | 'timeline';
+
 interface AgentStore {
     agents: Map<string, AgentLiveState>;
-    activeView: 'dashboard' | 'pixel' | 'timeline' | 'sessions' | 'mission-control' | 'approvals' | 'activity-log' | 'adapters';
+    activeView: ActiveView;
     selectedAgentId: string | null;
 
     connected: boolean;
@@ -16,7 +19,7 @@ interface AgentStore {
     setAgent: (state: AgentLiveState) => void;
     removeAgent: (id: string) => void;
     selectAgent: (id: string | null) => void;
-    setView: (view: 'dashboard' | 'pixel' | 'timeline' | 'sessions' | 'mission-control' | 'approvals' | 'activity-log' | 'adapters') => void;
+    setView: (view: TopLevelView) => void;
     setConnectionStatus: (connected: boolean, reconnecting?: boolean) => void;
     setFilters: (filters: Partial<Pick<AgentStore, 'sourceFilter' | 'teamFilter' | 'statusFilter'>>) => void;
     initSession: (agents: AgentLiveState[]) => void;
@@ -24,7 +27,7 @@ interface AgentStore {
 
 export const useAgentStore = create<AgentStore>((set) => ({
     agents: new Map(),
-    activeView: 'mission-control',
+    activeView: 'overview',
     selectedAgentId: null,
 
     connected: false,

@@ -84,7 +84,7 @@ export function ActivityTimelineView() {
       selectTask(activity.entity_id);
       selectApproval(null);
       setActiveTab('tasks');
-      setView('mission-control');
+      setView('work');
       return;
     }
 
@@ -92,12 +92,12 @@ export function ActivityTimelineView() {
       selectApproval(activity.entity_id);
       selectTask(null);
       setActiveTab('approvals');
-      setView('mission-control');
+      setView('control');
       return;
     }
 
     setActiveTab('activity');
-    setView('mission-control');
+    setView('control');
   };
 
   return (
