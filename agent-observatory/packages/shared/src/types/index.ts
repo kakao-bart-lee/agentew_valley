@@ -5,6 +5,7 @@
 export type {
   AgentSourceType,
   UAEPEventType,
+  WorkContextRef,
   UAEPEvent,
 } from './uaep.js';
 

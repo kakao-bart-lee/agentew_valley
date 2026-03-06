@@ -57,6 +57,12 @@ export interface AgentLiveState {
   /** 프로젝트/작업 디렉토리 식별자 */
   project_id?: string;
 
+  /** 현재 연결된 작업 식별자 */
+  task_id?: string;
+
+  /** 현재 연결된 목표 식별자 */
+  goal_id?: string;
+
   /** 현재 상태 */
   status: AgentStatus;
 

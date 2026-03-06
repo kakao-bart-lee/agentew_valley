@@ -116,6 +116,18 @@ export function validateUAEPEvent(event: unknown): ValidationResult {
     errors.push('team_id: must be a string if provided');
   }
 
+  if (e.project_id !== undefined && typeof e.project_id !== 'string') {
+    errors.push('project_id: must be a string if provided');
+  }
+
+  if (e.task_id !== undefined && typeof e.task_id !== 'string') {
+    errors.push('task_id: must be a string if provided');
+  }
+
+  if (e.goal_id !== undefined && typeof e.goal_id !== 'string') {
+    errors.push('goal_id: must be a string if provided');
+  }
+
   if (e.data !== undefined && (typeof e.data !== 'object' || e.data === null || Array.isArray(e.data))) {
     errors.push('data: must be a plain object if provided');
   }

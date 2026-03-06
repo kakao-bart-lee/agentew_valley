@@ -58,6 +58,8 @@ export interface SessionSummary {
   source: string;
   team_id?: string;
   project_id?: string;
+  task_id?: string;
+  goal_id?: string;
   model_id?: string;
   start_time: string;
   end_time?: string;
@@ -123,6 +125,8 @@ export interface SessionReplaySummary {
   source: string;
   team_id?: string;
   project_id?: string;
+  task_id?: string;
+  goal_id?: string;
   model_id?: string;
   start_time: string;
   end_time?: string;

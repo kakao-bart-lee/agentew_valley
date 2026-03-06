@@ -79,6 +79,9 @@ describe('validateUAEPEvent', () => {
       span_id: 'span-1',
       parent_span_id: 'span-0',
       team_id: 'team-1',
+      project_id: 'moonlit',
+      task_id: 'task-42',
+      goal_id: 'goal-7',
       data: { tool_name: 'Read' },
       metadata: { raw_type: 'assistant' },
     }));
@@ -135,6 +138,9 @@ describe('validateUAEPEvent', () => {
       seq: 'not-a-number' as unknown as number,
       agent_name: 123 as unknown as string,
       span_id: 456 as unknown as string,
+      project_id: 789 as unknown as string,
+      task_id: true as unknown as string,
+      goal_id: ['goal-1'] as unknown as string,
       data: 'not-an-object' as unknown as Record<string, unknown>,
       metadata: [1, 2, 3] as unknown as Record<string, unknown>,
     });
@@ -142,6 +148,9 @@ describe('validateUAEPEvent', () => {
     expect(result.errors).toContain('seq: must be a number if provided');
     expect(result.errors).toContain('agent_name: must be a string if provided');
     expect(result.errors).toContain('span_id: must be a string if provided');
+    expect(result.errors).toContain('project_id: must be a string if provided');
+    expect(result.errors).toContain('task_id: must be a string if provided');
+    expect(result.errors).toContain('goal_id: must be a string if provided');
     expect(result.errors).toContain('data: must be a plain object if provided');
     expect(result.errors).toContain('metadata: must be a plain object if provided');
   });

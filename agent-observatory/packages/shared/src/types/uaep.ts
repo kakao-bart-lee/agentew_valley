@@ -39,6 +39,17 @@ export type UAEPEventType =
   | 'approval.created'
   | 'approval.updated';
 
+export interface WorkContextRef {
+  /** 프로젝트/작업 디렉토리 식별자 */
+  project_id?: string;
+
+  /** 개별 작업 식별자 */
+  task_id?: string;
+
+  /** 상위 목표 식별자 */
+  goal_id?: string;
+}
+
 /**
  * UAEP-min 이벤트 Envelope.
  *
@@ -79,8 +90,10 @@ export interface UAEPEvent {
   /** 스웜/팀 묶음 식별자 */
   team_id?: string;
 
-  /** 프로젝트/작업 디렉토리 식별자 */
-  project_id?: string;
+  /** 업무 컨텍스트 식별자 */
+  project_id?: WorkContextRef['project_id'];
+  task_id?: WorkContextRef['task_id'];
+  goal_id?: WorkContextRef['goal_id'];
 
   /** 이벤트 종류 */
   type: UAEPEventType;
