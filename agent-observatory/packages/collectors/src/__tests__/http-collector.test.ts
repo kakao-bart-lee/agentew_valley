@@ -36,6 +36,9 @@ describe('HTTPCollector', () => {
           session_id: 'sess-1',
           source: 'custom',
           team_id: 'team-alpha',
+          project_id: 'moonlit',
+          task_id: 'task-42',
+          goal_id: 'goal-7',
           parent_agent_id: 'parent-0',
         })
         .expect(201);
@@ -51,6 +54,9 @@ describe('HTTPCollector', () => {
       expect(event.session_id).toBe('sess-1');
       expect(event.source).toBe('custom');
       expect(event.team_id).toBe('team-alpha');
+      expect(event.project_id).toBe('moonlit');
+      expect(event.task_id).toBe('task-42');
+      expect(event.goal_id).toBe('goal-7');
       expect(event.data?.parent_agent_id).toBe('parent-0');
       expect(event.event_id).toBeDefined();
       expect(event.ts).toBeDefined();

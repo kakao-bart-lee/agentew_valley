@@ -28,6 +28,9 @@ describe('Session Replay API', () => {
 
     instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1', {
       ts: baseTime.toISOString(),
+      project_id: 'moonlit',
+      task_id: 'task-42',
+      goal_id: 'goal-7',
     }));
     instance.eventBus.publish(makeToolStart('Read', 'agent-1', undefined, {
       session_id: 'sess-1',
@@ -43,6 +46,9 @@ describe('Session Replay API', () => {
     expect(res.body.session_id).toBe('sess-1');
     expect(res.body.events).toHaveLength(3);
     expect(res.body.total_events).toBe(3);
+    expect(res.body.summary.project_id).toBe('moonlit');
+    expect(res.body.summary.task_id).toBe('task-42');
+    expect(res.body.summary.goal_id).toBe('goal-7');
   });
 
   it('should compute gap_ms and offset_ms correctly', async () => {

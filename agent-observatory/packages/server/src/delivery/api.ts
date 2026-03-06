@@ -6,7 +6,7 @@ import { ObservatoryAdapterRegistry } from '../core/adapter-registry.js';
 import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
-import type { UAEPEvent } from '@agent-observatory/shared';
+import type { UAEPEvent, WorkContextRef } from '@agent-observatory/shared';
 import type {
   ActivityActorType,
   ActivityEntry,
@@ -161,6 +161,26 @@ function safeParseJsonRecord(value: string | null): Record<string, unknown> | un
   return undefined;
 }
 
+function getOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function getTaskWorkContext(task: Pick<MissionControlTask, 'id' | 'project' | 'goal_id'>): WorkContextRef {
+  return {
+    project_id: task.project,
+    task_id: task.id,
+    goal_id: task.goal_id,
+  };
+}
+
+function getRecordWorkContext(record: Record<string, unknown> | undefined): WorkContextRef {
+  return {
+    project_id: getOptionalString(record?.['project_id']),
+    task_id: getOptionalString(record?.['task_id']),
+    goal_id: getOptionalString(record?.['goal_id']),
+  };
+}
+
 function mapApprovalRow(row: ApprovalRow): Approval {
   return {
     id: row.id,
@@ -287,7 +307,7 @@ function getTaskSelectSql(where = ''): string {
 }
 
 function getTaskById(db: Database.Database, taskId: string): MissionControlTask | null {
-  const row = db.prepare(`${getTaskSelectSql('WHERE id = ?')} LIMIT 1`).get(
+  const row = db.prepare(`${getTaskSelectSql('WHERE tasks.id = ?')} LIMIT 1`).get(
     getStaleCutoff(),
     taskId,
   ) as TaskRow | undefined;
@@ -491,6 +511,7 @@ function publishActivityEvent(
     agentId?: string;
     sessionId?: string;
     extra?: Record<string, unknown>;
+    workContext?: WorkContextRef;
   } = {},
 ): void {
   eventBus.publish({
@@ -499,6 +520,7 @@ function publishActivityEvent(
     source: 'mission_control',
     agent_id: options.agentId ?? activity.actor ?? 'observatory',
     session_id: options.sessionId ?? 'mission_control_api',
+    ...options.workContext,
     type: 'activity.new',
     data: {
       ...activity,
@@ -523,6 +545,7 @@ export function createApiRouter(
     options: {
       agentId?: string;
       extra?: Record<string, unknown>;
+      workContext?: WorkContextRef;
     } = {},
   ): ActivityEntry => {
     const entry = insertActivityRecord(db, {
@@ -532,6 +555,7 @@ export function createApiRouter(
     publishActivityEvent(eventBus, entry, {
       agentId: options.agentId,
       extra: options.extra,
+      workContext: options.workContext,
     });
     return entry;
   };
@@ -592,6 +616,8 @@ export function createApiRouter(
       source: r.source,
       team_id: r.team_id ?? undefined,
       project_id: r.project_id ?? undefined,
+      task_id: r.task_id ?? undefined,
+      goal_id: r.goal_id ?? undefined,
       model_id: r.model_id ?? undefined,
       start_time: r.start_time,
       end_time: r.end_time ?? undefined,
@@ -655,6 +681,8 @@ export function createApiRouter(
       source: session.source,
       team_id: session.team_id ?? undefined,
       project_id: session.project_id ?? undefined,
+      task_id: session.task_id ?? undefined,
+      goal_id: session.goal_id ?? undefined,
       model_id: session.model_id ?? undefined,
       start_time: session.start_time,
       end_time: session.end_time ?? undefined,
@@ -925,6 +953,8 @@ export function createApiRouter(
       return;
     }
 
+    const task = getTaskById(db, taskId);
+
     recordActivity(db, {
       id: `task_checkout_${taskId}_${checkoutAt}`,
       type: 'task_checkout',
@@ -937,9 +967,9 @@ export function createApiRouter(
       created_at: checkoutAt,
     }, {
       agentId,
+      workContext: task ? getTaskWorkContext(task) : { task_id: taskId },
     });
 
-    const task = getTaskById(db, taskId);
     if (task) {
       eventBus.publish({
         ts: new Date().toISOString(),
@@ -947,6 +977,7 @@ export function createApiRouter(
         source: 'mission_control',
         agent_id: agentId,
         session_id: 'mission_control_api',
+        ...getTaskWorkContext(task),
         type: 'task.sync',
         data: task as unknown as Record<string, unknown>,
       });
@@ -998,6 +1029,7 @@ export function createApiRouter(
         source: 'mission_control',
         agent_id: currentTask.checkout_agent_id ?? 'observatory',
         session_id: 'mission_control_api',
+        ...getTaskWorkContext(task),
         type: 'task.sync',
         data: task as unknown as Record<string, unknown>,
       });
@@ -1014,6 +1046,7 @@ export function createApiRouter(
       created_at: releasedAt,
     }, {
       agentId: currentTask.checkout_agent_id ?? 'observatory',
+      workContext: getTaskWorkContext(currentTask),
     });
 
     res.json({
@@ -1114,6 +1147,7 @@ export function createApiRouter(
       created_at: createdAt,
     }, {
       agentId: authorAgentId,
+      workContext: getTaskWorkContext(task),
     });
     eventBus.publish({
       ts: new Date().toISOString(),
@@ -1121,6 +1155,7 @@ export function createApiRouter(
       source: 'mission_control',
       agent_id: authorAgentId,
       session_id: 'mission_control_api',
+      ...getTaskWorkContext(task),
       type: 'task.sync',
       data: (getTaskById(db, taskId) ?? task) as unknown as Record<string, unknown>,
     });
@@ -1276,7 +1311,7 @@ export function createApiRouter(
 
     recordActivity(db, {
       id: `approval_created_${id}`,
-      type: 'approval_created',
+      type: 'approval_requested',
       actor_type: 'agent',
       entity_type: 'approval',
       entity_id: id,
@@ -1287,6 +1322,20 @@ export function createApiRouter(
     }, {
       agentId: requestedBy,
       extra: {
+        approval,
+      },
+      workContext: getRecordWorkContext(payload),
+    });
+
+    eventBus.publish({
+      ts: new Date(createdAt * 1000).toISOString(),
+      event_id: `evt-approval-created-${id}`,
+      source: 'mission_control',
+      agent_id: requestedBy,
+      session_id: 'mission_control_api',
+      ...getRecordWorkContext(payload),
+      type: 'approval.created',
+      data: {
         approval,
       },
     });
@@ -1357,6 +1406,20 @@ export function createApiRouter(
     }, {
       agentId: decidedBy,
       extra: {
+        approval,
+      },
+      workContext: getRecordWorkContext(approval.payload),
+    });
+
+    eventBus.publish({
+      ts: new Date(decidedAt * 1000).toISOString(),
+      event_id: `evt-approval-updated-${approval.id}-${decidedAt}`,
+      source: 'mission_control',
+      agent_id: decidedBy,
+      session_id: 'mission_control_api',
+      ...getRecordWorkContext(approval.payload),
+      type: 'approval.updated',
+      data: {
         approval,
       },
     });

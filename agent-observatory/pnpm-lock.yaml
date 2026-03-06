@@ -46,7 +46,7 @@ importers:
   packages/collectors:
     dependencies:
       '@agent-observatory/shared':
-        specifier: workspace:*
+        specifier: file:../shared
         version: link:../shared
       chokidar:
         specifier: ^4.0.0

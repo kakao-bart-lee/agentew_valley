@@ -95,13 +95,20 @@ describe('REST API', () => {
   });
 
   describe('GET /api/v1/sessions', () => {
-    it('should return sessions list', async () => {
-      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1'));
+    it('should return sessions list with work context', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-1', 'sess-1', {
+        project_id: 'moonlit',
+        task_id: 'task-42',
+        goal_id: 'goal-7',
+      }));
 
       const res = await request(instance.app).get('/api/v1/sessions');
       expect(res.status).toBe(200);
       expect(res.body.sessions).toHaveLength(1);
       expect(res.body.sessions[0].session_id).toBe('sess-1');
+      expect(res.body.sessions[0].project_id).toBe('moonlit');
+      expect(res.body.sessions[0].task_id).toBe('task-42');
+      expect(res.body.sessions[0].goal_id).toBe('goal-7');
     });
   });
 

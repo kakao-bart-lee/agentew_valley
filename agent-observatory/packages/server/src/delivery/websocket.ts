@@ -2,6 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import type { Server as HttpServer } from 'node:http';
 import type {
   AgentLiveState,
+  Approval,
   UAEPEvent,
   ServerToClientEvents,
   ClientToServerEvents,
@@ -158,6 +159,18 @@ export function createWebSocketServer(
           spent_monthly_cents: typeof event.data?.['spent_monthly_cents'] === 'number' ? event.data['spent_monthly_cents'] as number : undefined,
         });
       }
+    }
+
+    if (
+      (event.type === 'approval.created' || event.type === 'approval.updated')
+      && event.data?.['approval']
+      && typeof event.data['approval'] === 'object'
+      && !Array.isArray(event.data['approval'])
+    ) {
+      const payload = {
+        approval: event.data['approval'] as Approval,
+      };
+      io.emit(event.type, payload);
     }
 
     // Subscribed agents get immediate events (non-dashboard views only)

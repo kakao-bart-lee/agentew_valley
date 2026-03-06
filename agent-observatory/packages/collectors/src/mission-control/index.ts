@@ -42,6 +42,9 @@ export class MissionControlCollector implements Collector, ObservatoryAdapter {
           source: 'mission_control',
           agent_id: 'observatory',
           session_id: 'mission_control_sync',
+          project_id: task.project,
+          task_id: task.id,
+          goal_id: task.goal_id,
           type: 'task.sync',
           data: task as unknown as Record<string, unknown>,
         });
@@ -53,6 +56,9 @@ export class MissionControlCollector implements Collector, ObservatoryAdapter {
           source: 'mission_control',
           agent_id: 'observatory',
           session_id: 'mission_control_sync',
+          project_id: task.project,
+          task_id: task.id,
+          goal_id: task.goal_id,
           type: 'activity.new',
           data: {
             id: generateEventId(),
