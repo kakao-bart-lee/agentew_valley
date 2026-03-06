@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'chokidar';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { normalizeWatchPaths } from '../path-utils.js';
 
 export interface TaskParsed {
   id: string;
@@ -111,20 +112,26 @@ export class MissionControlWatcher {
   }
 
   async start(): Promise<void> {
-    const globs = this.watchPaths.flatMap((p) =>
-      p.endsWith('.md')
-        ? [p]
-        : [`${p}/**/TASK.md`, `${p}/**/GOALS.md`],
-    );
+    const targets = normalizeWatchPaths(this.watchPaths);
 
-    this.watcher = watch(globs, {
+    this.watcher = watch(targets, {
       persistent: true,
       ignoreInitial: false,
+      ignored: (filePath, stats) => this.shouldIgnore(filePath, stats),
     });
 
-    this.watcher.on('add', (filePath: string) => void this.handleFile(filePath));
-    this.watcher.on('change', (filePath: string) => void this.handleFile(filePath));
-    this.watcher.on('unlink', (filePath: string) => this.handleRemove(filePath));
+    this.watcher.on('add', (filePath: string) => {
+      if (!this.isTargetFile(filePath)) return;
+      void this.handleFile(filePath);
+    });
+    this.watcher.on('change', (filePath: string) => {
+      if (!this.isTargetFile(filePath)) return;
+      void this.handleFile(filePath);
+    });
+    this.watcher.on('unlink', (filePath: string) => {
+      if (!this.isTargetFile(filePath)) return;
+      this.handleRemove(filePath);
+    });
   }
 
   async stop(): Promise<void> {
@@ -166,6 +173,15 @@ export class MissionControlWatcher {
       task_source_paths: Array.from(this.tasksByPath.keys()),
       goal_source_paths: Array.from(this.goalsByPath.keys()),
     });
+  }
+
+  private isTargetFile(filePath: string): boolean {
+    const kind = basename(filePath).toUpperCase();
+    return kind === 'TASK.MD' || kind === 'GOALS.MD';
+  }
+
+  private shouldIgnore(filePath: string, stats?: { isFile(): boolean }): boolean {
+    return stats?.isFile() === true && !this.isTargetFile(filePath);
   }
 
   private parseTaskMarkdown(content: string, filePath: string): TaskParsed[] {

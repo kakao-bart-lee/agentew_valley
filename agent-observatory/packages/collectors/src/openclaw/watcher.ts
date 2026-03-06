@@ -9,6 +9,7 @@ import { watch, type FSWatcher } from 'chokidar';
 import { open, stat } from 'node:fs/promises';
 import type { OCParsedRecord } from './parser.js';
 import { parseLine } from './parser.js';
+import { normalizeWatchPaths } from '../path-utils.js';
 
 /** 파일 변경 시 콜백 */
 export type OCWatcherCallback = (
@@ -56,14 +57,13 @@ export class OpenClawWatcher {
 
   /** 감시 시작 */
   async start(): Promise<void> {
-    const globs = this.config.watchPaths.map((p) =>
-      p.endsWith('.jsonl') ? p : `${p}/**/*.jsonl`,
-    );
+    const targets = normalizeWatchPaths(this.config.watchPaths);
 
-    this.watcher = watch(globs, {
+    this.watcher = watch(targets, {
       persistent: true,
       ignoreInitial: false,
       usePolling: this.config.usePolling ?? false,
+      ignored: (filePath, stats) => this.shouldIgnore(filePath, stats),
       awaitWriteFinish: {
         stabilityThreshold: 100,
         pollInterval: 50,
@@ -71,6 +71,7 @@ export class OpenClawWatcher {
     });
 
     this.watcher.on('add', (filePath: string) => {
+      if (!this.isJsonlFile(filePath)) return;
       if (this.config.tailOnly) {
         void this.skipToEnd(filePath);
       } else {
@@ -79,10 +80,12 @@ export class OpenClawWatcher {
     });
 
     this.watcher.on('change', (filePath: string) => {
+      if (!this.isJsonlFile(filePath)) return;
       void this.handleFile(filePath, false);
     });
 
     this.watcher.on('unlink', (filePath: string) => {
+      if (!this.isJsonlFile(filePath)) return;
       this.offsets.delete(filePath);
       this.removeCallback?.(filePath);
     });
@@ -150,5 +153,13 @@ export class OpenClawWatcher {
     } catch {
       // 파일 읽기 실패는 무시
     }
+  }
+
+  private isJsonlFile(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.jsonl');
+  }
+
+  private shouldIgnore(filePath: string, stats?: { isFile(): boolean }): boolean {
+    return stats?.isFile() === true && !this.isJsonlFile(filePath);
   }
 }
