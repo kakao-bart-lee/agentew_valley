@@ -10,6 +10,7 @@
 export type AgentSourceType =
   | 'claude_code'
   | 'openclaw'
+  | 'omx'
   | 'agent_sdk'
   | 'langchain'
   | 'crewai'
@@ -109,6 +110,7 @@ export interface UAEPEvent {
 export const AGENT_SOURCE_TYPES: readonly AgentSourceType[] = [
   'claude_code',
   'openclaw',
+  'omx',
   'agent_sdk',
   'langchain',
   'crewai',

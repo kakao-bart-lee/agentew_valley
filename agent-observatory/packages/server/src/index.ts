@@ -39,7 +39,7 @@ export type { FeatureFlagName, FeatureFlags } from './config/feature-flags.js';
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
-import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector, MissionControlCollector } from '@agent-observatory/collectors';
+import { ClaudeCodeCollector, OpenClawCollector, AgentSDKCollector, HTTPCollector, MissionControlCollector, OMXCollector } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
 import { getFeatureFlagsFromEnv } from './config/feature-flags.js';
 import { getShadowModeFlagsFromEnv } from './config/shadow-mode.js';
@@ -109,6 +109,18 @@ async function main(): Promise<void> {
       console.log(`[server] OpenClaw collector started (paths: ${ocPaths.join(', ')})`);
     } catch (err) {
       console.warn('[server] OpenClaw collector failed to start:', err);
+    }
+
+    // OMX Collector
+    try {
+      const omxPaths = (process.env.OMX_WATCH_PATHS ?? '.omx').split(',');
+      const omx = new OMXCollector({ watchPaths: omxPaths, tailOnly });
+      omx.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      await omx.start();
+      activeCollectors.push(omx);
+      console.log(`[server] OMX collector started (paths: ${omxPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] OMX collector failed to start:', err);
     }
 
     // Agent SDK Hook Collector (Express Router)

@@ -9,7 +9,7 @@ export const schemas = {
     properties: {
       ts: { type: 'string', format: 'date-time' },
       event_id: { type: 'string' },
-      source: { type: 'string', enum: ['claude_code', 'openclaw', 'agent_sdk', 'langchain', 'crewai', 'custom', 'mission_control'] },
+      source: { type: 'string', enum: ['claude_code', 'openclaw', 'omx', 'agent_sdk', 'langchain', 'crewai', 'custom', 'mission_control'] },
       agent_id: { type: 'string' },
       agent_name: { type: 'string' },
       session_id: { type: 'string' },

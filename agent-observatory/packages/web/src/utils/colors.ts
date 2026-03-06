@@ -33,6 +33,7 @@ export const CATEGORY_COLORS: Record<ToolCategory, string> = {
 export const SOURCE_COLORS: Record<AgentSourceType, string> = {
     claude_code: '#f97316',
     openclaw: '#8b5cf6',
+    omx: '#22c55e',
     agent_sdk: '#06b6d4',
     langchain: '#ec4899',
     crewai: '#10b981',
@@ -43,6 +44,7 @@ export const SOURCE_COLORS: Record<AgentSourceType, string> = {
 export const SOURCE_LABELS: Record<AgentSourceType, string> = {
     claude_code: 'CC',
     openclaw: 'OC',
+    omx: 'OMX',
     agent_sdk: 'SDK',
     langchain: 'LC',
     crewai: 'Crew',

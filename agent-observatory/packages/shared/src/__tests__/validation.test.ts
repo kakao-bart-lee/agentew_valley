@@ -23,6 +23,7 @@ describe('isValidSourceType', () => {
   it('should accept valid source types', () => {
     expect(isValidSourceType('claude_code')).toBe(true);
     expect(isValidSourceType('openclaw')).toBe(true);
+    expect(isValidSourceType('omx')).toBe(true);
     expect(isValidSourceType('agent_sdk')).toBe(true);
     expect(isValidSourceType('langchain')).toBe(true);
     expect(isValidSourceType('crewai')).toBe(true);
