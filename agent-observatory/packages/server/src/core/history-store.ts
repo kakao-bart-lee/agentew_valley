@@ -1169,6 +1169,26 @@ export class HistoryStore {
     return rows.map((row) => this.rowToEvent(row as EventRow));
   }
 
+  /**
+   * 지정된 시각 이후의 이벤트를 시간 순으로 반환한다.
+   * Startup replay에 사용 — StateManager/MetricsAggregator 워밍업용.
+   *
+   * @param sinceTs  ISO-8601 타임스탬프 (이 시각 이후 이벤트만 반환)
+   * @param limit    최대 반환 수 (기본 50_000)
+   */
+  getEventsSince(sinceTs: string, limit = 50_000): UAEPEvent[] {
+    const tableExists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'")
+      .get();
+    if (!tableExists) return [];
+
+    const rows = this.db
+      .prepare('SELECT * FROM events WHERE ts >= ? ORDER BY ts ASC LIMIT ?')
+      .all(sinceTs, limit);
+
+    return rows.map((row) => this.rowToEvent(row as EventRow));
+  }
+
   getAgentEventCount(agentId: string): number {
     const row = this.db.prepare(`
       SELECT COUNT(*) as cnt FROM events WHERE agent_id = ?

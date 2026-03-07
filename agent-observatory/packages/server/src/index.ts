@@ -41,11 +41,16 @@ async function main(): Promise<void> {
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
   const dashboardApiKey = process.env.OBSERVATORY_DASHBOARD_API_KEY || undefined;
 
+  const replayWindowHours = process.env.OBSERVATORY_REPLAY_WINDOW_HOURS !== undefined
+    ? parseFloat(process.env.OBSERVATORY_REPLAY_WINDOW_HOURS)
+    : 24;
+
   const { app, server, eventBus, historyStore, close } = createApp({
     watchPaths,
     dbPath,
     collectorApiKeys,
     dashboardApiKey,
+    replayWindowHours,
   });
 
   const activeCollectors: Collector[] = [];

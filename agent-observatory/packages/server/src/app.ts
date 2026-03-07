@@ -37,6 +37,12 @@ export interface AppConfig {
   collectorApiKeys?: string[];
   /** Optional API key for dashboard access. If set, frontend must provide Bearer token. */
   dashboardApiKey?: string;
+  /**
+   * Startup replay: DB에서 이 시각 이후 이벤트를 StateManager/MetricsAggregator에 재주입.
+   * 기본값: 서버 시작 시각 기준 24시간 전 (ISO-8601 문자열 또는 "Nh" 형식).
+   * 비활성화하려면 빈 문자열("") 전달.
+   */
+  replayWindowHours?: number;
 }
 
 export interface AppInstance {
@@ -67,6 +73,21 @@ export function createApp(config?: AppConfig): AppInstance {
   eventBus.subscribe((event) => stateManager.handleEvent(event));
   eventBus.subscribe((event) => metricsAggregator.handleEvent(event));
   eventBus.subscribe((event) => historyStore.append(event));
+
+  // Startup replay: DB의 최근 이벤트를 StateManager/MetricsAggregator에 재주입
+  // historyStore.append()는 호출하지 않아 DB 중복 저장 없음
+  const replayWindowHours = config?.replayWindowHours ?? 24;
+  if (replayWindowHours > 0 && config?.dbPath) {
+    const sinceTs = new Date(Date.now() - replayWindowHours * 3_600_000).toISOString();
+    const replayEvents = historyStore.getEventsSince(sinceTs);
+    for (const event of replayEvents) {
+      stateManager.handleEvent(event);
+      metricsAggregator.handleEvent(event);
+    }
+    if (replayEvents.length > 0) {
+      console.info(`[server] Startup replay: ${replayEvents.length} events (last ${replayWindowHours}h) → StateManager + MetricsAggregator`);
+    }
+  }
 
   const app = express();
   app.use(cors());
