@@ -80,9 +80,60 @@ export class StateManager {
     this.cleanupTimer = setInterval(() => this.cleanupIdleAgents(), IDLE_CLEANUP_INTERVAL_MS);
   }
 
+  /**
+   * session.start 없이 도착한 이벤트에 대해 에이전트를 자동 생성한다.
+   * tailOnly=true 환경에서 기존 파일의 session.start를 건너뛰었을 때 발생.
+   */
+  private ensureAgent(event: UAEPEvent): void {
+    if (this.agents.has(event.agent_id)) return;
+    if (event.type === 'session.end') return; // 이미 없는 에이전트 종료는 무시
+
+    const state: AgentLiveState = {
+      agent_id: event.agent_id,
+      agent_name: event.agent_name ?? event.agent_id,
+      source: event.source,
+      runtime: inferRuntimeDescriptor(event.source, event.runtime),
+      team_id: event.team_id,
+      project_id: getOptionalString(event.project_id ?? event.data?.['project_id']),
+      task_id: getOptionalString(event.task_id ?? event.data?.['task_id']),
+      goal_id: getOptionalString(event.goal_id ?? event.data?.['goal_id']),
+      task_context: coerceTaskContext(event),
+      status: 'idle',
+      last_activity: event.ts,
+      session_id: event.session_id,
+      session_start: event.ts,
+      model_id: event.model_id ?? (event.data?.['model_id'] as string | undefined),
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+      total_cost_usd: 0,
+      total_tool_calls: 0,
+      tool_call_success_rate: 1,
+      recent_tool_call_count: 0,
+      total_errors: 0,
+      last_run_status: 'idle',
+      health_status: 'normal',
+      llm_response_count: 0,
+      llm_total_text_length: 0,
+      tool_distribution: emptyDistribution(),
+      child_agent_ids: [],
+    };
+
+    this.agents.set(event.agent_id, state);
+    this.activeTools.set(event.agent_id, new Map());
+    this.recentToolOutcomes.set(event.agent_id, []);
+  }
+
   handleEvent(event: UAEPEvent): void {
     // PM2 프로세스는 인프라 서비스 — 에이전트 목록에서 제외
     if (event.source === 'pm2') return;
+
+    // session.start 없이 도착한 이벤트 → 에이전트 자동 생성 (tailOnly 환경 대응)
+    if (event.type !== 'session.start') {
+      this.ensureAgent(event);
+    }
 
     switch (event.type) {
       case 'session.start':

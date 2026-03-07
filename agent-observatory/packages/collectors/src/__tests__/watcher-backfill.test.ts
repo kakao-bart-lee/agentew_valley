@@ -125,7 +125,7 @@ describe('watcher backfill', () => {
     expect(seen[0].records.length).toBeGreaterThan(0);
   });
 
-  it('OpenClawWatcher preserves tailOnly=true for pre-existing files', async () => {
+  it('OpenClawWatcher preserves tailOnly=true for pre-existing files (only reads header)', async () => {
     const root = await makeTempDir();
     const nested = join(root, 'agent-a', 'sessions');
     await mkdir(nested, { recursive: true });
@@ -142,17 +142,25 @@ describe('watcher backfill', () => {
     try {
       await watcher.start();
       await new Promise((resolve) => setTimeout(resolve, 200));
-      expect(seen).toHaveLength(0);
+
+      // tailOnly=true여도 session_header/model_change/custom 레코드는 파싱 (세션 컨텍스트 확보)
+      // 일반 메시지/도구 레코드는 포함되지 않아야 함
+      for (const call of seen) {
+        const kinds = call.records.map((r) => (r as { kind: string }).kind);
+        expect(kinds.every((k) => ['session_header', 'model_change', 'custom'].includes(k))).toBe(true);
+      }
+      const headerCount = seen.length;
 
       await writeFile(filePath, `${fixture}${fixture}`);
-      await waitFor(() => seen.length > 0);
+      await waitFor(() => seen.length > headerCount);
     } finally {
       await watcher.stop();
     }
 
-    expect(seen).toHaveLength(1);
-    expect(seen[0].isNewFile).toBe(false);
-    expect(seen[0].records.length).toBeGreaterThan(0);
+    // 새 내용(append)에 대한 콜백이 마지막에 있어야 함
+    const appendCallback = seen[seen.length - 1];
+    expect(appendCallback.isNewFile).toBe(false);
+    expect(appendCallback.records.length).toBeGreaterThan(0);
   });
 
   it('MissionControlWatcher ingests existing TASK.md files on initial scan', async () => {

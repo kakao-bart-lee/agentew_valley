@@ -101,12 +101,42 @@ export class OpenClawWatcher {
   }
 
   /**
-   * 기존 파일의 끝 위치만 기록하고 내용은 읽지 않는다.
+   * 기존 파일의 끝 위치를 기록하되, 파일 첫 부분(최대 4KB)을 읽어
+   * session header(model_id, sessionId, cwd 등)만 파싱한다.
+   * 이후 append된 내용만 실시간 수집한다.
    */
   private async skipToEnd(filePath: string): Promise<void> {
     try {
       const fileStat = await stat(filePath);
       this.offsets.set(filePath, fileStat.size);
+
+      // 헤더 파싱: 첫 4KB에서 session_header / model_change 레코드만 추출
+      const headerBytes = Math.min(4096, fileStat.size);
+      if (headerBytes === 0) return;
+
+      const buffer = Buffer.alloc(headerBytes);
+      const fh = await open(filePath, 'r');
+      try {
+        await fh.read(buffer, 0, headerBytes, 0);
+      } finally {
+        await fh.close();
+      }
+
+      const text = buffer.toString('utf-8');
+      const lines = text.split('\n');
+      const headerRecords: OCParsedRecord[] = [];
+      for (const line of lines) {
+        const parsed = parseLine(line);
+        for (const r of parsed) {
+          if (r.kind === 'session_header' || r.kind === 'model_change' || r.kind === 'custom') {
+            headerRecords.push(r);
+          }
+        }
+      }
+
+      if (this.callback && headerRecords.length > 0) {
+        this.callback(filePath, headerRecords, true);
+      }
     } catch {
       // 파일 접근 실패 무시
     }
