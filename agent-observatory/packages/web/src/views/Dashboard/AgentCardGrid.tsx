@@ -424,7 +424,7 @@ export function AgentCardGrid({
     }
 
     return (
-        <div className="flex flex-col gap-4 h-full">
+        <div className="flex flex-col gap-4">
             <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
                 <div className="flex flex-col gap-3">
                     <AgentCardFilters />
@@ -481,7 +481,7 @@ export function AgentCardGrid({
                 </div>
             </div>
 
-            <div className="overflow-y-auto pb-4 custom-scrollbar">
+            <div className="pb-4">
                 {variant === 'dense' ? (
                     sortedVisibleAgents.length === 0 ? (
                         <div className="text-center p-8 text-slate-500">

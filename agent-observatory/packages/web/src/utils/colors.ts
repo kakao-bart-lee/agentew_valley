@@ -58,22 +58,61 @@ export const SOURCE_LABELS: Record<AgentSourceType, string> = {
 
 /** model_id → 뱃지 배경색 */
 export function getModelBadgeColor(modelId: string | undefined): string {
-    if (!modelId) return '#6b7280'; // gray
+    if (!modelId) return '#6b7280';
     const id = modelId.toLowerCase();
-    if (id.includes('opus')) return '#f59e0b';   // amber
-    if (id.includes('sonnet')) return '#a855f7'; // purple
-    if (id.includes('haiku')) return '#14b8a6';  // teal
-    return '#6b7280'; // gray
+    if (id.includes('opus')) return '#f59e0b';
+    if (id.includes('sonnet')) return '#a855f7';
+    if (id.includes('haiku')) return '#14b8a6';
+    if (id.includes('codex')) return '#3b82f6';
+    if (id.includes('gemini')) return '#10b981';
+    if (id.includes('gpt')) return '#06b6d4';
+    if (id.includes('claude')) return '#a855f7';
+    return '#6b7280';
 }
 
-/** model_id → 짧은 표시 이름 */
+/** model_id에서 `4-6` 또는 `4.6` 형태의 버전을 추출해 `4.6` 문자열로 반환 */
+function extractVersion(id: string): string | null {
+    // dot-separated: 4.6, 5.3
+    const dotM = id.match(/(\d{1,2}\.\d{1,3})/);
+    if (dotM) return dotM[1];
+    // hyphen-separated short nums (not 8-digit date): 4-6, 4-5
+    const hypM = id.match(/(\d{1,2})-(\d{1,2})(?![\d])/);
+    if (hypM) return `${hypM[1]}.${hypM[2]}`;
+    return null;
+}
+
+/** model_id → 짧은 표시 이름 (차트/뱃지 용) */
 export function getModelShortName(modelId: string | undefined): string {
     if (!modelId) return '?';
     const id = modelId.toLowerCase();
-    if (id.includes('opus')) return 'Opus';
-    if (id.includes('sonnet')) return 'Sonnet';
-    if (id.includes('haiku')) return 'Haiku';
-    // fallback: 첫 번째 "-" 이전 단어 또는 최대 8자
-    const parts = modelId.split('-');
-    return parts[0]?.slice(0, 8) ?? modelId.slice(0, 8);
+    const ver = extractVersion(id);
+
+    // Anthropic 계열
+    if (id.includes('opus')) return ver ? `Opus ${ver}` : 'Opus';
+    if (id.includes('sonnet')) return ver ? `Sonnet ${ver}` : 'Sonnet';
+    if (id.includes('haiku')) return ver ? `Haiku ${ver}` : 'Haiku';
+
+    // OpenAI 계열 — codex 먼저 (gpt-5.3-codex 처럼 둘 다 포함)
+    if (id.includes('codex')) {
+        const variant = id.includes('spark') ? '-S' : id.includes('mini') ? '-M' : '';
+        return ver ? `Cdx ${ver}${variant}` : 'Codex';
+    }
+    if (id.includes('gpt')) {
+        return ver ? `GPT-${ver}` : 'GPT';
+    }
+    if (id.includes('o1') || id.includes('o3') || id.includes('o4')) {
+        const m = id.match(/(o\d+)/);
+        return m ? m[1].toUpperCase() : id.slice(0, 6);
+    }
+
+    // Google 계열
+    if (id.includes('gemini')) {
+        const variant = id.includes('flash') ? 'F' : id.includes('pro') ? 'P' : '';
+        return ver ? `Gem ${ver}${variant}` : 'Gemini';
+    }
+
+    // fallback: 처음 두 세그먼트를 합쳐 최대 10자
+    const parts = modelId.split('-').filter(Boolean);
+    const short = parts.slice(0, 2).join('-');
+    return short.length > 10 ? short.slice(0, 10) : short;
 }

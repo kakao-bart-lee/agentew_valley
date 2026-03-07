@@ -38,7 +38,7 @@ export function ActivityFeed() {
     }, [filtersOpen]);
 
     return (
-        <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="relative flex flex-col" style={{ minHeight: '20rem' }}>
             {/* Feed Controls */}
             <div className="flex justify-between flex-wrap gap-2 items-center mb-2 px-1">
                 <div className="text-xs text-slate-400">
@@ -73,7 +73,7 @@ export function ActivityFeed() {
                 </div>
             </div>
 
-            <ScrollArea className="relative min-h-0 flex-1 rounded-md border border-slate-700/50 bg-slate-900/50">
+            <ScrollArea className="h-80 rounded-md border border-slate-700/50 bg-slate-900/50">
                 <div className="flex flex-col">
                     {!connected && events.length === 0 ? (
                         <ActivityFeedSkeleton />

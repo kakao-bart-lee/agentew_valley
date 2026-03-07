@@ -6,8 +6,9 @@ interface ActiveAgentsChartProps {
 
 export function ActiveAgentsChart({ data }: ActiveAgentsChartProps) {
     return (
-        <div className="h-44 mt-2">
+        <div className="mt-2">
             <h3 className="text-sm font-medium text-slate-400 mb-2">Active Agents (Last 60m)</h3>
+            <div className="h-36">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={data}>
                     <defs>
@@ -22,6 +23,7 @@ export function ActiveAgentsChart({ data }: ActiveAgentsChartProps) {
                     <Area type="monotone" dataKey="active" stroke="#10b981" fillOpacity={1} fill="url(#colorActive)" isAnimationActive={false} />
                 </AreaChart>
             </ResponsiveContainer>
+            </div>
         </div>
     );
 }

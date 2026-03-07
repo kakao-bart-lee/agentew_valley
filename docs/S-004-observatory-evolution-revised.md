@@ -1,8 +1,32 @@
 # SPEC-004 (Revised): Agent Observatory — 순수 텔레메트리 레이어
 
-- **Status**: APPROVED (revised 2026-03-08)
+- **Status**: IMPLEMENTED (revised 2026-03-08, implemented 2026-03-08)
 - **Author**: Bart + Erika
 - **Supersedes**: `docs/S-004-observatory-evolution.md` (v1 — Paperclip 통합 계획)
+
+## 구현 완료 현황 (2026-03-08)
+
+| 항목 | 설명 | 커밋 |
+|------|------|------|
+| R-001 | OpenCode Collector — `opencode.db` 폴링 | `e963a71` |
+| R-002 | Context Enrichment — `OBSERVATORY_TASK_ID` 등 env var → event | `feat/collectors` |
+| R-003 | Codex Collector — `~/.codex/sessions/**/*.jsonl` 감시 | `ed3d905` |
+| R-004 | Untracked Session — `project_id IS NULL` 집계 + UI | `3227a82` |
+| R-005 | Paperclip Adapter — 읽기 전용 HTTP 클라이언트 (TTL 캐시) | `4bd5df4` |
+| R-006 | Agent Health — `/api/v1/agents/health` + context_window_usage 게이지 | `4bd5df4` |
+| R-007 | Realtime Event 확장 — `task.context` / `cost.alert` / `agent.health` WS | `4bd5df4` |
+
+### Collector 지원 현황
+
+| 소스 | 클래스 | 경로 | 환경변수 |
+|------|--------|------|---------|
+| Claude Code | `ClaudeCodeCollector` | `~/.claude/projects` | `CLAUDE_CODE_WATCH_PATHS` |
+| OpenClaw | `OpenClawCollector` | `~/.openclaw/agents` | `OPENCLAW_WATCH_PATHS` |
+| OpenCode | `OpenCodeCollector` | `~/.local/share/opencode` | `OPENCODE_WATCH_PATHS` |
+| Codex CLI | `CodexCollector` | `~/.codex/sessions` | `CODEX_WATCH_PATHS` |
+| OMX Runtime | `OMXCollector` | `.omx/` | `OMX_WATCH_PATHS` |
+| Agent SDK | `AgentSDKCollector` | HTTP hook | — |
+| Generic HTTP | `HTTPCollector` | HTTP POST | `OBSERVATORY_API_KEYS` |
 
 ---
 

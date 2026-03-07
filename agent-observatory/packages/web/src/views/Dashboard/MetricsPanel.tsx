@@ -57,7 +57,7 @@ export function MetricsPanel() {
     }, [tab, analytics]);
 
     if (!snapshot && tab === 'live') {
-        return <div className="flex h-full items-center justify-center text-slate-500">Waiting for metrics...</div>;
+        return <div className="flex h-40 items-center justify-center text-slate-500">Waiting for metrics...</div>;
     }
 
     const timeseriesData = buildMetricsTimeseries(snapshot);
@@ -74,9 +74,9 @@ export function MetricsPanel() {
         .map(([key, value]) => ({ name: key, value }));
 
     return (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col gap-4">
             {/* Tab switcher */}
-            <div className="flex bg-slate-900/50 rounded-lg p-1 mb-3 shrink-0 border border-slate-700/50">
+            <div className="flex bg-slate-900/50 rounded-lg p-1 border border-slate-700/50">
                 <button
                     onClick={() => setTab('live')}
                     className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${tab === 'live' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
@@ -91,7 +91,7 @@ export function MetricsPanel() {
                 </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar pb-4 flex flex-col gap-6">
+            <div className="flex flex-col gap-6 pb-2">
                 {tab === 'live' ? (
                     <>
                         <TokensChart data={timeseriesData} />
@@ -103,7 +103,7 @@ export function MetricsPanel() {
                         <SourceDistribution data={sourceData} />
                     </>
                 ) : analyticsError ? (
-                    <div className="flex h-full items-center justify-center text-red-400 text-sm">
+                    <div className="flex h-40 items-center justify-center text-red-400 text-sm">
                         {analyticsError}
                     </div>
                 ) : (

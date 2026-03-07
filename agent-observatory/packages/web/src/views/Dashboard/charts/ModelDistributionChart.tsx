@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getModelBadgeColor, getModelShortName } from '../../../utils/colors';
+import { formatLargeNumber } from '../../../utils/formatters';
 
 interface ModelDistributionChartProps {
     data: Record<string, { agent_count: number; token_count: number }>;
@@ -29,13 +30,15 @@ export function ModelDistributionChart({ data }: ModelDistributionChartProps) {
         <div>
             <h3 className="text-sm font-medium text-slate-400 mb-3">Model Distribution</h3>
             {/* 모델별 토큰 바 차트 */}
-            <div className="h-36 mb-3">
+            <div style={{ height: Math.max(chartData.length * 28, 80) }} className="mb-3">
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 8, top: 0, bottom: 0 }}>
-                        <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                        <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={52} />
+                        <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => formatLargeNumber(v)} />
+                        <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={72} />
                         <Tooltip
                             contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', fontSize: 12 }}
+                            itemStyle={{ color: '#f8fafc' }}
+                            labelStyle={{ color: '#94a3b8' }}
                             formatter={(value: number | undefined, name: string | undefined) => [
                                 name === 'tokens' ? (value ?? 0).toLocaleString() : (value ?? 0),
                                 name === 'tokens' ? 'Tokens' : 'Agents',
