@@ -5,7 +5,7 @@
  * pixel-agents의 useExtensionMessages.ts를 대체.
  */
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useAgentStore } from '../../stores/agentStore'
 import type { AgentLiveState } from '../../types/agent'
 import type { OfficeState } from '../engine/officeState'
@@ -23,22 +23,22 @@ function useIdMap() {
   const mapRef = useRef<Map<string, number>>(new Map())
   const counterRef = useRef(1)
 
-  function getOrCreateId(agentId: string): number {
+  const getOrCreateId = useCallback((agentId: string): number => {
     let numId = mapRef.current.get(agentId)
     if (numId === undefined) {
       numId = counterRef.current++
       mapRef.current.set(agentId, numId)
     }
     return numId
-  }
+  }, [])
 
-  function deleteId(agentId: string): void {
+  const deleteId = useCallback((agentId: string): void => {
     mapRef.current.delete(agentId)
-  }
+  }, [])
 
-  function getId(agentId: string): number | undefined {
+  const getId = useCallback((agentId: string): number | undefined => {
     return mapRef.current.get(agentId)
-  }
+  }, [])
 
   return { getOrCreateId, deleteId, getId }
 }

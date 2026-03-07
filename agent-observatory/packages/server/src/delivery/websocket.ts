@@ -88,7 +88,7 @@ export function createWebSocketServer(
     io.emit('metrics:snapshot', snapshot);
   }, 5000);
 
-  stateManager.onChange((agentState) => {
+  const unsubOnChange = stateManager.onChange((agentState) => {
     dashboardBatch.push(agentState);
     pixelBatch.push(agentState);
     io.emit('agent.status', { agent: agentState });
@@ -108,13 +108,13 @@ export function createWebSocketServer(
     }
   });
 
-  stateManager.onRemove((agentId) => {
+  const unsubOnRemove = stateManager.onRemove((agentId) => {
     dashboardBatch = dashboardBatch.filter((state) => state.agent_id !== agentId);
     pixelBatch = pixelBatch.filter((state) => state.agent_id !== agentId);
     io.emit('agent:remove', { agent_id: agentId });
   });
 
-  eventBus.subscribe((event) => {
+  const unsubEventBus = eventBus.subscribe((event) => {
     dashboardEventBatch.push(event);
 
     for (const [socketId, state] of clients) {
@@ -157,11 +157,10 @@ export function createWebSocketServer(
         });
       }
     }
-    // critical로 올라선 경우 warning 키 제거 (재발행 허용)
+    // 더 이상 활성이 아닌 키 제거 (severity 불문) — warning/critical 모두 정리
     for (const key of emittedAlertKeys) {
-      const [agentId] = key.split(':');
       const stillActive = alerts.some((a) => `${a.agent_id}:${a.severity}` === key);
-      if (!stillActive) emittedAlertKeys.delete(agentId + ':warning');
+      if (!stillActive) emittedAlertKeys.delete(key);
     }
   }, 30_000) : null;
 
@@ -200,6 +199,9 @@ export function createWebSocketServer(
     clearInterval(pixelInterval);
     clearInterval(metricsInterval);
     if (costAlertInterval) clearInterval(costAlertInterval);
+    unsubOnChange();
+    unsubOnRemove();
+    unsubEventBus();
     return originalClose(fn);
   };
 
