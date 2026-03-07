@@ -49,10 +49,11 @@ function projectDisplayName(projectId: string): string {
         const normalizedLast = last.replace(/_/g, '-');
 
         if (GENERIC_PROJECT_SEGMENTS.has(normalizedLast.toLowerCase()) && prev) {
-            return prev.replace(/_/g, '-');
+            const label = prev.replace(/_/g, '-');
+            return label.startsWith('.') ? label.slice(1) : label;
         }
 
-        return normalizedLast;
+        return normalizedLast.startsWith('.') ? normalizedLast.slice(1) : normalizedLast;
     }
 
     // Claude Code: 대시 인코딩된 경로 → 의미 있는 끝 1~2개 세그먼트
