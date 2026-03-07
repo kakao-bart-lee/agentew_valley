@@ -21,6 +21,7 @@ const SOURCE_RUNTIME_MAP: Record<AgentSourceType, RuntimeDescriptor> = {
     orchestrator: 'mission_control',
     client: 'custom',
   },
+  pm2: { family: 'custom', client: 'custom' },
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

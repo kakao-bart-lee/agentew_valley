@@ -2,6 +2,7 @@ import { AgentCardGrid } from './AgentCardGrid';
 import { MetricsPanel } from './MetricsPanel';
 import { ActivityFeed } from './ActivityFeed';
 import { CostSummaryCard } from './CostSummaryCard';
+import { ServicesWidget } from './ServicesWidget';
 
 interface DashboardClassicLayoutProps {
     selectedAgentId: string | null;
@@ -37,6 +38,11 @@ export function DashboardClassicLayout({
                     <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
                         <h2 className="mb-2 text-lg font-semibold text-pretty">Activity Feed</h2>
                         <ActivityFeed />
+                    </div>
+
+                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+                        <h2 className="mb-3 text-lg font-semibold text-pretty">PM2 Services</h2>
+                        <ServicesWidget />
                     </div>
                 </div>
             </div>

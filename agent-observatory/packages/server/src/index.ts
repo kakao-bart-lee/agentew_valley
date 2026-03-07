@@ -23,6 +23,7 @@ import {
   OMXCollector,
   OpenClawCollector,
   OpenCodeCollector,
+  Pm2Collector,
   enrichWithContext,
   readContextFromEnv,
 } from '@agent-observatory/collectors';
@@ -126,6 +127,19 @@ async function main(): Promise<void> {
       console.log(`[server] AIS Worktree collector started (paths: ${aisPaths.join(', ')})`);
     } catch (err) {
       console.warn('[server] AIS Worktree collector failed to start:', err);
+    }
+
+    if (process.env.PM2_COLLECTOR_ENABLED !== 'false') {
+      try {
+        const pm2PollMs = parseInt(process.env.PM2_POLL_INTERVAL_MS ?? '5000', 10);
+        const pm2 = new Pm2Collector({ pollIntervalMs: pm2PollMs });
+        pm2.onEvent(publish);
+        await pm2.start();
+        activeCollectors.push(pm2);
+        console.log(`[server] PM2 collector started (poll interval: ${pm2PollMs}ms)`);
+      } catch (err) {
+        console.warn('[server] PM2 collector failed to start:', err);
+      }
     }
 
     const sdkCollector = new AgentSDKCollector();

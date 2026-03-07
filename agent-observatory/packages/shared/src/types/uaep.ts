@@ -17,7 +17,8 @@ export type AgentSourceType =
   | 'langchain'
   | 'crewai'
   | 'custom'
-  | 'mission_control';
+  | 'mission_control'
+  | 'pm2';
 
 /** 관측 대상 런타임 제품군 */
 export type AgentRuntimeFamily =
@@ -236,6 +237,7 @@ export const AGENT_SOURCE_TYPES: readonly AgentSourceType[] = [
   'crewai',
   'custom',
   'mission_control',
+  'pm2',
 ] as const;
 
 /** 지원하는 모든 AgentRuntimeFamily 값 목록 */

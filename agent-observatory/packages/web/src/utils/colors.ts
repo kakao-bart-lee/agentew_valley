@@ -41,6 +41,7 @@ export const SOURCE_COLORS: Record<AgentSourceType, string> = {
     crewai: '#10b981',
     custom: '#9ca3af',
     mission_control: '#6366f1',
+    pm2: '#f43f5e',
 };
 
 export const SOURCE_LABELS: Record<AgentSourceType, string> = {
@@ -54,6 +55,7 @@ export const SOURCE_LABELS: Record<AgentSourceType, string> = {
     crewai: 'Crew',
     custom: '⚙️',
     mission_control: 'MC',
+    pm2: 'PM2',
 };
 
 /** model_id → 뱃지 배경색 */
