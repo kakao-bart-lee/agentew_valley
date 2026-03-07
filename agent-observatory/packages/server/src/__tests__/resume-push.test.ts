@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { InMemoryEventBus } from '../core/event-bus.js';
-import { registerResumePushHook, readResumePushConfigFromEnv } from '../delivery/resume-push.js';
+import { ResumePushHook, registerResumePushHook, readResumePushConfigFromEnv } from '../delivery/resume-push.js';
 import type { UAEPEvent } from '@agent-observatory/shared';
 import { generateEventId } from '@agent-observatory/shared';
 
@@ -57,6 +57,7 @@ describe('registerResumePushHook', () => {
         expect(body.source).toBe('claude_code');
         expect(body.input_tokens).toBe(1000);
         expect(body.output_tokens).toBe(500);
+        expect(body.session_ids).toEqual(['sess-1']);
 
         cleanup();
     });
@@ -86,6 +87,30 @@ describe('registerResumePushHook', () => {
         const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
         expect(body.input_tokens).toBe(300);
         expect(body.output_tokens).toBe(130);
+        expect(body.session_ids).toEqual(['sess-1']);
+
+        cleanup();
+    });
+
+    it('deduplicates session_ids across events with same model', async () => {
+        const cleanup = registerResumePushHook(eventBus, {
+            resumeUrl: 'https://resume.example.com/api/tokens',
+            intervalMs: 1000,
+        });
+
+        // 같은 세션에서 2번, 다른 세션에서 1번
+        eventBus.publish(makeMetricsEvent({ session_id: 'sess-A', data: { input_tokens: 100, output_tokens: 50 } }));
+        eventBus.publish(makeMetricsEvent({ session_id: 'sess-A', data: { input_tokens: 200, output_tokens: 80 } }));
+        eventBus.publish(makeMetricsEvent({ session_id: 'sess-B', data: { input_tokens: 50, output_tokens: 20 } }));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await Promise.resolve();
+
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+        expect(body.session_ids).toHaveLength(2);
+        expect(body.session_ids).toContain('sess-A');
+        expect(body.session_ids).toContain('sess-B');
 
         cleanup();
     });

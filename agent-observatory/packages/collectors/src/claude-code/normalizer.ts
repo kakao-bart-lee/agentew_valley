@@ -261,17 +261,23 @@ export function normalize(
     }
 
     case 'usage': {
+      // 레코드에 modelId가 있으면 컨텍스트에 반영 (이후 이벤트에도 적용)
+      if (record.modelId) {
+        ctx.modelId = record.modelId;
+      }
+      const modelId = ctx.modelId;
       return [
         makeEvent(ctx, 'metrics.usage', ts, {
           provenance: {
             raw_event_type: record.kind,
           },
+          ...(modelId !== undefined ? { model_id: modelId } : {}),
           data: {
             tokens: record.inputTokens + record.outputTokens,
             input_tokens: record.inputTokens,
             output_tokens: record.outputTokens,
             ...(record.costUsd !== undefined ? { cost: record.costUsd } : {}),
-            ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
+            ...(modelId !== undefined ? { model_id: modelId } : {}),
           },
         }),
       ];

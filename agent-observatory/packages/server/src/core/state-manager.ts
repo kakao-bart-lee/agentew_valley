@@ -5,7 +5,7 @@ import type {
   AgentSourceType,
   ToolCategory,
 } from '@agent-observatory/shared';
-import { coerceTaskContext, getToolCategory, inferRuntimeDescriptor } from '@agent-observatory/shared';
+import { coerceTaskContext, estimateCostUsd, getToolCategory, inferRuntimeDescriptor } from '@agent-observatory/shared';
 
 interface ActiveTool {
   tool_name: string;
@@ -65,12 +65,20 @@ function mergeTaskContext(
   };
 }
 
+const IDLE_AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10분 비활성 → 제거
+const IDLE_CLEANUP_INTERVAL_MS = 30 * 1000;    // 30초마다 체크
+
 export class StateManager {
   private agents = new Map<string, AgentLiveState>();
   private activeTools = new Map<string, Map<string, ActiveTool>>();
   private recentToolOutcomes = new Map<string, boolean[]>();
   private changeHandlers: ChangeHandler[] = [];
   private removeHandlers: RemoveHandler[] = [];
+  private cleanupTimer: ReturnType<typeof setInterval> | undefined;
+
+  constructor() {
+    this.cleanupTimer = setInterval(() => this.cleanupIdleAgents(), IDLE_CLEANUP_INTERVAL_MS);
+  }
 
   handleEvent(event: UAEPEvent): void {
     switch (event.type) {
@@ -373,8 +381,17 @@ export class StateManager {
       // tokens 필드가 없으면 input + output 합산
       agent.total_tokens = agent.total_input_tokens + agent.total_output_tokens;
     }
-    if (typeof event.data?.['cost'] === 'number') {
-      agent.total_cost_usd += event.data['cost'] as number;
+    const reportedCost = typeof event.data?.['cost'] === 'number'
+      ? (event.data['cost'] as number)
+      : undefined;
+    const modelIdForCost = event.model_id ?? (event.data?.['model_id'] as string | undefined) ?? agent.model_id;
+    const inputForCost = typeof event.data?.['input_tokens'] === 'number' ? (event.data['input_tokens'] as number) : 0;
+    const outputForCost = typeof event.data?.['output_tokens'] === 'number' ? (event.data['output_tokens'] as number) : 0;
+    const cost = (reportedCost !== undefined && reportedCost > 0)
+      ? reportedCost
+      : (modelIdForCost ? estimateCostUsd(modelIdForCost, inputForCost, outputForCost) : 0);
+    if (cost > 0) {
+      agent.total_cost_usd += cost;
     }
     // 캐시 토큰 집계
     if (typeof event.data?.['cache_creation_input_tokens'] === 'number') {
@@ -463,6 +480,37 @@ export class StateManager {
   private notifyRemove(agentId: string): void {
     for (const handler of this.removeHandlers) {
       handler(agentId);
+    }
+  }
+
+  private cleanupIdleAgents(): void {
+    const now = Date.now();
+    for (const agent of this.agents.values()) {
+      if (agent.status !== 'idle') continue;
+
+      const lastActivity = new Date(agent.last_activity).getTime();
+      if (now - lastActivity < IDLE_AGENT_TIMEOUT_MS) continue;
+
+      // 부모의 child_agent_ids에서 제거 (서브에이전트인 경우)
+      if (agent.parent_agent_id) {
+        const parent = this.agents.get(agent.parent_agent_id);
+        if (parent) {
+          parent.child_agent_ids = parent.child_agent_ids.filter((id) => id !== agent.agent_id);
+          this.notifyChange(parent);
+        }
+      }
+
+      this.agents.delete(agent.agent_id);
+      this.activeTools.delete(agent.agent_id);
+      this.recentToolOutcomes.delete(agent.agent_id);
+      this.notifyRemove(agent.agent_id);
+    }
+  }
+
+  destroy(): void {
+    if (this.cleanupTimer !== undefined) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
     }
   }
 

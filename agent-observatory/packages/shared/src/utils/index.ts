@@ -31,3 +31,6 @@ export {
   isValidSourceType,
   isValidEventType,
 } from './validation.js';
+
+export type { ModelPricing } from './model-pricing.js';
+export { MODEL_PRICING, getPricing, estimateCostUsd } from './model-pricing.js';

@@ -34,6 +34,19 @@ describe('TOOL_CATEGORY_MAP', () => {
   it('should map communication tools correctly', () => {
     expect(TOOL_CATEGORY_MAP['AskUserQuestion']).toBe('communication');
     expect(TOOL_CATEGORY_MAP['Task']).toBe('communication');
+    expect(TOOL_CATEGORY_MAP['Agent']).toBe('communication');
+    expect(TOOL_CATEGORY_MAP['Skill']).toBe('communication');
+    expect(TOOL_CATEGORY_MAP['TaskCreate']).toBe('communication');
+    expect(TOOL_CATEGORY_MAP['TaskUpdate']).toBe('communication');
+  });
+
+  it('should map search tools correctly', () => {
+    expect(TOOL_CATEGORY_MAP['WebSearch']).toBe('search');
+    expect(TOOL_CATEGORY_MAP['ToolSearch']).toBe('search');
+  });
+
+  it('should map TodoWrite as file_write', () => {
+    expect(TOOL_CATEGORY_MAP['TodoWrite']).toBe('file_write');
   });
 });
 
@@ -54,9 +67,21 @@ describe('getToolCategory', () => {
     expect(getToolCategory('custom_search')).toBe('other');
   });
 
-  it('should be case-sensitive', () => {
-    expect(getToolCategory('read')).toBe('other');
-    expect(getToolCategory('BASH')).toBe('other');
-    expect(getToolCategory('websearch')).toBe('other');
+  it('should be case-insensitive for known tools', () => {
+    expect(getToolCategory('read')).toBe('file_read');
+    expect(getToolCategory('BASH')).toBe('command');
+    expect(getToolCategory('websearch')).toBe('search');
+    expect(getToolCategory('edit')).toBe('file_write');
+    expect(getToolCategory('glob')).toBe('file_read');
+  });
+
+  it('should handle MCP tool prefixes', () => {
+    expect(getToolCategory('mcp__claude-in-chrome__computer')).toBe('web');
+    expect(getToolCategory('mcp__claude-in-chrome__navigate')).toBe('web');
+  });
+
+  it('should handle websearch_ prefix tools', () => {
+    expect(getToolCategory('websearch_web_search_exa')).toBe('search');
+    expect(getToolCategory('grep_app_searchGitHub')).toBe('search');
   });
 });

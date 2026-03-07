@@ -23,6 +23,7 @@ import { createWebSocketServer } from './delivery/websocket.js';
 import { createCollectorGateway } from './delivery/collector-gateway.js';
 import type { CollectorGateway } from './delivery/collector-gateway.js';
 import { createHooksRouter } from './delivery/hooks.js';
+import { ResumePushHook, readResumePushConfigFromEnv } from './delivery/resume-push.js';
 
 const __dirname = resolve(fileURLToPath(import.meta.url), '..');
 
@@ -48,6 +49,7 @@ export interface AppInstance {
   historyStore: HistoryStore;
   taskContextProvider: TaskContextProvider;
   collectorGateway: CollectorGateway;
+  resumePushHook: ResumePushHook | null;
   /** Gracefully close the app (DB connections, etc.) */
   close(): void;
 }
@@ -128,12 +130,48 @@ export function createApp(config?: AppConfig): AppInstance {
     res.json({ collectors, total: collectors.length });
   });
 
+  // Resume push hook 등록
+  const resumePushConfig = readResumePushConfigFromEnv();
+  let resumePushHook: ResumePushHook | null = null;
+  if (resumePushConfig) {
+    resumePushHook = new ResumePushHook({
+      ...resumePushConfig,
+      db: historyStore.getDb(),
+    });
+    resumePushHook.start(eventBus);
+    console.info(`[server] Resume push enabled → ${resumePushConfig.resumeUrl} (${resumePushConfig.intervalMs ?? 300_000}ms interval)`);
+
+    // POST /api/v1/resume/sync — 수동 full sync 트리거
+    app.post('/api/v1/resume/sync', (_req, res) => {
+      if (!resumePushHook) {
+        return res.status(503).json({ error: 'Resume push not configured', code: 'RESUME_PUSH_DISABLED' });
+      }
+      // 비동기 실행 — 결과는 로그로 확인
+      void resumePushHook.fullSync().then((result) => {
+        if (!result.ok) {
+          console.error(`[resume-push] Manual sync failed: ${result.error ?? 'unknown'}`);
+        }
+      });
+      return res.json({ ok: true, message: 'Full sync started' });
+    });
+
+    // GET /api/v1/resume/status
+    app.get('/api/v1/resume/status', (_req, res) => {
+      if (!resumePushHook) {
+        return res.status(503).json({ error: 'Resume push not configured', code: 'RESUME_PUSH_DISABLED' });
+      }
+      return res.json({ enabled: true, ...resumePushHook.status() });
+    });
+  }
+
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[server] Unhandled error:', err.message);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
   });
 
   const close = () => {
+    resumePushHook?.stop();
+    stateManager.destroy();
     collectorGateway.close();
     historyStore.close();
   };
@@ -148,6 +186,7 @@ export function createApp(config?: AppConfig): AppInstance {
     historyStore,
     taskContextProvider,
     collectorGateway,
+    resumePushHook,
     close,
   };
 }

@@ -60,6 +60,8 @@ export interface CCUsage {
   outputTokens: number;
   /** Claude Code JSONL 최상위 costUSD 필드 */
   costUsd?: number;
+  /** assistant message.model 필드 */
+  modelId?: string;
   timestamp?: string;
 }
 
@@ -170,7 +172,9 @@ export function parseLine(line: string): CCParsedRecord[] {
     if (inputTokens > 0 || outputTokens > 0) {
       const costUsd =
         typeof record.costUSD === 'number' ? record.costUSD : undefined;
-      records.push({ kind: 'usage', inputTokens, outputTokens, costUsd, timestamp });
+      const modelId =
+        typeof message?.model === 'string' && message.model ? message.model : undefined;
+      records.push({ kind: 'usage', inputTokens, outputTokens, costUsd, modelId, timestamp });
     }
 
     return records;

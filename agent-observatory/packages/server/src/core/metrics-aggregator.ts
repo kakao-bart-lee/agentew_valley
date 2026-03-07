@@ -4,7 +4,7 @@ import type {
   ToolCategory,
   AgentSourceType,
 } from '@agent-observatory/shared';
-import { getToolCategory } from '@agent-observatory/shared';
+import { getToolCategory, estimateCostUsd } from '@agent-observatory/shared';
 import type { StateManager } from './state-manager.js';
 import type Database from 'better-sqlite3';
 
@@ -128,8 +128,14 @@ export class MetricsAggregator {
         window.output_tokens += outputTokens;
         window.tokens += totalTokens;
 
-        if (typeof event.data?.['cost'] === 'number') {
-          const cost = event.data['cost'] as number;
+        const reportedCost = typeof event.data?.['cost'] === 'number'
+          ? (event.data['cost'] as number)
+          : undefined;
+        const modelIdForCost = event.model_id ?? (event.data?.['model_id'] as string | undefined);
+        const cost = (reportedCost !== undefined && reportedCost > 0)
+          ? reportedCost
+          : (modelIdForCost ? estimateCostUsd(modelIdForCost, inputTokens, outputTokens) : 0);
+        if (cost > 0) {
           this.totalCost += cost;
           window.cost += cost;
         }
@@ -158,6 +164,31 @@ export class MetricsAggregator {
       default:
         break;
     }
+  }
+
+  private buildModelDistribution(): Record<string, { agent_count: number; token_count: number }> {
+    // 1. StateManager 현재 에이전트 기준 (live agents)
+    const liveAgentIds = new Set<string>();
+    const result: Record<string, { agent_count: number; token_count: number }> = {};
+
+    if (this.stateManager) {
+      for (const agent of this.stateManager.getAllAgents()) {
+        liveAgentIds.add(agent.agent_id);
+        if (!agent.model_id) continue;
+        const entry = result[agent.model_id] ?? { agent_count: 0, token_count: 0 };
+        entry.agent_count++;
+        entry.token_count += agent.total_tokens;
+        result[agent.model_id] = entry;
+      }
+    }
+
+    // 2. 이벤트 누적분에서 이미 종료된(StateManager에 없는) 에이전트 토큰만 추가
+    for (const [modelId, dist] of Object.entries(this.modelDistribution)) {
+      if (result[modelId]) continue; // live 에이전트가 있으면 스킵 (중복 방지)
+      result[modelId] = { agent_count: dist.agent_count, token_count: dist.token_count };
+    }
+
+    return result;
   }
 
   getSnapshot(): MetricsSnapshot {
@@ -220,7 +251,7 @@ export class MetricsAggregator {
       total_tool_calls_per_minute: toolCallsLastMin,
       tool_distribution: { ...this.toolDistribution } as Record<ToolCategory, number>,
       source_distribution: { ...this.sourceDistribution } as Record<AgentSourceType, number>,
-      model_distribution: { ...this.modelDistribution },
+      model_distribution: this.buildModelDistribution(),
       cache_hit_rate: this.totalCacheReadTokens > 0
         ? this.totalCacheReadTokens / (this.totalInputTokens + this.totalCacheReadTokens)
         : 0,
