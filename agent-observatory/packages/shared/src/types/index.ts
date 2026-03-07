@@ -104,6 +104,10 @@ export type {
   WSAgentRemovePayload,
   WSEventPayload,
   WSMetricsSnapshotPayload,
+  WSTaskContextPayload,
+  WSCostAlertPayload,
+  WSAgentHealthPayload,
+  UntrackedSummary,
   ServerToClientEvents,
   ClientToServerEvents,
 } from './api.js';

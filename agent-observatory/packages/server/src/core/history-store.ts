@@ -1316,6 +1316,35 @@ export class HistoryStore {
     return row;
   }
 
+  /** R-004: Paperclip 컨텍스트 없이 실행된 세션(project_id IS NULL) 집계 */
+  getUntrackedSummary(opts?: { from?: string; to?: string }): {
+    session_count: number;
+    total_cost_usd: number;
+    total_tokens: number;
+  } {
+    const conditions = ['project_id IS NULL'];
+    const params: unknown[] = [];
+
+    if (opts?.from) {
+      conditions.push('start_time >= ?');
+      params.push(opts.from);
+    }
+    if (opts?.to) {
+      conditions.push('start_time <= ?');
+      params.push(opts.to);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as session_count,
+             COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
+             COALESCE(SUM(total_tokens), 0) as total_tokens
+      FROM sessions ${where}
+    `).get(...params) as { session_count: number; total_cost_usd: number; total_tokens: number };
+
+    return row;
+  }
+
   /** Get cost grouped by agent */
   getCostByAgent(opts?: { from?: string; to?: string }): {
     agent_id: string;

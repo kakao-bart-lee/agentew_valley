@@ -4,6 +4,7 @@ import type { HistoryStore } from '../core/history-store.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { TaskContextProvider } from '../core/task-context-provider.js';
+import type { PaperclipAdapter } from '../core/paperclip-adapter.js';
 import type { RuntimeDescriptor, TaskContextRef, UAEPEvent } from '@agent-observatory/shared';
 
 export interface ApiConfig {
@@ -11,6 +12,8 @@ export interface ApiConfig {
   metricsIntervalMs: number;
   timeseriesRetentionMinutes: number;
   taskContextProvider?: TaskContextProvider;
+  /** R-005: Paperclip 읽기 전용 어댑터 (미설정 시 graceful degradation) */
+  paperclipAdapter?: PaperclipAdapter;
 }
 
 const DEFAULT_CONFIG: ApiConfig = {
@@ -74,6 +77,53 @@ export function createApiRouter(
     res.json({ teams });
   });
 
+  router.get('/api/v1/agents/health', (req, res) => {
+    void (async () => {
+      const agents = stateManager.getAllAgents();
+
+      // Paperclip에서 task/project 이름 batch 조회 (R-005 + R-006 통합)
+      const enrichedAgents = await Promise.all(agents.map(async (agent) => {
+        let taskName: string | undefined;
+        let projectName: string | undefined;
+        if (config.paperclipAdapter) {
+          const [task, project] = await Promise.all([
+            agent.task_id ? config.paperclipAdapter.getTask(agent.task_id) : Promise.resolve(undefined),
+            agent.project_id ? config.paperclipAdapter.getProject(agent.project_id) : Promise.resolve(undefined),
+          ]);
+          taskName = task?.title;
+          projectName = project?.name;
+        }
+        return {
+          agent_id: agent.agent_id,
+          agent_name: agent.agent_name,
+          source: agent.source,
+          health_status: agent.health_status,
+          status: agent.status,
+          context_window_usage: agent.context_window_usage,
+          tool_call_success_rate: agent.tool_call_success_rate,
+          total_errors: agent.total_errors,
+          last_error: agent.last_error,
+          last_run_status: agent.last_run_status,
+          total_tool_calls: agent.total_tool_calls,
+          task_id: agent.task_id,
+          task_name: taskName,
+          project_id: agent.project_id,
+          project_name: projectName,
+          last_activity: agent.last_activity,
+        };
+      }));
+
+      const summary = {
+        total: enrichedAgents.length,
+        normal: enrichedAgents.filter((a) => a.health_status === 'normal').length,
+        caution: enrichedAgents.filter((a) => a.health_status === 'caution').length,
+        error: enrichedAgents.filter((a) => a.health_status === 'error').length,
+      };
+
+      res.json({ agents: enrichedAgents, summary });
+    })();
+  });
+
   router.get('/api/v1/agents/:id', (req, res) => {
     const agent = stateManager.getAgent(req.params.id);
     if (!agent) {
@@ -96,15 +146,36 @@ export function createApiRouter(
   });
 
   router.get('/api/v1/agents/:id/context', (req, res) => {
-    const agentId = req.params.id;
-    const agent = stateManager.getAgent(agentId);
-    if (!agent) {
-      res.status(404).json({ error: 'Agent not found', code: 'AGENT_NOT_FOUND' });
-      return;
-    }
+    void (async () => {
+      const agentId = req.params.id;
+      const agent = stateManager.getAgent(agentId);
+      if (!agent) {
+        res.status(404).json({ error: 'Agent not found', code: 'AGENT_NOT_FOUND' });
+        return;
+      }
 
-    const taskContext = config.taskContextProvider?.getAgentContext(agentId);
-    res.json({ task_context: taskContext });
+      const taskContext = config.taskContextProvider?.getAgentContext(agentId);
+
+      // R-005: Paperclip에서 task/project 이름 overlay
+      let taskName: string | undefined;
+      let projectName: string | undefined;
+      if (config.paperclipAdapter) {
+        const tid = taskContext?.task_id ?? agent.task_id;
+        const pid = taskContext?.project_id ?? agent.project_id;
+        const [task, project] = await Promise.all([
+          tid ? config.paperclipAdapter.getTask(tid) : Promise.resolve(undefined),
+          pid ? config.paperclipAdapter.getProject(pid) : Promise.resolve(undefined),
+        ]);
+        taskName = task?.title;
+        projectName = project?.name;
+      }
+
+      res.json({
+        task_context: taskContext,
+        task_name: taskName,
+        project_name: projectName,
+      });
+    })();
   });
 
   router.get('/api/v1/sessions', (_req, res) => {
@@ -144,15 +215,36 @@ export function createApiRouter(
   });
 
   router.get('/api/v1/sessions/:id/context', (req, res) => {
-    const sessionId = req.params.id;
-    const session = historyStore.getSession(sessionId);
-    if (!session) {
-      res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
-      return;
-    }
+    void (async () => {
+      const sessionId = req.params.id;
+      const session = historyStore.getSession(sessionId);
+      if (!session) {
+        res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
+        return;
+      }
 
-    const taskContext = config.taskContextProvider?.getSessionContext(sessionId);
-    res.json({ task_context: taskContext });
+      const taskContext = config.taskContextProvider?.getSessionContext(sessionId);
+
+      // R-005: Paperclip에서 task/project 이름 overlay
+      let taskName: string | undefined;
+      let projectName: string | undefined;
+      if (config.paperclipAdapter) {
+        const tid = taskContext?.task_id ?? (session.task_id ?? undefined);
+        const pid = taskContext?.project_id ?? (session.project_id ?? undefined);
+        const [task, project] = await Promise.all([
+          tid ? config.paperclipAdapter.getTask(tid) : Promise.resolve(undefined),
+          pid ? config.paperclipAdapter.getProject(pid) : Promise.resolve(undefined),
+        ]);
+        taskName = task?.title;
+        projectName = project?.name;
+      }
+
+      res.json({
+        task_context: taskContext,
+        task_name: taskName,
+        project_name: projectName,
+      });
+    })();
   });
 
   router.get('/api/v1/sessions/:id/replay', (req, res) => {
@@ -236,6 +328,7 @@ export function createApiRouter(
     const topAgents = historyStore.getCostByAgent({ from, to });
     const topModels = historyStore.getCostByModel({ from, to });
     const budgetAlerts = historyStore.getBudgetAlerts();
+    const untrackedSummary = historyStore.getUntrackedSummary({ from, to });
 
     const withPercentages = <T extends { total_cost_usd: number }>(rows: T[]) =>
       rows.map((row) => ({
@@ -261,6 +354,7 @@ export function createApiRouter(
         : budgetAlerts.length > 0
           ? 'warning'
           : 'ok',
+      untracked_summary: untrackedSummary,
     });
   });
 

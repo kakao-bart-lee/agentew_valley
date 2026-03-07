@@ -235,6 +235,63 @@ describe('REST API', () => {
       expect(res.body).not.toHaveProperty('pending_approvals');
       expect(res.body).not.toHaveProperty('mc_db_connected');
     });
+
+    it('R-004: includes untracked_summary for sessions without project_id', async () => {
+      // project_id 있는 세션
+      instance.eventBus.publish(makeSessionStart('agent-tracked', 'sess-tracked', {
+        ts: '2026-03-01T10:00:00Z',
+        project_id: 'moonlit',
+      }));
+      instance.eventBus.publish(makeMetricsUsage(100, 0.5, 'agent-tracked', { session_id: 'sess-tracked' }));
+
+      // project_id 없는 세션 (Untracked)
+      instance.eventBus.publish(makeSessionStart('agent-free', 'sess-free', {
+        ts: '2026-03-01T11:00:00Z',
+      }));
+      instance.eventBus.publish(makeMetricsUsage(200, 0.3, 'agent-free', { session_id: 'sess-free' }));
+
+      const res = await request(instance.app).get('/api/v1/dashboard/summary?from=2026-03-01T00:00:00Z&to=2026-04-01T00:00:00Z');
+
+      expect(res.status).toBe(200);
+      expect(res.body.untracked_summary).toBeDefined();
+      expect(res.body.untracked_summary.session_count).toBe(1);
+      expect(res.body.untracked_summary.total_cost_usd).toBeCloseTo(0.3);
+      expect(res.body.untracked_summary.total_tokens).toBe(200);
+    });
+  });
+
+  describe('GET /api/v1/agents/health', () => {
+    it('returns empty health summary when no agents', async () => {
+      const res = await request(instance.app).get('/api/v1/agents/health');
+      expect(res.status).toBe(200);
+      expect(res.body.agents).toEqual([]);
+      expect(res.body.summary.total).toBe(0);
+      expect(res.body.summary.normal).toBe(0);
+    });
+
+    it('includes health_status, context_window_usage, error fields', async () => {
+      instance.eventBus.publish(makeSessionStart('agent-h', 'sess-h'));
+
+      const res = await request(instance.app).get('/api/v1/agents/health');
+      expect(res.status).toBe(200);
+      expect(res.body.agents).toHaveLength(1);
+      const agent = res.body.agents[0];
+      expect(agent.agent_id).toBe('agent-h');
+      expect(agent.health_status).toBeDefined();
+      expect(agent.status).toBe('idle');
+      expect(agent.total_errors).toBe(0);
+    });
+
+    it('summary counts by health_status', async () => {
+      instance.eventBus.publish(makeSessionStart('a1', 's1'));
+      instance.eventBus.publish(makeSessionStart('a2', 's2'));
+      instance.eventBus.publish(makeSessionStart('a3', 's3'));
+
+      const res = await request(instance.app).get('/api/v1/agents/health');
+      expect(res.status).toBe(200);
+      expect(res.body.summary.total).toBe(3);
+      expect(res.body.summary.normal + res.body.summary.caution + res.body.summary.error).toBe(3);
+    });
   });
 
   describe('GET /api/v1/config', () => {

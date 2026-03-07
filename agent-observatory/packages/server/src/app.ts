@@ -14,6 +14,7 @@ import { MetricsAggregator } from './core/metrics-aggregator.js';
 import { HistoryStore } from './core/history-store.js';
 import { HistoryStoreTaskContextProvider } from './core/task-context-provider.js';
 import type { TaskContextProvider } from './core/task-context-provider.js';
+import { PaperclipAdapter } from './core/paperclip-adapter.js';
 import { createApiRouter } from './delivery/api.js';
 import type { ApiConfig } from './delivery/api.js';
 import { createAnalyticsRouter } from './delivery/api-analytics.js';
@@ -85,11 +86,18 @@ export function createApp(config?: AppConfig): AppInstance {
     });
   }
 
+  // R-005: Paperclip Adapter — PAPERCLIP_API_URL 설정 시 활성화
+  const paperclipAdapter = PaperclipAdapter.fromEnv();
+  if (paperclipAdapter) {
+    console.info(`[server] Paperclip Adapter enabled (${process.env['PAPERCLIP_API_URL']})`);
+  }
+
   const apiConfig: ApiConfig = {
     watchPaths: config?.watchPaths ?? [],
     metricsIntervalMs: config?.metricsIntervalMs ?? 5000,
     timeseriesRetentionMinutes: config?.timeseriesRetentionMinutes ?? 60,
     taskContextProvider,
+    paperclipAdapter: paperclipAdapter ?? undefined,
   };
 
   app.use(createApiRouter(stateManager, historyStore, metricsAggregator, eventBus, apiConfig));
@@ -110,7 +118,7 @@ export function createApp(config?: AppConfig): AppInstance {
   }
 
   const server = createServer(app);
-  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator, config?.dashboardApiKey);
+  const io = createWebSocketServer(server, stateManager, eventBus, metricsAggregator, config?.dashboardApiKey, historyStore);
 
   const collectorApiKeys = config?.collectorApiKeys ?? [];
   const collectorGateway = createCollectorGateway(io, eventBus, collectorApiKeys);

@@ -9,6 +9,7 @@ import type {
 import type { StateManager } from '../core/state-manager.js';
 import type { EventBus } from '../core/event-bus.js';
 import type { MetricsAggregator } from '../core/metrics-aggregator.js';
+import type { HistoryStore } from '../core/history-store.js';
 
 type ViewType = 'dashboard' | 'pixel';
 
@@ -23,6 +24,7 @@ export function createWebSocketServer(
   eventBus: EventBus,
   metricsAggregator: MetricsAggregator,
   dashboardApiKey?: string,
+  historyStore?: HistoryStore,
 ): SocketIOServer<ClientToServerEvents, ServerToClientEvents> {
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
@@ -90,6 +92,20 @@ export function createWebSocketServer(
     dashboardBatch.push(agentState);
     pixelBatch.push(agentState);
     io.emit('agent.status', { agent: agentState });
+
+    // R-007: agent.health — 에러 상태 또는 에러율 변화 알림
+    const errorRate = agentState.total_tool_calls > 0
+      ? agentState.total_errors / agentState.total_tool_calls
+      : 0;
+    if (agentState.total_errors > 0 || agentState.status === 'error') {
+      io.emit('agent.health', {
+        agent_id: agentState.agent_id,
+        status: agentState.status,
+        total_errors: agentState.total_errors,
+        total_tool_calls: agentState.total_tool_calls,
+        error_rate: errorRate,
+      });
+    }
   });
 
   stateManager.onRemove((agentId) => {
@@ -110,7 +126,44 @@ export function createWebSocketServer(
         socket.emit('event', event);
       }
     }
+
+    // R-007: task.context — session.start 시 Paperclip 컨텍스트 브로드캐스트
+    if (event.type === 'session.start' && (event.task_id || event.project_id || event.goal_id)) {
+      io.emit('task.context', {
+        agent_id: event.agent_id,
+        session_id: event.session_id,
+        project_id: event.project_id,
+        task_id: event.task_id,
+        goal_id: event.goal_id,
+      });
+    }
   });
+
+  // R-007: cost.alert — 30초마다 budget alerts 체크, 새 alert 발생 시 emit
+  const emittedAlertKeys = new Set<string>();
+  const costAlertInterval = historyStore ? setInterval(() => {
+    const alerts = historyStore.getBudgetAlerts();
+    for (const alert of alerts) {
+      const key = `${alert.agent_id}:${alert.severity}`;
+      if (!emittedAlertKeys.has(key)) {
+        emittedAlertKeys.add(key);
+        io.emit('cost.alert', {
+          agent_id: alert.agent_id,
+          agent_name: alert.agent_name,
+          budget_monthly_usd: alert.budget_monthly_cents / 100,
+          spent_monthly_usd: alert.spent_monthly_usd,
+          utilization_ratio: alert.utilization_ratio,
+          severity: alert.severity,
+        });
+      }
+    }
+    // critical로 올라선 경우 warning 키 제거 (재발행 허용)
+    for (const key of emittedAlertKeys) {
+      const [agentId] = key.split(':');
+      const stillActive = alerts.some((a) => `${a.agent_id}:${a.severity}` === key);
+      if (!stillActive) emittedAlertKeys.delete(agentId + ':warning');
+    }
+  }, 30_000) : null;
 
   io.on('connection', (socket) => {
     const clientState: ClientState = {
@@ -146,6 +199,7 @@ export function createWebSocketServer(
     clearInterval(dashboardInterval);
     clearInterval(pixelInterval);
     clearInterval(metricsInterval);
+    if (costAlertInterval) clearInterval(costAlertInterval);
     return originalClose(fn);
   };
 

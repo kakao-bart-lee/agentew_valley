@@ -21,6 +21,8 @@ import {
   OMXCollector,
   OpenClawCollector,
   OpenCodeCollector,
+  enrichWithContext,
+  readContextFromEnv,
 } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
 
@@ -44,11 +46,18 @@ async function main(): Promise<void> {
 
   const activeCollectors: Collector[] = [];
 
+  // R-002: Context Enrichment — Paperclip/OpenClaw이 spawn 시 주입한 env vars 읽기
+  const collectorCtx = readContextFromEnv();
+  const publish = (event: UAEPEvent) => eventBus.publish(enrichWithContext(event, collectorCtx));
+  if (collectorCtx.task_id || collectorCtx.project_id || collectorCtx.goal_id) {
+    console.log(`[server] Context enrichment active: task_id=${collectorCtx.task_id ?? '—'} project_id=${collectorCtx.project_id ?? '—'} goal_id=${collectorCtx.goal_id ?? '—'}`);
+  }
+
   if (mode === 'local') {
     try {
       const ccPaths = (process.env.CLAUDE_CODE_WATCH_PATHS ?? '~/.claude/projects').split(',');
       const cc = new ClaudeCodeCollector({ watchPaths: ccPaths, tailOnly });
-      cc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      cc.onEvent(publish);
       await cc.start();
       activeCollectors.push(cc);
       console.log(`[server] Claude Code collector started (paths: ${ccPaths.join(', ')})`);
@@ -59,7 +68,7 @@ async function main(): Promise<void> {
     try {
       const ocPaths = (process.env.OPENCLAW_WATCH_PATHS ?? '~/.openclaw/agents').split(',');
       const oc = new OpenClawCollector({ watchPaths: ocPaths, tailOnly });
-      oc.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      oc.onEvent(publish);
       await oc.start();
       activeCollectors.push(oc);
       console.log(`[server] OpenClaw collector started (paths: ${ocPaths.join(', ')})`);
@@ -70,7 +79,7 @@ async function main(): Promise<void> {
     try {
       const omxPaths = (process.env.OMX_WATCH_PATHS ?? '.omx').split(',');
       const omx = new OMXCollector({ watchPaths: omxPaths, tailOnly });
-      omx.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      omx.onEvent(publish);
       await omx.start();
       activeCollectors.push(omx);
       console.log(`[server] OMX collector started (paths: ${omxPaths.join(', ')})`);
@@ -86,7 +95,7 @@ async function main(): Promise<void> {
         dbPath: process.env.OPENCODE_DB_PATH ?? undefined,
         sessionsIndexPath: process.env.OPENCODE_SESSIONS_INDEX_PATH ?? undefined,
       });
-      opencode.onEvent((event: UAEPEvent) => eventBus.publish(event));
+      opencode.onEvent(publish);
       await opencode.start();
       activeCollectors.push(opencode);
       console.log(`[server] OpenCode collector started (paths: ${opencodePaths.join(', ')})`);
@@ -95,14 +104,14 @@ async function main(): Promise<void> {
     }
 
     const sdkCollector = new AgentSDKCollector();
-    sdkCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    sdkCollector.onEvent(publish);
     app.use(sdkCollector.getRouter());
     activeCollectors.push(sdkCollector);
     console.log('[server] Agent SDK hook collector mounted');
 
     const apiKeys = (process.env.OBSERVATORY_API_KEYS ?? '').split(',').filter(Boolean);
     const httpCollector = new HTTPCollector({ apiKeys: apiKeys.length > 0 ? apiKeys : undefined });
-    httpCollector.onEvent((event: UAEPEvent) => eventBus.publish(event));
+    httpCollector.onEvent(publish);
     app.use(httpCollector.getRouter());
     activeCollectors.push(httpCollector);
     console.log(`[server] HTTP collector mounted (API keys: ${apiKeys.length > 0 ? `${apiKeys.length} configured` : 'open access'})`);

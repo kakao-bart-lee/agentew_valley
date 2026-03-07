@@ -238,6 +238,13 @@ export interface BudgetAlertEntry {
   severity: 'warning' | 'critical';
 }
 
+export interface UntrackedSummary {
+  /** project_id = null인 세션 수 */
+  session_count: number;
+  total_cost_usd: number;
+  total_tokens: number;
+}
+
 export interface DashboardSummaryResponse {
   time_range: { from: string; to: string };
   cost_summary: {
@@ -251,6 +258,8 @@ export interface DashboardSummaryResponse {
   budget_alerts: BudgetAlertEntry[];
   pending_alerts: number;
   alert_severity: 'ok' | 'warning' | 'critical';
+  /** R-004: Paperclip 컨텍스트 없이 실행된 세션 집계 */
+  untracked_summary: UntrackedSummary;
 }
 
 export interface RealtimeAgentStatusPayload {
@@ -276,6 +285,35 @@ export type WSMetricsSnapshotPayload = MetricsSnapshot;
 
 // ─── WebSocket 이벤트 맵 (타입 안전한 Socket.IO 사용) ───
 
+/** R-007: Paperclip task 컨텍스트가 세션에 부착될 때 브로드캐스트 */
+export interface WSTaskContextPayload {
+  agent_id: string;
+  session_id: string;
+  project_id?: string;
+  task_id?: string;
+  goal_id?: string;
+}
+
+/** R-007: 예산 임계값 도달 알림 */
+export interface WSCostAlertPayload {
+  agent_id: string;
+  agent_name: string;
+  budget_monthly_usd: number;
+  spent_monthly_usd: number;
+  utilization_ratio: number;
+  severity: 'warning' | 'critical';
+}
+
+/** R-007: 에이전트 건강 상태 변화 알림 */
+export interface WSAgentHealthPayload {
+  agent_id: string;
+  status: string;
+  total_errors: number;
+  total_tool_calls: number;
+  /** 최근 활동의 오류 비율 (0~1) */
+  error_rate: number;
+}
+
 export interface ServerToClientEvents {
   'init': (payload: WSInitPayload) => void;
   'agent:state': (payload: WSAgentStatePayload) => void;
@@ -283,6 +321,12 @@ export interface ServerToClientEvents {
   'event': (payload: WSEventPayload) => void;
   'metrics:snapshot': (payload: WSMetricsSnapshotPayload) => void;
   'agent.status': (payload: RealtimeAgentStatusPayload) => void;
+  /** R-007: task 컨텍스트 변경 */
+  'task.context': (payload: WSTaskContextPayload) => void;
+  /** R-007: 예산 알림 */
+  'cost.alert': (payload: WSCostAlertPayload) => void;
+  /** R-007: 에이전트 건강 상태 변화 */
+  'agent.health': (payload: WSAgentHealthPayload) => void;
 }
 
 export interface ClientToServerEvents {

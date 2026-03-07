@@ -26,4 +26,5 @@ export type { OpenCodeCollectorConfig } from './opencode/index.js';
 
 export { ClaudeCodeAdapter, OpenClawAdapter, OpenCodeAdapter } from './adapters.js';
 
-export type { Collector, CollectorConfig } from './base.js';
+export type { Collector, CollectorConfig, CollectorContext } from './base.js';
+export { readContextFromEnv, enrichWithContext } from './base.js';

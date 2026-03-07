@@ -139,6 +139,58 @@ describe('WebSocket Server', () => {
     expect(events).toHaveLength(0);
   });
 
+  it('R-007: emits task.context when session.start has Paperclip context', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    const ctxPromise = waitFor<{ agent_id: string; task_id: string; project_id: string }>(socket, 'task.context', 3000);
+    instance.eventBus.publish(makeSessionStart('agent-ctx', 'sess-ctx', {
+      project_id: 'moonlit',
+      task_id: 'T-42',
+      goal_id: 'G-1',
+    }));
+
+    const ctx = await ctxPromise;
+    expect(ctx.agent_id).toBe('agent-ctx');
+    expect(ctx.project_id).toBe('moonlit');
+    expect(ctx.task_id).toBe('T-42');
+  });
+
+  it('R-007: does not emit task.context for sessions without context', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    const received: unknown[] = [];
+    socket.on('task.context', (d: unknown) => received.push(d));
+
+    instance.eventBus.publish(makeSessionStart('agent-no-ctx'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(received).toHaveLength(0);
+  });
+
+  it('R-007: emits agent.health when agent encounters errors', async () => {
+    const socket = connect();
+    await waitFor(socket, 'init');
+
+    const healthEvents: Array<{ agent_id: string; total_errors: number }> = [];
+    socket.on('agent.health', (d: { agent_id: string; total_errors: number }) => {
+      healthEvents.push(d);
+    });
+
+    instance.eventBus.publish(makeSessionStart('agent-health', 'sess-health'));
+    instance.eventBus.publish(makeEvent({
+      type: 'tool.error',
+      agent_id: 'agent-health',
+      session_id: 'sess-health',
+      data: { tool_name: 'Bash', error: 'command not found' },
+    }));
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    expect(healthEvents.some((e) => e.agent_id === 'agent-health' && e.total_errors > 0)).toBe(true);
+  });
+
   it('does not emit removed semantic legacy websocket channels', async () => {
     const socket = connect();
     await waitFor(socket, 'init');
