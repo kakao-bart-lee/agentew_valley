@@ -6,9 +6,11 @@
  *
  * 단가: USD per 1,000,000 tokens (MTok)
  * 출처: 각 공식 가격 페이지 (2026-03 기준)
- *   - Anthropic: https://www.anthropic.com/pricing
- *   - OpenAI:    https://developers.openai.com/api/docs/pricing
- *   - Google:    https://cloud.google.com/vertex-ai/generative-ai/pricing
+ *   - Anthropic:   https://www.anthropic.com/pricing
+ *   - OpenAI:      https://developers.openai.com/api/docs/pricing
+ *   - Google:      https://cloud.google.com/vertex-ai/generative-ai/pricing
+ *   - OpenRouter:  https://openrouter.ai/api/v1/models (API)
+ *   - z.ai (GLM):  https://z.ai  (via OpenRouter API)
  */
 
 export interface ModelPricing {
@@ -248,6 +250,193 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Gemini 1.5 Flash
   'gemini-1.5-flash':                   { input:  0.075, output:  0.30 },
   'google/gemini-1.5-flash':            { input:  0.075, output:  0.30 },
+
+  // ─────────────────────────────────────────────────────────────
+  // z.ai / GLM (Zhipu AI)
+  // 출처: OpenRouter API (https://openrouter.ai/api/v1/models)
+  // ─────────────────────────────────────────────────────────────
+
+  // GLM-5
+  'glm-5':                              { input:  0.80, output:  2.56 },
+  'z-ai/glm-5':                         { input:  0.80, output:  2.56 },
+
+  // GLM-4.7
+  'glm-4.7':                            { input:  0.38, output:  1.98 },
+  'z-ai/glm-4.7':                       { input:  0.38, output:  1.98 },
+
+  // GLM-4.7 Flash
+  'glm-4.7-flash':                      { input:  0.06, output:  0.40 },
+  'z-ai/glm-4.7-flash':                 { input:  0.06, output:  0.40 },
+
+  // GLM-4.6
+  'glm-4.6':                            { input:  0.39, output:  1.90 },
+  'z-ai/glm-4.6':                       { input:  0.39, output:  1.90 },
+
+  // GLM-4.6V (Vision)
+  'glm-4.6v':                           { input:  0.30, output:  0.90 },
+  'z-ai/glm-4.6v':                      { input:  0.30, output:  0.90 },
+
+  // GLM-4.5
+  'glm-4.5':                            { input:  0.60, output:  2.20 },
+  'z-ai/glm-4.5':                       { input:  0.60, output:  2.20 },
+
+  // GLM-4.5 Air
+  'glm-4.5-air':                        { input:  0.13, output:  0.85 },
+  'z-ai/glm-4.5-air':                   { input:  0.13, output:  0.85 },
+
+  // GLM-4.5V (Vision)
+  'glm-4.5v':                           { input:  0.60, output:  1.80 },
+  'z-ai/glm-4.5v':                      { input:  0.60, output:  1.80 },
+
+  // GLM-4-32B
+  'glm-4-32b':                          { input:  0.10, output:  0.10 },
+  'z-ai/glm-4-32b':                     { input:  0.10, output:  0.10 },
+
+  // ─────────────────────────────────────────────────────────────
+  // xAI / Grok
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  // Grok 4
+  'grok-4':                             { input:  3.00, output: 15.00 },
+  'x-ai/grok-4':                        { input:  3.00, output: 15.00 },
+
+  // Grok 4 Fast
+  'grok-4-fast':                        { input:  0.20, output:  0.50 },
+  'x-ai/grok-4-fast':                   { input:  0.20, output:  0.50 },
+
+  // Grok 4.1 Fast
+  'grok-4.1-fast':                      { input:  0.20, output:  0.50 },
+  'x-ai/grok-4.1-fast':                 { input:  0.20, output:  0.50 },
+
+  // Grok 3
+  'grok-3':                             { input:  3.00, output: 15.00 },
+  'grok-3-beta':                        { input:  3.00, output: 15.00 },
+  'x-ai/grok-3':                        { input:  3.00, output: 15.00 },
+  'x-ai/grok-3-beta':                   { input:  3.00, output: 15.00 },
+
+  // Grok 3 Mini
+  'grok-3-mini':                        { input:  0.30, output:  0.50 },
+  'grok-3-mini-beta':                   { input:  0.30, output:  0.50 },
+  'x-ai/grok-3-mini':                   { input:  0.30, output:  0.50 },
+  'x-ai/grok-3-mini-beta':              { input:  0.30, output:  0.50 },
+
+  // Grok Code Fast
+  'grok-code-fast-1':                   { input:  0.20, output:  1.50 },
+  'x-ai/grok-code-fast-1':              { input:  0.20, output:  1.50 },
+
+  // ─────────────────────────────────────────────────────────────
+  // DeepSeek
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  // DeepSeek R1
+  'deepseek-r1':                        { input:  0.70, output:  2.50 },
+  'deepseek/deepseek-r1':               { input:  0.70, output:  2.50 },
+
+  // DeepSeek R1 0528
+  'deepseek-r1-0528':                   { input:  0.45, output:  2.15 },
+  'deepseek/deepseek-r1-0528':          { input:  0.45, output:  2.15 },
+
+  // DeepSeek V3.2
+  'deepseek-v3.2':                      { input:  0.25, output:  0.40 },
+  'deepseek/deepseek-v3.2':             { input:  0.25, output:  0.40 },
+
+  // DeepSeek Chat (V3)
+  'deepseek-chat':                      { input:  0.20, output:  0.77 },
+  'deepseek/deepseek-chat':             { input:  0.20, output:  0.77 },
+  'deepseek/deepseek-chat-v3-0324':     { input:  0.20, output:  0.77 },
+
+  // ─────────────────────────────────────────────────────────────
+  // Qwen (Alibaba)
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  // Qwen3 235B
+  'qwen3-235b-a22b':                    { input:  0.455, output:  1.82 },
+  'qwen/qwen3-235b-a22b':               { input:  0.455, output:  1.82 },
+
+  // Qwen3 Max
+  'qwen3-max':                          { input:  1.20, output:  6.00 },
+  'qwen/qwen3-max':                     { input:  1.20, output:  6.00 },
+
+  // Qwen3 Coder
+  'qwen3-coder':                        { input:  0.22, output:  1.00 },
+  'qwen/qwen3-coder':                   { input:  0.22, output:  1.00 },
+
+  // Qwen3 32B
+  'qwen3-32b':                          { input:  0.08, output:  0.24 },
+  'qwen/qwen3-32b':                     { input:  0.08, output:  0.24 },
+
+  // QwQ 32B
+  'qwq-32b':                            { input:  0.15, output:  0.40 },
+  'qwen/qwq-32b':                       { input:  0.15, output:  0.40 },
+
+  // Qwen Max
+  'qwen-max':                           { input:  1.04, output:  4.16 },
+  'qwen/qwen-max':                      { input:  1.04, output:  4.16 },
+
+  // ─────────────────────────────────────────────────────────────
+  // Mistral AI
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  // Mistral Large 2512
+  'mistral-large-2512':                 { input:  0.50, output:  1.50 },
+  'mistralai/mistral-large-2512':       { input:  0.50, output:  1.50 },
+
+  // Mistral Large (이전 버전)
+  'mistral-large':                      { input:  2.00, output:  6.00 },
+  'mistralai/mistral-large':            { input:  2.00, output:  6.00 },
+
+  // Mistral Medium 3.1
+  'mistral-medium-3.1':                 { input:  0.40, output:  2.00 },
+  'mistralai/mistral-medium-3.1':       { input:  0.40, output:  2.00 },
+
+  // Mistral Small 3.2
+  'mistral-small-3.2-24b-instruct':     { input:  0.06, output:  0.18 },
+  'mistralai/mistral-small-3.2-24b-instruct': { input: 0.06, output: 0.18 },
+
+  // Codestral
+  'codestral-2508':                     { input:  0.30, output:  0.90 },
+  'mistralai/codestral-2508':           { input:  0.30, output:  0.90 },
+
+  // Devstral
+  'devstral-medium':                    { input:  0.40, output:  2.00 },
+  'mistralai/devstral-medium':          { input:  0.40, output:  2.00 },
+
+  // ─────────────────────────────────────────────────────────────
+  // Meta Llama
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  // Llama 4 Maverick
+  'llama-4-maverick':                   { input:  0.15, output:  0.60 },
+  'meta-llama/llama-4-maverick':        { input:  0.15, output:  0.60 },
+
+  // Llama 4 Scout
+  'llama-4-scout':                      { input:  0.08, output:  0.30 },
+  'meta-llama/llama-4-scout':           { input:  0.08, output:  0.30 },
+
+  // Llama 3.3 70B
+  'llama-3.3-70b-instruct':             { input:  0.10, output:  0.32 },
+  'meta-llama/llama-3.3-70b-instruct':  { input:  0.10, output:  0.32 },
+
+  // ─────────────────────────────────────────────────────────────
+  // Amazon Nova
+  // 출처: OpenRouter API
+  // ─────────────────────────────────────────────────────────────
+
+  'nova-2-lite-v1':                     { input:  0.30, output:  2.50 },
+  'amazon/nova-2-lite-v1':              { input:  0.30, output:  2.50 },
+  'nova-premier-v1':                    { input:  2.50, output: 12.50 },
+  'amazon/nova-premier-v1':             { input:  2.50, output: 12.50 },
+  'nova-pro-v1':                        { input:  0.80, output:  3.20 },
+  'amazon/nova-pro-v1':                 { input:  0.80, output:  3.20 },
+  'nova-lite-v1':                       { input:  0.06, output:  0.24 },
+  'amazon/nova-lite-v1':                { input:  0.06, output:  0.24 },
+  'nova-micro-v1':                      { input:  0.035, output: 0.14 },
+  'amazon/nova-micro-v1':               { input:  0.035, output: 0.14 },
 };
 
 /**
