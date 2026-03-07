@@ -27,6 +27,7 @@ import {
   readContextFromEnv,
 } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
+import { registerResumePushHook, readResumePushConfigFromEnv } from './delivery/resume-push.js';
 
 type ObservatoryMode = 'local' | 'remote';
 
@@ -147,6 +148,17 @@ async function main(): Promise<void> {
     console.log('[server] No collectors active — running in API-only mode');
   }
 
+  // Resume Push Hook — collect-tokens.py 대체
+  let cleanupResumePush: (() => void) | null = null;
+  const resumeConfig = readResumePushConfigFromEnv();
+  if (resumeConfig) {
+    cleanupResumePush = registerResumePushHook(eventBus, resumeConfig);
+    const intervalMin = Math.round((resumeConfig.intervalMs ?? 300_000) / 60_000);
+    console.log(`[server] Resume push hook active → ${resumeConfig.resumeUrl} (every ${intervalMin}m)`);
+  } else {
+    console.log('[server] Resume push hook disabled (set OBSERVATORY_RESUME_URL to enable)');
+  }
+
   server.listen(port, () => {
     console.log(`[server] Agent Observatory server listening on port ${port}`);
     console.log(`[server] Mode: ${mode}`);
@@ -168,6 +180,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     console.log('[server] Shutting down...');
+    cleanupResumePush?.();
     for (const collector of activeCollectors) {
       try {
         await collector.stop();
