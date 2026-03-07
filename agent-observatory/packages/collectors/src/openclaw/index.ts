@@ -188,6 +188,7 @@ export type {
   OCUserInput,
   OCAssistantMessage,
   OCTokenUsage,
+  OCCustomRecord,
 } from './parser.js';
-export { normalize, normalizeAll, createContext, buildAgentId, updateContextFromModelChange } from './normalizer.js';
+export { normalize, normalizeAll, createContext, buildAgentId, updateContextFromModelChange, updateContextFromCustom } from './normalizer.js';
 export type { OCNormalizerContext } from './normalizer.js';

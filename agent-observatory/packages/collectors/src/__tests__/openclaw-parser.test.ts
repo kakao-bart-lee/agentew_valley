@@ -7,6 +7,7 @@ import type {
   OCToolCall,
   OCToolResult,
   OCUserInput,
+  OCCustomRecord,
 } from '../openclaw/parser.js';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
@@ -221,12 +222,75 @@ describe('OpenClaw Parser', () => {
       expect(parseLine(line)).toEqual([]);
     });
 
-    it('should ignore custom entries', () => {
+    it('should ignore unknown custom entries', () => {
+      const line = JSON.stringify({
+        type: 'custom',
+        customType: 'some-unknown-type',
+        data: { custom: 'state' },
+      });
+      expect(parseLine(line)).toEqual([]);
+    });
+
+    it('should ignore custom entries with no customType', () => {
       const line = JSON.stringify({
         type: 'custom',
         data: { custom: 'state' },
       });
       expect(parseLine(line)).toEqual([]);
+    });
+
+    it('should parse model-snapshot custom record', () => {
+      const line = JSON.stringify({
+        type: 'custom',
+        customType: 'model-snapshot',
+        id: 'b250f6b4',
+        timestamp: '2026-03-06T23:00:00.082Z',
+        data: { modelId: 'gemini-3-flash-preview', provider: 'google' },
+      });
+      const records = parseLine(line);
+      expect(records).toHaveLength(1);
+      const r = records[0] as OCCustomRecord;
+      expect(r.kind).toBe('custom');
+      expect(r.customType).toBe('model-snapshot');
+      expect(r.modelId).toBe('gemini-3-flash-preview');
+      expect(r.provider).toBe('google');
+    });
+
+    it('should parse openclaw.cache-ttl custom record', () => {
+      const line = JSON.stringify({
+        type: 'custom',
+        customType: 'openclaw.cache-ttl',
+        timestamp: '2026-03-07T01:00:00.000Z',
+        data: { modelId: 'claude-sonnet-4-6', provider: 'anthropic' },
+      });
+      const records = parseLine(line);
+      expect(records).toHaveLength(1);
+      const r = records[0] as OCCustomRecord;
+      expect(r.kind).toBe('custom');
+      expect(r.customType).toBe('openclaw.cache-ttl');
+      expect(r.modelId).toBe('claude-sonnet-4-6');
+    });
+
+    it('should parse openclaw:prompt-error custom record', () => {
+      const line = JSON.stringify({
+        type: 'custom',
+        customType: 'openclaw:prompt-error',
+        timestamp: '2026-03-07T02:00:00.000Z',
+        data: {
+          provider: 'google',
+          model: 'gemini-3-flash-preview',
+          error: 'aborted',
+          sessionId: 'sess-123',
+        },
+      });
+      const records = parseLine(line);
+      expect(records).toHaveLength(1);
+      const r = records[0] as OCCustomRecord;
+      expect(r.kind).toBe('custom');
+      expect(r.customType).toBe('openclaw:prompt-error');
+      expect(r.modelId).toBe('gemini-3-flash-preview');
+      expect(r.provider).toBe('google');
+      expect(r.error).toBe('aborted');
     });
 
     it('should return empty for invalid JSON', () => {

@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { join, basename } from 'node:path';
 import type {
   EventProvenance,
   Goal,
@@ -1730,6 +1732,67 @@ export class HistoryStore {
         severity: 'warning' | 'critical';
       } => row !== null)
       .sort((a, b) => b.utilization_ratio - a.utilization_ratio);
+  }
+
+  /**
+   * 현재 DB를 destPath로 백업한다.
+   * better-sqlite3의 `.backup()` API를 사용하므로 WAL 모드에서도 안전.
+   */
+  async backup(destPath: string): Promise<void> {
+    await this.db.backup(destPath);
+  }
+
+  /**
+   * 자동 백업을 시작한다.
+   *
+   * @param backupDir  백업 파일을 저장할 디렉토리
+   * @param intervalMs 백업 주기 ms (기본 86_400_000 = 24시간)
+   * @param maxBackups 보관할 최대 백업 수 (기본 7)
+   * @returns cleanup 함수
+   */
+  startAutoBackup(
+    backupDir: string,
+    intervalMs = 86_400_000,
+    maxBackups = 7,
+  ): () => void {
+    if (!existsSync(backupDir)) {
+      mkdirSync(backupDir, { recursive: true });
+    }
+
+    const run = async (): Promise<void> => {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const destPath = join(backupDir, `observatory-${ts}.db`);
+      try {
+        await this.backup(destPath);
+        console.log(`[db-backup] Saved → ${destPath}`);
+        this.pruneBackups(backupDir, maxBackups);
+      } catch (err) {
+        console.warn(`[db-backup] Failed: ${String(err)}`);
+      }
+    };
+
+    const timer = setInterval(() => { void run(); }, intervalMs);
+    // 첫 백업은 즉시 실행
+    void run();
+
+    return () => clearInterval(timer);
+  }
+
+  private pruneBackups(backupDir: string, maxBackups: number): void {
+    try {
+      const files = readdirSync(backupDir)
+        .filter((f) => f.startsWith('observatory-') && f.endsWith('.db'))
+        .sort() // ISO 날짜 형식이므로 정렬 = 시간순
+        .reverse(); // 최신 먼저
+
+      for (const file of files.slice(maxBackups)) {
+        const fullPath = join(backupDir, file);
+        unlinkSync(fullPath);
+        console.log(`[db-backup] Pruned old backup: ${basename(fullPath)}`);
+      }
+    } catch (err) {
+      console.warn(`[db-backup] Prune failed: ${String(err)}`);
+    }
   }
 
   /** Close the database connection */

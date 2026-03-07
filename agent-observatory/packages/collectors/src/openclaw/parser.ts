@@ -94,6 +94,26 @@ export interface OCModelChange {
   timestamp?: string;
 }
 
+/**
+ * OpenClaw custom 레코드 (type: "custom").
+ *
+ * 지원하는 customType:
+ *   - "model-snapshot"       : 세션 시작 시 모델/프로바이더 스냅샷 → 모델 컨텍스트 업데이트
+ *   - "openclaw.cache-ttl"   : 캐시 만료 알림 (모델 정보 포함) → 모델 컨텍스트 업데이트
+ *   - "openclaw:prompt-error": LLM 호출 실패 → llm.error 이벤트 발행
+ */
+export interface OCCustomRecord {
+  kind: 'custom';
+  customType: string;
+  /** model-snapshot / cache-ttl 에서 사용 */
+  modelId?: string;
+  provider?: string;
+  /** prompt-error 에서 사용 */
+  error?: string;
+  sessionId?: string;
+  timestamp?: string;
+}
+
 /** 파서가 반환하는 모든 레코드 타입의 합집합 */
 export type OCParsedRecord =
   | OCSessionHeader
@@ -101,7 +121,8 @@ export type OCParsedRecord =
   | OCToolResult
   | OCUserInput
   | OCAssistantMessage
-  | OCModelChange;
+  | OCModelChange
+  | OCCustomRecord;
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -391,7 +412,55 @@ export function parseLine(line: string): OCParsedRecord[] {
     return [];
   }
 
-  // compaction, branch_summary, custom, thinking_level_change 등 → 무시
+  // ── custom ─────────────────────────────────────────────────────────────────
+  // model-snapshot, openclaw.cache-ttl → 모델 컨텍스트 업데이트용 레코드
+  // openclaw:prompt-error → LLM 오류 이벤트
+  if (type === 'custom') {
+    const customType = typeof record.customType === 'string' ? record.customType : '';
+    if (!customType) return [];
+
+    const data = typeof record.data === 'object' && record.data !== null
+      ? (record.data as Record<string, unknown>)
+      : {};
+
+    if (customType === 'model-snapshot' || customType === 'openclaw.cache-ttl') {
+      const modelId =
+        (typeof data.modelId === 'string' ? data.modelId : undefined) ??
+        (typeof record.modelId === 'string' ? record.modelId : undefined);
+      if (modelId) {
+        return [
+          {
+            kind: 'custom',
+            customType,
+            modelId,
+            provider: (typeof data.provider === 'string' ? data.provider : undefined) ??
+              (typeof record.provider === 'string' ? record.provider : undefined),
+            timestamp,
+          },
+        ];
+      }
+      return [];
+    }
+
+    if (customType === 'openclaw:prompt-error') {
+      return [
+        {
+          kind: 'custom',
+          customType,
+          modelId: (typeof data.model === 'string' ? data.model : undefined) ??
+            (typeof data.modelId === 'string' ? data.modelId : undefined),
+          provider: typeof data.provider === 'string' ? data.provider : undefined,
+          error: typeof data.error === 'string' ? data.error : 'unknown',
+          sessionId: typeof data.sessionId === 'string' ? data.sessionId : undefined,
+          timestamp,
+        },
+      ];
+    }
+
+    return [];
+  }
+
+  // compaction, branch_summary, thinking_level_change 등 → 무시
   return [];
 }
 

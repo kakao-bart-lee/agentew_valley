@@ -8,7 +8,7 @@ import {
   createContext,
   buildAgentId,
 } from '../openclaw/normalizer.js';
-import type { OCSessionHeader, OCToolCall, OCToolResult, OCUserInput } from '../openclaw/parser.js';
+import type { OCSessionHeader, OCToolCall, OCToolResult, OCUserInput, OCCustomRecord } from '../openclaw/parser.js';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 
@@ -121,6 +121,80 @@ describe('OpenClaw Normalizer', () => {
       expect(events).toHaveLength(1);
       expect(events[0].type).toBe('user.input');
       expect(events[0].data?.text_length).toBe(17);
+    });
+
+    it('should update model context from model-snapshot without emitting event', () => {
+      const freshCtx = createContext('agent1', 'session1');
+      const record: OCCustomRecord = {
+        kind: 'custom',
+        customType: 'model-snapshot',
+        modelId: 'gemini-3-flash-preview',
+        provider: 'google',
+        timestamp: '2026-03-06T23:00:00.082Z',
+      };
+
+      const events = normalize(record, freshCtx);
+      expect(events).toHaveLength(0);
+      expect(freshCtx.modelId).toBe('gemini-3-flash-preview');
+    });
+
+    it('should update model context from openclaw.cache-ttl without emitting event', () => {
+      const freshCtx = createContext('agent1', 'session1');
+      const record: OCCustomRecord = {
+        kind: 'custom',
+        customType: 'openclaw.cache-ttl',
+        modelId: 'claude-sonnet-4-6',
+        provider: 'anthropic',
+        timestamp: '2026-03-07T01:00:00.000Z',
+      };
+
+      const events = normalize(record, freshCtx);
+      expect(events).toHaveLength(0);
+      expect(freshCtx.modelId).toBe('claude-sonnet-4-6');
+    });
+
+    it('should emit tool.error for openclaw:prompt-error', () => {
+      const freshCtx = createContext('agent1', 'session1');
+      const record: OCCustomRecord = {
+        kind: 'custom',
+        customType: 'openclaw:prompt-error',
+        modelId: 'gemini-3-flash-preview',
+        provider: 'google',
+        error: 'aborted',
+        timestamp: '2026-03-07T02:00:00.000Z',
+      };
+
+      const events = normalize(record, freshCtx);
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('tool.error');
+      expect(events[0].source).toBe('openclaw');
+      expect(events[0].data?.error).toBe('aborted');
+      expect(events[0].data?.provider).toBe('google');
+      expect(freshCtx.modelId).toBe('gemini-3-flash-preview');
+    });
+
+    it('should propagate model_id set by cache-ttl to subsequent events', () => {
+      const freshCtx = createContext('agent1', 'session1');
+
+      // cache-ttl updates model context
+      const cacheRecord: OCCustomRecord = {
+        kind: 'custom',
+        customType: 'openclaw.cache-ttl',
+        modelId: 'claude-opus-4-6',
+        timestamp: '2026-03-07T01:00:00.000Z',
+      };
+      normalize(cacheRecord, freshCtx);
+
+      // subsequent tool call should carry the updated model_id
+      const toolCall: OCToolCall = {
+        kind: 'tool_call',
+        id: 'tc1',
+        name: 'Read',
+        input: { file_path: '/x.ts' },
+        timestamp: '2026-03-07T01:00:01.000Z',
+      };
+      const events = normalize(toolCall, freshCtx);
+      expect(events[0].model_id).toBe('claude-opus-4-6');
     });
   });
 

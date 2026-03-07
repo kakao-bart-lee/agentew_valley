@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   const collectorApiKeys = (process.env.OBSERVATORY_COLLECTOR_API_KEYS ?? '').split(',').filter(Boolean);
   const dashboardApiKey = process.env.OBSERVATORY_DASHBOARD_API_KEY || undefined;
 
-  const { app, server, eventBus, close } = createApp({
+  const { app, server, eventBus, historyStore, close } = createApp({
     watchPaths,
     dbPath,
     collectorApiKeys,
@@ -162,6 +162,21 @@ async function main(): Promise<void> {
     console.log('[server] No collectors active — running in API-only mode');
   }
 
+  // SQLite 자동 백업
+  let cleanupDbBackup: (() => void) | null = null;
+  const dbBackupDir = process.env['OBSERVATORY_DB_BACKUP_DIR'];
+  if (dbBackupDir && dbPath) {
+    const backupIntervalMs = process.env['OBSERVATORY_DB_BACKUP_INTERVAL_MS']
+      ? parseInt(process.env['OBSERVATORY_DB_BACKUP_INTERVAL_MS'], 10)
+      : 86_400_000;
+    const maxBackups = process.env['OBSERVATORY_DB_BACKUP_MAX']
+      ? parseInt(process.env['OBSERVATORY_DB_BACKUP_MAX'], 10)
+      : 7;
+    cleanupDbBackup = historyStore.startAutoBackup(dbBackupDir, backupIntervalMs, maxBackups);
+    const intervalHr = Math.round(backupIntervalMs / 3_600_000);
+    console.log(`[server] DB auto-backup → ${dbBackupDir} (every ${intervalHr}h, max ${maxBackups} files)`);
+  }
+
   // Resume Push Hook — collect-tokens.py 대체
   let cleanupResumePush: (() => void) | null = null;
   const resumeConfig = readResumePushConfigFromEnv();
@@ -194,6 +209,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     console.log('[server] Shutting down...');
+    cleanupDbBackup?.();
     cleanupResumePush?.();
     for (const collector of activeCollectors) {
       try {

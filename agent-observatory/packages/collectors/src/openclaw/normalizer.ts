@@ -12,7 +12,7 @@
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import { generateEventId, getToolCategory } from '@agent-observatory/shared';
-import type { OCParsedRecord, OCSessionHeader, OCModelChange } from './parser.js';
+import type { OCParsedRecord, OCSessionHeader, OCModelChange, OCCustomRecord } from './parser.js';
 
 /** 노멀라이저가 관리하는 세션 컨텍스트 */
 export interface OCNormalizerContext {
@@ -63,6 +63,18 @@ export function updateContextFromModelChange(
   change: OCModelChange,
 ): void {
   ctx.modelId = change.modelId;
+}
+
+/**
+ * custom 레코드(model-snapshot, cache-ttl)에서 모델 컨텍스트를 업데이트한다.
+ */
+export function updateContextFromCustom(
+  ctx: OCNormalizerContext,
+  record: OCCustomRecord,
+): void {
+  if (record.modelId) {
+    ctx.modelId = record.modelId;
+  }
 }
 
 /**
@@ -206,6 +218,33 @@ export function normalize(
     case 'model_change': {
       // 세션 시작 직후 모델 정보를 컨텍스트에 반영 (이후 이벤트에 model_id 전파)
       updateContextFromModelChange(ctx, record);
+      return [];
+    }
+
+    case 'custom': {
+      if (
+        record.customType === 'model-snapshot' ||
+        record.customType === 'openclaw.cache-ttl'
+      ) {
+        // 모델 컨텍스트만 업데이트, 이벤트 미발행
+        updateContextFromCustom(ctx, record);
+        return [];
+      }
+
+      if (record.customType === 'openclaw:prompt-error') {
+        // LLM 호출 실패 → tool.error 이벤트
+        if (record.modelId) ctx.modelId = record.modelId;
+        return [
+          makeEvent(ctx, 'tool.error', ts, {
+            data: {
+              error: record.error ?? 'prompt-error',
+              model_id: record.modelId ?? ctx.modelId,
+              provider: record.provider,
+            },
+          }),
+        ];
+      }
+
       return [];
     }
 
