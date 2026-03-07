@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { DashboardFocusPane, DashboardGroupingMode } from '../../utils/dashboardLayout';
 import { AgentCardGrid } from './AgentCardGrid';
 import { ActivityFeed } from './ActivityFeed';
@@ -31,8 +30,6 @@ export function DashboardFocusLayout({
     groupingMode,
     onGroupingModeChange,
 }: DashboardFocusLayoutProps) {
-    const [detailsOpen, setDetailsOpen] = useState(false);
-
     return (
         <div className="flex flex-col gap-6">
             <LiveMetricsOverview />
@@ -89,61 +86,43 @@ export function DashboardFocusLayout({
                 </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
-                <div>
-                    <h2 className="text-base font-semibold text-pretty">Detailed analytics</h2>
-                    <p className="mt-1 text-sm text-slate-400">
-                        Hidden by default so the live board stays readable. Expand only when you want deeper charts or spend detail.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    {detailsOpen && (
-                        <div className="flex items-center gap-2 rounded-lg border border-slate-700/70 bg-slate-800/70 p-1">
-                            <button
-                                type="button"
-                                onClick={() => onFocusPaneChange('metrics')}
-                                aria-pressed={focusPane === 'metrics'}
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                                    focusPane === 'metrics'
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'text-slate-400 hover:bg-slate-700/80 hover:text-slate-100'
-                                }`}
-                            >
-                                Metrics
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onFocusPaneChange('cost')}
-                                aria-pressed={focusPane === 'cost'}
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                                    focusPane === 'cost'
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'text-slate-400 hover:bg-slate-700/80 hover:text-slate-100'
-                                }`}
-                            >
-                                Cost
-                            </button>
-                        </div>
-                    )}
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
+                <h2 className="text-base font-semibold text-pretty">Detailed analytics</h2>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-700/70 bg-slate-800/70 p-1">
                     <button
                         type="button"
-                        onClick={() => setDetailsOpen((open) => !open)}
-                        className="rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-slate-500 hover:bg-slate-900"
+                        onClick={() => onFocusPaneChange('metrics')}
+                        aria-pressed={focusPane === 'metrics'}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            focusPane === 'metrics'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:bg-slate-700/80 hover:text-slate-100'
+                        }`}
                     >
-                        {detailsOpen ? 'Hide details' : 'Show details'}
+                        Metrics
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onFocusPaneChange('cost')}
+                        aria-pressed={focusPane === 'cost'}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            focusPane === 'cost'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:bg-slate-700/80 hover:text-slate-100'
+                        }`}
+                    >
+                        Cost
                     </button>
                 </div>
             </div>
 
-            {detailsOpen && (
-                focusPane === 'metrics' ? (
-                    <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
-                        <h2 className="mb-4 text-lg font-semibold text-pretty">Metrics Panel</h2>
-                        <MetricsPanel />
-                    </div>
-                ) : (
-                    <CostSummaryCard />
-                )
+            {focusPane === 'metrics' ? (
+                <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+                    <h2 className="mb-4 text-lg font-semibold text-pretty">Metrics Panel</h2>
+                    <MetricsPanel />
+                </div>
+            ) : (
+                <CostSummaryCard />
             )}
         </div>
     );
