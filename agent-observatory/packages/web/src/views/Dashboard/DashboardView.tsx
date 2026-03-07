@@ -1,31 +1,35 @@
 import { useState, useEffect } from 'react';
-import { AgentCardGrid } from './AgentCardGrid';
-import { RelationshipGraph } from './RelationshipGraph';
-import { MetricsPanel } from './MetricsPanel';
-import { ActivityFeed } from './ActivityFeed';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import { AgentDetailPanel } from './AgentDetailPanel';
-import { MissionControlSummarySection } from './MissionControlSummarySection';
-import { CostSummaryCard } from './CostSummaryCard';
-import { GoalProgressCard } from './GoalProgressCard';
+import { DashboardClassicLayout } from './DashboardClassicLayout';
+import { DashboardFocusLayout } from './DashboardFocusLayout';
+import { DashboardLayoutToggle } from './DashboardLayoutToggle';
 
 import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
+import {
+    readDashboardFocusPane,
+    readDashboardGroupingMode,
+    readDashboardLayoutMode,
+    writeDashboardFocusPane,
+    writeDashboardGroupingMode,
+    writeDashboardLayoutMode,
+    type DashboardFocusPane,
+    type DashboardGroupingMode,
+    type DashboardLayoutMode,
+} from '../../utils/dashboardLayout';
 
 // 기본적으로 항상 실서버에 연결 (MOCK 명시적 true일때만 Mock 전환)
 const USE_MOCK = import.meta.env?.VITE_MOCK === 'true';
 
-interface DashboardViewProps {
-    mode?: 'overview' | 'observe';
-}
-
-export function DashboardView({ mode = 'overview' }: DashboardViewProps) {
+export function DashboardView() {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [layoutMode, setLayoutMode] = useState<DashboardLayoutMode>(() => readDashboardLayoutMode(window.location.search));
+    const [focusPane, setFocusPane] = useState<DashboardFocusPane>(() => readDashboardFocusPane(window.location.search));
+    const [groupingMode, setGroupingMode] = useState<DashboardGroupingMode>(() => readDashboardGroupingMode(window.location.search));
 
     const { initSession, setConnectionStatus, connected } = useAgentStore();
     const { setSnapshot } = useMetricsStore();
-    const showGoalProgress = mode === 'overview';
-    const showWorkSummary = mode === 'overview';
 
     // 임시: 서버 연동 전 UI 확인을 위해 기본적으로 Mock 데이터를 주입합니다. (VITE_MOCK=false일 때만 비활성화)
     useEffect(() => {
@@ -37,9 +41,24 @@ export function DashboardView({ mode = 'overview' }: DashboardViewProps) {
         }).catch(err => console.error('Failed to load mock data:', err));
     }, [initSession, setConnectionStatus, setSnapshot]);
 
+    useEffect(() => {
+        const currentSearch = window.location.search;
+        let nextSearch = writeDashboardLayoutMode(currentSearch, layoutMode);
+        nextSearch = writeDashboardFocusPane(nextSearch, layoutMode === 'focus' ? focusPane : 'metrics');
+        nextSearch = writeDashboardGroupingMode(nextSearch, layoutMode === 'focus' ? groupingMode : 'workstream');
+
+        if (nextSearch === currentSearch) {
+            return;
+        }
+
+        const url = new URL(window.location.href);
+        url.search = nextSearch;
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }, [focusPane, groupingMode, layoutMode]);
+
     return (
         <TooltipProvider delayDuration={300}>
-            <div className="flex flex-col min-h-screen bg-slate-900 text-slate-50">
+            <div className="flex flex-1 min-h-0 flex-col bg-slate-900 text-slate-50">
 
                 {/* Offline Overlay */}
                 {!connected && (
@@ -61,56 +80,28 @@ export function DashboardView({ mode = 'overview' }: DashboardViewProps) {
                     </div>
                 )}
 
-                <div className="flex-1 p-4 md:p-6 mx-auto w-full max-w-[1500px]">
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col xl:flex-row gap-6">
-                            <div className="flex-[2] flex flex-col gap-6">
-                                <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col min-h-[500px]">
-                                    <h2 className="text-lg font-semibold mb-4 shrink-0">Observed Agents <span className="text-sm font-normal text-slate-400">(live + recent + backfilled)</span></h2>
-                                    <div className="flex-1 overflow-hidden min-h-0">
-                                        <AgentCardGrid
-                                            selectedAgentId={selectedAgentId}
-                                            onSelectAgent={setSelectedAgentId}
-                                        />
-                                    </div>
-                                </div>
+                <div className="mx-auto flex w-full max-w-[1700px] flex-1 min-h-0 p-4 md:p-6">
+                    <div className="flex flex-1 min-h-0 flex-col gap-6">
+                        <DashboardLayoutToggle
+                            value={layoutMode}
+                            onChange={setLayoutMode}
+                        />
 
-                                <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 hidden lg:flex flex-col min-h-[250px]">
-                                    <h2 className="text-lg font-semibold mb-4 shrink-0">Agent Network <span className="text-sm font-normal text-slate-400">(Relationship Graph)</span></h2>
-                                    <div className="flex-1 overflow-hidden">
-                                        <RelationshipGraph
-                                            selectedAgentId={selectedAgentId}
-                                            onSelectAgent={setSelectedAgentId}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 flex flex-col xl:flex-col lg:flex-row gap-4 xl:max-w-md w-full">
-                                <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col overflow-hidden min-h-[350px]">
-                                    <h2 className="text-lg font-semibold mb-4 shrink-0">Metrics Panel</h2>
-                                    <div className="flex-1 overflow-hidden min-h-0">
-                                        <MetricsPanel />
-                                    </div>
-                                </div>
-
-                                <div className="flex-1 bg-slate-800 rounded-xl border border-slate-700 p-4 flex flex-col overflow-hidden min-h-[350px]">
-                                    <div className="flex justify-between items-center mb-2 shrink-0">
-                                        <h2 className="text-lg font-semibold">Activity Feed</h2>
-                                    </div>
-                                    <div className="flex-1 overflow-hidden min-h-0">
-                                        <ActivityFeed />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className={`grid gap-6 ${showGoalProgress ? 'xl:grid-cols-2' : ''}`}>
-                            <CostSummaryCard />
-                            {showGoalProgress ? <GoalProgressCard /> : null}
-                        </div>
-
-                        {showWorkSummary ? <MissionControlSummarySection /> : null}
+                        {layoutMode === 'focus' ? (
+                            <DashboardFocusLayout
+                                selectedAgentId={selectedAgentId}
+                                onSelectAgent={setSelectedAgentId}
+                                focusPane={focusPane}
+                                onFocusPaneChange={setFocusPane}
+                                groupingMode={groupingMode}
+                                onGroupingModeChange={setGroupingMode}
+                            />
+                        ) : (
+                            <DashboardClassicLayout
+                                selectedAgentId={selectedAgentId}
+                                onSelectAgent={setSelectedAgentId}
+                            />
+                        )}
                     </div>
                 </div>
 

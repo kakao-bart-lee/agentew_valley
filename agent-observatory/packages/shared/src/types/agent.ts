@@ -5,7 +5,7 @@
  * 에이전트 라이브 상태 모델.
  */
 
-import type { AgentSourceType } from './uaep.js';
+import type { AgentSourceType, RuntimeDescriptor, TaskContextRef } from './uaep.js';
 
 /** 에이전트 현재 상태 */
 export type AgentStatus =
@@ -51,6 +51,9 @@ export interface AgentLiveState {
   /** 원본 소스 종류 */
   source: AgentSourceType;
 
+  /** canonical runtime taxonomy */
+  runtime?: RuntimeDescriptor;
+
   /** 스웜/팀 묶음 식별자 */
   team_id?: string;
 
@@ -62,6 +65,9 @@ export interface AgentLiveState {
 
   /** 현재 연결된 목표 식별자 */
   goal_id?: string;
+
+  /** richer task/work overlay */
+  task_context?: TaskContextRef;
 
   /** 현재 상태 */
   status: AgentStatus;
@@ -143,16 +149,6 @@ export interface AgentLiveState {
 
   /** 자식 에이전트 ID 목록 */
   child_agent_ids: string[];
-}
-
-/**
- * 에이전트 계층 트리 노드.
- *
- * StateManager.getHierarchy()가 반환하는 재귀적 트리 구조.
- */
-export interface AgentHierarchyNode {
-  agent: AgentLiveState;
-  children: AgentHierarchyNode[];
 }
 
 /** 지원하는 모든 AgentStatus 값 목록 */

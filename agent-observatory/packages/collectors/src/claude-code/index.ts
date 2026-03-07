@@ -116,6 +116,12 @@ export class ClaudeCodeCollector implements Collector {
         session_id: sessionId,
         ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
         type: 'session.start',
+        provenance: {
+          ingestion_kind: 'jsonl',
+          source_path: filePath,
+          raw_event_type: 'session_file_created',
+          source_event_id: sessionId,
+        },
         data: {
           file_path: filePath,
         },

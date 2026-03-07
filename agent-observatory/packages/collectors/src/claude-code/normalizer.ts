@@ -17,6 +17,8 @@ import type { CCParsedRecord } from './parser.js';
 
 /** 노멀라이저가 관리하는 세션 컨텍스트 */
 export interface NormalizerContext {
+  /** 원본 JSONL 파일 경로 */
+  sourcePath: string;
   /** 세션 ID (JSONL 파일명에서 추출한 UUID) */
   sessionId: string;
   /** 에이전트 ID ("cc-{UUID 앞 8자}") */
@@ -85,6 +87,7 @@ export function createContext(
 ): NormalizerContext {
   const sessionId = extractSessionId(filePath);
   return {
+    sourcePath: filePath,
     sessionId,
     agentId: buildAgentId(sessionId),
     agentName: `Claude Code #${agentIndex}`,
@@ -119,6 +122,12 @@ function makeEvent(
     session_id: ctx.sessionId,
     ...(ctx.projectId !== undefined ? { project_id: ctx.projectId } : {}),
     ...(ctx.modelId !== undefined ? { model_id: ctx.modelId } : {}),
+    provenance: {
+      ingestion_kind: 'jsonl',
+      source_path: ctx.sourcePath,
+      received_at: ts,
+      ...(extra?.provenance ?? {}),
+    },
     type,
     ...extra,
   };
@@ -161,6 +170,10 @@ export function normalize(
       return [
         makeEvent(ctx, 'tool.start', ts, {
           span_id: record.id,
+          provenance: {
+            raw_event_type: record.kind,
+            source_event_id: record.id,
+          },
           data: {
             tool_name: record.name,
             tool_category: category,
@@ -192,6 +205,10 @@ export function normalize(
         events.push(
           makeEvent(ctx, 'tool.error', ts, {
             span_id: record.toolUseId,
+            provenance: {
+              raw_event_type: record.kind,
+              source_event_id: record.toolUseId,
+            },
             data: {
               duration_ms: durationMs,
               error: record.content?.slice(0, 200),
@@ -204,6 +221,10 @@ export function normalize(
       events.push(
         makeEvent(ctx, 'tool.end', ts, {
           span_id: record.toolUseId,
+          provenance: {
+            raw_event_type: record.kind,
+            source_event_id: record.toolUseId,
+          },
           data: {
             duration_ms: durationMs,
           },
@@ -215,6 +236,9 @@ export function normalize(
     case 'turn_duration': {
       return [
         makeEvent(ctx, 'agent.status', ts, {
+          provenance: {
+            raw_event_type: record.kind,
+          },
           data: {
             status: 'idle',
             duration_ms: record.durationMs,
@@ -226,6 +250,9 @@ export function normalize(
     case 'user_input': {
       return [
         makeEvent(ctx, 'user.input', ts, {
+          provenance: {
+            raw_event_type: record.kind,
+          },
           data: {
             text_length: record.text.length,
           },
@@ -236,6 +263,9 @@ export function normalize(
     case 'usage': {
       return [
         makeEvent(ctx, 'metrics.usage', ts, {
+          provenance: {
+            raw_event_type: record.kind,
+          },
           data: {
             tokens: record.inputTokens + record.outputTokens,
             input_tokens: record.inputTokens,
@@ -257,6 +287,7 @@ export function normalize(
         const subAgentId = `${ctx.agentId}-s${subIdx}`;
         const subSessionId = `${ctx.sessionId}-s${subIdx}`;
         const subCtx: NormalizerContext = {
+          sourcePath: ctx.sourcePath,
           sessionId: subSessionId,
           agentId: subAgentId,
           agentName: `${ctx.agentName} (sub ${subIdx})`,
@@ -271,6 +302,10 @@ export function normalize(
         events.push(
           makeEvent(ctx, 'subagent.spawn', ts, {
             parent_span_id: record.parentToolUseId,
+            provenance: {
+              raw_event_type: record.kind,
+              source_event_id: record.parentToolUseId,
+            },
             data: {
               parent_tool_use_id: record.parentToolUseId,
               child_agent_id: subAgentId,
@@ -279,6 +314,10 @@ export function normalize(
         );
         events.push(
           makeEvent(subCtx, 'session.start', ts, {
+            provenance: {
+              raw_event_type: record.kind,
+              source_event_id: record.parentToolUseId,
+            },
             data: {
               parent_agent_id: ctx.agentId,
               parent_tool_use_id: record.parentToolUseId,

@@ -38,16 +38,16 @@ export function ActivityFeed() {
     }, [filtersOpen]);
 
     return (
-        <div className="flex flex-col h-full overflow-hidden relative">
+        <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
             {/* Feed Controls */}
             <div className="flex justify-between flex-wrap gap-2 items-center mb-2 px-1">
                 <div className="text-xs text-slate-400">
                     Showing {events.length} events {isPaused && <span className="text-amber-500 font-medium ml-1">(Paused)</span>}
                 </div>
                 <div className="flex gap-1 items-center">
-                    <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-                        <PopoverTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 relative text-slate-400 hover:text-slate-200" title="Filters">
+                        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+                            <PopoverTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 relative text-slate-400 hover:text-slate-200" title="Filters" aria-label="Open activity feed filters">
                                 <Filter className="h-4 w-4" />
                                 {activeFilterCount > 0 && (
                                     <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-blue-500" />
@@ -64,16 +64,16 @@ export function ActivityFeed() {
                         </PopoverContent>
                     </Popover>
                     <div className="w-px h-4 bg-slate-700 mx-1" />
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-200" onClick={togglePause} title={isPaused ? "Resume feed" : "Pause feed"}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-200" onClick={togglePause} title={isPaused ? "Resume feed" : "Pause feed"} aria-label={isPaused ? 'Resume activity feed' : 'Pause activity feed'}>
                         {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-400" onClick={clearFeed} title="Clear feed">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-400" onClick={clearFeed} title="Clear feed" aria-label="Clear activity feed">
                         <Trash2 className="h-4 w-4" />
                     </Button>
                 </div>
             </div>
 
-            <ScrollArea className="flex-1 bg-slate-900/50 rounded-md border border-slate-700/50 relative">
+            <ScrollArea className="relative min-h-0 flex-1 rounded-md border border-slate-700/50 bg-slate-900/50">
                 <div className="flex flex-col">
                     {!connected && events.length === 0 ? (
                         <ActivityFeedSkeleton />

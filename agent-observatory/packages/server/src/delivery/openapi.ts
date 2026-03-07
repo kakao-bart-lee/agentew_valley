@@ -1,15 +1,12 @@
 import { Router } from 'express';
 import express from 'express';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { schemas } from './openapi-schemas.js';
 
 function getSwaggerUiDistPath(): string {
   const require = createRequire(import.meta.url);
-  const swaggerUiDistPath = dirname(require.resolve('swagger-ui-dist/package.json'));
-  return swaggerUiDistPath;
+  return dirname(require.resolve('swagger-ui-dist/package.json'));
 }
 
 export function buildOpenApiSpec(): Record<string, unknown> {
@@ -18,43 +15,38 @@ export function buildOpenApiSpec(): Record<string, unknown> {
     info: {
       title: 'Agent Observatory API',
       version: '0.3.0',
-      description: 'Real-time agent activity observation and visualization API',
+      description: 'Observe-first API for live agent activity, replay, and runtime analytics.',
     },
     servers: [{ url: '/' }],
     paths: {
+      '/api/v1/health': {
+        get: {
+          tags: ['System'],
+          summary: 'Health check',
+          responses: { 200: { description: 'Server health' } },
+        },
+      },
       '/api/v1/agents': {
         get: {
           tags: ['Agents'],
-          summary: 'List all active agents',
-          responses: {
-            200: {
-              description: 'Agent list',
-              content: { 'application/json': { schema: { type: 'object', properties: { agents: { type: 'array', items: { $ref: '#/components/schemas/AgentLiveState' } }, total: { type: 'number' } } } } },
-            },
-          },
-        },
-      },
-      '/api/v1/agents/hierarchy': {
-        get: {
-          tags: ['Agents'],
-          summary: 'Get agent hierarchy tree',
-          responses: { 200: { description: 'Agent hierarchy' } },
+          summary: 'List active agents',
+          responses: { 200: { description: 'Agent list' } },
         },
       },
       '/api/v1/agents/by-team': {
         get: {
           tags: ['Agents'],
           summary: 'Get agents grouped by team',
-          responses: { 200: { description: 'Agents by team' } },
+          responses: { 200: { description: 'Agents grouped by team' } },
         },
       },
       '/api/v1/agents/{id}': {
         get: {
           tags: ['Agents'],
-          summary: 'Get agent detail by ID',
+          summary: 'Get agent detail',
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
-            200: { description: 'Agent detail', content: { 'application/json': { schema: { type: 'object', properties: { agent: { $ref: '#/components/schemas/AgentLiveState' } } } } } },
+            200: { description: 'Agent detail' },
             404: { description: 'Agent not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
         },
@@ -69,14 +61,25 @@ export function buildOpenApiSpec(): Record<string, unknown> {
             { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
             { name: 'type', in: 'query', schema: { type: 'string' } },
           ],
-          responses: { 200: { description: 'Events list' } },
+          responses: { 200: { description: 'Agent events' } },
+        },
+      },
+      '/api/v1/agents/{id}/context': {
+        get: {
+          tags: ['Agents'],
+          summary: 'Get linked task context for an agent',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Agent task context', content: { 'application/json': { schema: { $ref: '#/components/schemas/TaskContextResponse' } } } },
+            404: { description: 'Agent not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
         },
       },
       '/api/v1/sessions': {
         get: {
           tags: ['Sessions'],
-          summary: 'List active sessions',
-          responses: { 200: { description: 'Sessions list' } },
+          summary: 'List recorded sessions',
+          responses: { 200: { description: 'Session list' } },
         },
       },
       '/api/v1/sessions/{id}': {
@@ -86,19 +89,30 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             200: { description: 'Session events' },
-            404: { description: 'Session not found' },
+            404: { description: 'Session not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+      '/api/v1/sessions/{id}/context': {
+        get: {
+          tags: ['Sessions'],
+          summary: 'Get linked task context for a session',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Session task context', content: { 'application/json': { schema: { $ref: '#/components/schemas/TaskContextResponse' } } } },
+            404: { description: 'Session not found', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
         },
       },
       '/api/v1/sessions/{id}/replay': {
         get: {
           tags: ['Sessions'],
-          summary: 'Get session replay with gap/offset timing',
+          summary: 'Replay a session with timing offsets',
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Start time filter (ISO-8601)' },
-            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'End time filter (ISO-8601)' },
-            { name: 'types', in: 'query', schema: { type: 'string' }, description: 'Comma-separated event types filter' },
+            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'types', in: 'query', schema: { type: 'string' } },
             { name: 'limit', in: 'query', schema: { type: 'integer' } },
             { name: 'offset', in: 'query', schema: { type: 'integer' } },
           ],
@@ -118,18 +132,31 @@ export function buildOpenApiSpec(): Record<string, unknown> {
       '/api/v1/metrics/timeseries': {
         get: {
           tags: ['Metrics'],
-          summary: 'Get timeseries data for a metric',
+          summary: 'Get a metrics timeseries',
           parameters: [
             { name: 'metric', in: 'query', schema: { type: 'string', default: 'tokens_per_minute' } },
-            { name: 'from', in: 'query', schema: { type: 'integer', default: 60 }, description: 'Minutes ago' },
+            { name: 'from', in: 'query', schema: { type: 'integer', default: 60 } },
           ],
-          responses: { 200: { description: 'Timeseries data' } },
+          responses: { 200: { description: 'Metrics timeseries' } },
+        },
+      },
+      '/api/v1/dashboard/summary': {
+        get: {
+          tags: ['Dashboard'],
+          summary: 'Get observe-first dashboard summary',
+          parameters: [
+            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: {
+            200: { description: 'Dashboard summary', content: { 'application/json': { schema: { $ref: '#/components/schemas/DashboardSummaryResponse' } } } },
+          },
         },
       },
       '/api/v1/events/search': {
         get: {
           tags: ['Events'],
-          summary: 'Full-text search across events',
+          summary: 'Search events',
           parameters: [
             { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
@@ -137,225 +164,8 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           ],
           responses: {
             200: { description: 'Search results' },
-            400: { description: 'Missing query parameter' },
+            400: { description: 'Missing search query', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
-        },
-      },
-      '/api/v1/migration/shadow-report': {
-        get: {
-          tags: ['Migration'],
-          summary: 'Get migration shadow comparison report summary',
-          responses: {
-            200: {
-              description: 'Shadow report summary',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/ShadowReportResponse' },
-                },
-              },
-            },
-            503: {
-              description: 'Shadow mode disabled',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/ErrorResponse' },
-                },
-              },
-            },
-          },
-        },
-      },
-      '/api/v2/auth/status': {
-        get: {
-          tags: ['Migration'],
-          summary: 'Get auth v2 route status',
-          responses: {
-            200: { description: 'Auth v2 route enabled' },
-            503: {
-              description: 'Auth v2 route disabled by feature flag or global kill switch',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/ErrorResponse' },
-                },
-              },
-            },
-          },
-        },
-      },
-      '/api/v2/tasks': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List tasks from v2 route',
-          responses: {
-            200: { description: 'Tasks v2 route enabled' },
-            503: {
-              description: 'Tasks v2 route disabled by feature flag or global kill switch',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/ErrorResponse' },
-                },
-              },
-            },
-          },
-        },
-      },
-      '/api/v2/tasks/{id}': {
-        get: {
-          tags: ['Migration'],
-          summary: 'Get a single v2 task by id',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Task detail' },
-            404: { description: 'Task not found' },
-          },
-        },
-      },
-      '/api/v2/tasks/{id}/comments': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List task comments',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Task comments' },
-            404: { description: 'Task not found' },
-          },
-        },
-        post: {
-          tags: ['Migration'],
-          summary: 'Add a task comment',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            201: { description: 'Comment created' },
-            400: { description: 'Invalid comment payload' },
-            404: { description: 'Task not found' },
-          },
-        },
-      },
-      '/api/v2/tasks/{id}/checkout': {
-        post: {
-          tags: ['Migration'],
-          summary: 'Checkout a task',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Task checked out' },
-            404: { description: 'Task not found' },
-            409: { description: 'Checkout conflict' },
-          },
-        },
-        delete: {
-          tags: ['Migration'],
-          summary: 'Release a task checkout',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Task released' },
-            404: { description: 'Task not found' },
-          },
-        },
-      },
-      '/api/v2/goals': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List goal hierarchy with progress',
-          responses: {
-            200: { description: 'Goals list' },
-          },
-        },
-      },
-      '/api/v2/approvals': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List approval requests',
-          responses: {
-            200: { description: 'Approvals list' },
-          },
-        },
-        post: {
-          tags: ['Migration'],
-          summary: 'Create an approval request',
-          responses: {
-            201: { description: 'Approval created' },
-            400: { description: 'Invalid approval payload' },
-          },
-        },
-      },
-      '/api/v2/approvals/{id}': {
-        get: {
-          tags: ['Migration'],
-          summary: 'Get a single approval request',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Approval detail' },
-            404: { description: 'Approval not found' },
-          },
-        },
-        patch: {
-          tags: ['Migration'],
-          summary: 'Update an approval decision',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Approval updated' },
-            400: { description: 'Invalid approval decision' },
-            404: { description: 'Approval not found' },
-          },
-        },
-      },
-      '/api/v2/activities': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List activity log entries',
-          responses: {
-            200: { description: 'Activity timeline entries' },
-          },
-        },
-      },
-      '/api/v2/adapters': {
-        get: {
-          tags: ['Migration'],
-          summary: 'List registered adapters',
-          responses: {
-            200: { description: 'Adapter registry entries' },
-          },
-        },
-      },
-      '/api/v2/adapters/{type}/test': {
-        post: {
-          tags: ['Migration'],
-          summary: 'Test an adapter connection',
-          parameters: [{ name: 'type', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Adapter test result' },
-            404: { description: 'Adapter not found' },
-          },
-        },
-      },
-      '/api/v2/webhooks/test': {
-        post: {
-          tags: ['Migration'],
-          summary: 'Test webhooks v2 route',
-          responses: {
-            202: { description: 'Webhooks v2 route enabled' },
-            503: {
-              description: 'Webhooks v2 route disabled by feature flag or global kill switch',
-              content: {
-                'application/json': {
-                  schema: { $ref: '#/components/schemas/ErrorResponse' },
-                },
-              },
-            },
-          },
-        },
-      },
-      '/api/v1/config': {
-        get: {
-          tags: ['Config'],
-          summary: 'Get current configuration',
-          responses: { 200: { description: 'Config', content: { 'application/json': { schema: { type: 'object', properties: { config: { $ref: '#/components/schemas/ObservatoryConfig' } } } } } } },
-        },
-        put: {
-          tags: ['Config'],
-          summary: 'Update configuration',
-          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/ObservatoryConfig' } } } },
-          responses: { 200: { description: 'Updated config' } },
         },
       },
       '/api/v1/events': {
@@ -365,7 +175,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/UAEPEvent' } } } },
           responses: {
             201: { description: 'Event accepted' },
-            400: { description: 'Invalid event' },
+            400: { description: 'Invalid event', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
         },
       },
@@ -376,8 +186,21 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           requestBody: { content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/UAEPEvent' } } } } },
           responses: {
             201: { description: 'Events accepted' },
-            400: { description: 'Invalid batch' },
+            400: { description: 'Invalid batch', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
+        },
+      },
+      '/api/v1/config': {
+        get: {
+          tags: ['Config'],
+          summary: 'Get current server config',
+          responses: { 200: { description: 'Server config', content: { 'application/json': { schema: { type: 'object', properties: { config: { $ref: '#/components/schemas/ObservatoryConfig' } } } } } } },
+        },
+        put: {
+          tags: ['Config'],
+          summary: 'Update current server config',
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/ObservatoryConfig' } } } },
+          responses: { 200: { description: 'Updated config' } },
         },
       },
       '/api/v1/analytics/cost': {
@@ -402,6 +225,17 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           responses: { 200: { description: 'Cost by agent', content: { 'application/json': { schema: { $ref: '#/components/schemas/CostByAgentResponse' } } } } },
         },
       },
+      '/api/v1/analytics/cost/by-project': {
+        get: {
+          tags: ['Analytics'],
+          summary: 'Get cost breakdown by project',
+          parameters: [
+            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: { 200: { description: 'Cost by project' } },
+        },
+      },
       '/api/v1/analytics/cost/by-team': {
         get: {
           tags: ['Analytics'],
@@ -413,10 +247,21 @@ export function buildOpenApiSpec(): Record<string, unknown> {
           responses: { 200: { description: 'Cost by team', content: { 'application/json': { schema: { $ref: '#/components/schemas/CostByTeamResponse' } } } } },
         },
       },
+      '/api/v1/analytics/cost/by-model': {
+        get: {
+          tags: ['Analytics'],
+          summary: 'Get cost breakdown by model',
+          parameters: [
+            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: { 200: { description: 'Cost by model' } },
+        },
+      },
       '/api/v1/analytics/cost/by-tool': {
         get: {
           tags: ['Analytics'],
-          summary: 'Get cost breakdown by tool category (estimated)',
+          summary: 'Get estimated cost breakdown by tool category',
           parameters: [
             { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
             { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
@@ -427,7 +272,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
       '/api/v1/analytics/tokens': {
         get: {
           tags: ['Analytics'],
-          summary: 'Get token usage analytics',
+          summary: 'Get token analytics',
           parameters: [
             { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
             { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
@@ -444,18 +289,13 @@ export function buildOpenApiSpec(): Record<string, unknown> {
 
 export function createOpenApiRouter(): Router {
   const router = Router();
-
   const spec = buildOpenApiSpec();
+  const swaggerUiPath = getSwaggerUiDistPath();
 
-  // GET /api-docs/openapi.json
   router.get('/api-docs/openapi.json', (_req, res) => {
     res.json(spec);
   });
 
-  // Serve Swagger UI static files with custom initializer
-  const swaggerUiPath = getSwaggerUiDistPath();
-
-  // Override swagger-initializer.js to point to our spec
   router.get('/api-docs/swagger-initializer.js', (_req, res) => {
     res.type('application/javascript').send(`
 window.onload = function() {
@@ -476,7 +316,6 @@ window.onload = function() {
 `);
   });
 
-  // Serve static files from swagger-ui-dist
   router.use('/api-docs', express.static(swaggerUiPath));
 
   return router;

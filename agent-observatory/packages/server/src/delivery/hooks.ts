@@ -164,6 +164,19 @@ function getResponseLength(toolResponse: unknown): number {
   return 0;
 }
 
+function buildHookProvenance(
+  hookType: ClaudeCodeHookPayload['type'],
+  payload: { transcript_path?: string; tool_use_id?: string; session_id?: string; agent_transcript_path?: string },
+) {
+  return {
+    ingestion_kind: 'hook' as const,
+    transport: 'claude_code_hook',
+    raw_event_type: hookType,
+    source_path: payload.agent_transcript_path ?? payload.transcript_path,
+    source_event_id: payload.tool_use_id ?? payload.session_id,
+  };
+}
+
 // ─── 라우터 ──────────────────────────────────────────────────────────────────
 
 /**
@@ -206,6 +219,10 @@ export function createHooksRouter(eventBus: EventBus): Router {
           session_id: rawSessionId,
           ...(modelId ? { model_id: modelId } : {}),
           type: 'session.start',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            session_id: rawSessionId,
+          }),
           data: {
             model_id: modelId,
             agent_type: payload.agent_type,
@@ -243,6 +260,10 @@ export function createHooksRouter(eventBus: EventBus): Router {
           agent_id: agentId,
           session_id: rawSessionId,
           type: 'session.end',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            session_id: rawSessionId,
+          }),
           data: {
             from_hook: true,
             ...(lastMsgLen > 0 ? { last_assistant_message_length: lastMsgLen } : {}),
@@ -282,6 +303,11 @@ export function createHooksRouter(eventBus: EventBus): Router {
           agent_id: agentId,
           session_id: rawSessionId,
           type: 'tool.end',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            tool_use_id: payload.tool_use_id,
+            session_id: rawSessionId,
+          }),
           data: {
             tool_name: toolName,
             tool_use_id: payload.tool_use_id,
@@ -320,6 +346,11 @@ export function createHooksRouter(eventBus: EventBus): Router {
           agent_id: agentId,
           session_id: rawSessionId,
           type: 'tool.error',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            tool_use_id: payload.tool_use_id,
+            session_id: rawSessionId,
+          }),
           data: {
             tool_name: toolName,
             tool_use_id: payload.tool_use_id,
@@ -358,6 +389,10 @@ export function createHooksRouter(eventBus: EventBus): Router {
           agent_id: parentAgentId,
           session_id: parentSessionId,
           type: 'subagent.spawn',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            session_id: parentSessionId,
+          }),
           data: {
             child_agent_id: childAgentId,
             agent_type: payload.agent_type,
@@ -399,6 +434,11 @@ export function createHooksRouter(eventBus: EventBus): Router {
           agent_id: parentAgentId,
           session_id: parentSessionId,
           type: 'subagent.end',
+          provenance: buildHookProvenance(body.type, {
+            transcript_path: payload.transcript_path,
+            agent_transcript_path: payload.agent_transcript_path,
+            session_id: parentSessionId,
+          }),
           data: {
             child_agent_id: childAgentId,
             child_session_id: childSessionId,

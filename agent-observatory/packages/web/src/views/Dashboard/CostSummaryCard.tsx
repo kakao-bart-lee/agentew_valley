@@ -4,11 +4,9 @@ import type {
   AgentCostEntry,
   ModelCostEntry,
   BudgetAlertEntry,
-  StaleTaskEntry,
 } from '@agent-observatory/shared';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
-import { useMissionControlStore } from '../../stores/missionControlStore';
 
 function formatProjectLabel(projectId: string): string {
   if (projectId.startsWith('/')) {
@@ -25,7 +23,6 @@ export function CostSummaryCard() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const summaryVersion = useMissionControlStore((state) => state.versions.summary);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +58,7 @@ export function CostSummaryCard() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [summaryVersion]);
+  }, []);
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
@@ -69,7 +66,7 @@ export function CostSummaryCard() {
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Cost Summary</h2>
           <p className="text-sm text-slate-400">
-            Project, agent, and model spend with stale-task and budget alerts.
+            Project, agent, and model spend with runtime budget alerts.
           </p>
         </div>
         {summary && (
@@ -165,7 +162,7 @@ export function CostSummaryCard() {
             <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Alerts</h3>
               <div className="space-y-3 text-sm">
-                {summary.budget_alerts.length === 0 && summary.stale_tasks.length === 0 ? (
+                {summary.budget_alerts.length === 0 ? (
                   <div className="text-slate-500">No active alerts</div>
                 ) : (
                   <>
@@ -181,16 +178,6 @@ export function CostSummaryCard() {
                         <div className="font-medium">{alert.agent_name}</div>
                         <div className="mt-1 text-xs opacity-80">
                           {formatBudgetLabel(alert.budget_monthly_cents, alert.spent_monthly_usd)}
-                        </div>
-                      </div>
-                    ))}
-
-                    {summary.stale_tasks.slice(0, 3).map((task: StaleTaskEntry) => (
-                      <div key={task.id} className="rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-amber-200">
-                        <div className="font-medium">{task.title}</div>
-                        <div className="mt-1 text-xs opacity-80">
-                          {task.project ? `${formatProjectLabel(task.project)} · ` : ''}
-                          stale for {Math.max(Math.floor(task.stale_for_seconds / 3600), 1)}h
                         </div>
                       </div>
                     ))}

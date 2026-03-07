@@ -7,5 +7,4 @@ export type {
     ToolCategory,
     AgentSourceType,
     AgentLiveState,
-    AgentHierarchyNode,
 } from '@agent-observatory/shared';

@@ -2,6 +2,7 @@ import type { AgentLiveState } from '../types/agent';
 
 export const LIVE_ACTIVITY_WINDOW_MS = 15 * 60 * 1000;
 export const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+export type AgentActivityScope = 'live' | 'recent' | 'all';
 
 export interface AgentActivitySummary {
     liveNow: number;
@@ -33,6 +34,22 @@ export function isAgentRecent(
     recentWindowMs: number = RECENT_ACTIVITY_WINDOW_MS,
 ): boolean {
     return getLastActivityAgeMs(agent, now) <= recentWindowMs;
+}
+
+export function matchesAgentActivityScope(
+    agent: AgentLiveState,
+    scope: AgentActivityScope,
+    now: number = Date.now(),
+): boolean {
+    if (scope === 'all') {
+        return true;
+    }
+
+    if (scope === 'recent') {
+        return isAgentRecent(agent, now);
+    }
+
+    return isAgentLive(agent, now);
 }
 
 export function summarizeAgentActivity(

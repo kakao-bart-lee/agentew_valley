@@ -1,11 +1,11 @@
 import type {
   AgentLiveState,
-  AgentHierarchyNode,
+  TaskContextRef,
   UAEPEvent,
   AgentSourceType,
   ToolCategory,
 } from '@agent-observatory/shared';
-import { getToolCategory } from '@agent-observatory/shared';
+import { coerceTaskContext, getToolCategory, inferRuntimeDescriptor } from '@agent-observatory/shared';
 
 interface ActiveTool {
   tool_name: string;
@@ -42,6 +42,27 @@ function getHealthStatus(agent: AgentLiveState): AgentLiveState['health_status']
 
 function getOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function mergeTaskContext(
+  current: TaskContextRef | undefined,
+  incoming: TaskContextRef | undefined,
+): TaskContextRef | undefined {
+  if (!incoming) return current;
+  return {
+    ...(current ?? {}),
+    ...incoming,
+    provider: current?.provider ?? incoming.provider,
+    project_id: current?.project_id ?? incoming.project_id,
+    task_id: current?.task_id ?? incoming.task_id,
+    goal_id: current?.goal_id ?? incoming.goal_id,
+    issue_id: current?.issue_id ?? incoming.issue_id,
+    issue_identifier: current?.issue_identifier ?? incoming.issue_identifier,
+    execution_run_id: current?.execution_run_id ?? incoming.execution_run_id,
+    checkout_run_id: current?.checkout_run_id ?? incoming.checkout_run_id,
+    title: current?.title ?? incoming.title,
+    status: current?.status ?? incoming.status,
+  };
 }
 
 export class StateManager {
@@ -95,9 +116,17 @@ export class StateManager {
 
     const agent = this.agents.get(event.agent_id);
     if (agent) {
+      if (event.agent_name) {
+        agent.agent_name = event.agent_name;
+      }
       agent.project_id = agent.project_id ?? getOptionalString(event.project_id ?? event.data?.['project_id']);
       agent.task_id = agent.task_id ?? getOptionalString(event.task_id ?? event.data?.['task_id']);
       agent.goal_id = agent.goal_id ?? getOptionalString(event.goal_id ?? event.data?.['goal_id']);
+      agent.runtime = {
+        ...(agent.runtime ?? inferRuntimeDescriptor(event.source)),
+        ...inferRuntimeDescriptor(event.source, event.runtime),
+      };
+      agent.task_context = mergeTaskContext(agent.task_context, coerceTaskContext(event));
       agent.last_activity = event.ts;
     }
   }
@@ -107,12 +136,26 @@ export class StateManager {
 
     // 이미 존재하는 에이전트라면 model_id 등 누락된 필드만 보완 (데이터 유실 방지)
     if (existing) {
+      if (event.agent_name) {
+        existing.agent_name = event.agent_name;
+      }
+      if (!existing.team_id && event.team_id) {
+        existing.team_id = event.team_id;
+      }
+      if (!existing.project_id && event.project_id) {
+        existing.project_id = event.project_id;
+      }
       if (!existing.model_id && event.model_id) {
         existing.model_id = event.model_id;
       }
       if (!existing.model_id && event.data?.['model_id']) {
         existing.model_id = event.data['model_id'] as string;
       }
+      existing.runtime = {
+        ...(existing.runtime ?? inferRuntimeDescriptor(event.source)),
+        ...inferRuntimeDescriptor(event.source, event.runtime),
+      };
+      existing.task_context = mergeTaskContext(existing.task_context, coerceTaskContext(event));
       this.notifyChange(existing);
       return;
     }
@@ -121,10 +164,12 @@ export class StateManager {
       agent_id: event.agent_id,
       agent_name: event.agent_name ?? event.agent_id,
       source: event.source,
+      runtime: inferRuntimeDescriptor(event.source, event.runtime),
       team_id: event.team_id,
       project_id: event.project_id,
       task_id: getOptionalString(event.task_id ?? event.data?.['task_id']),
       goal_id: getOptionalString(event.goal_id ?? event.data?.['goal_id']),
+      task_context: coerceTaskContext(event),
       status: 'idle',
       last_activity: event.ts,
       session_id: event.session_id,
@@ -378,23 +423,6 @@ export class StateManager {
     return this.getAllAgents().filter((a) => a.team_id === teamId);
   }
 
-  /** Get full agent hierarchy tree (root agents with children) */
-  getHierarchy(): AgentHierarchyNode[] {
-    const allAgents = this.getAllAgents();
-    // Root agents: those without parent_agent_id or whose parent doesn't exist
-    const roots = allAgents.filter(
-      (a) => !a.parent_agent_id || !this.agents.has(a.parent_agent_id),
-    );
-    return roots.map((root) => this.buildSubtree(root));
-  }
-
-  /** Get subtree for a specific agent */
-  getSubtree(agentId: string): AgentHierarchyNode | undefined {
-    const agent = this.agents.get(agentId);
-    if (!agent) return undefined;
-    return this.buildSubtree(agent);
-  }
-
   /** Get agents grouped by team */
   getTeams(): { team_id: string; agents: AgentLiveState[] }[] {
     const teamMap = new Map<string, AgentLiveState[]>();
@@ -409,14 +437,6 @@ export class StateManager {
     }
     return Array.from(teamMap.entries())
       .map(([team_id, agents]) => ({ team_id, agents }));
-  }
-
-  private buildSubtree(agent: AgentLiveState): AgentHierarchyNode {
-    const children = agent.child_agent_ids
-      .map((id) => this.agents.get(id))
-      .filter((a): a is AgentLiveState => a !== undefined)
-      .map((child) => this.buildSubtree(child));
-    return { agent, children };
   }
 
   onChange(handler: ChangeHandler): () => void {

@@ -20,6 +20,10 @@ export { MissionControlCollector } from './mission-control/index.js';
 export type { MissionControlCollectorConfig } from './mission-control/index.js';
 export { OMXCollector } from './omx/index.js';
 export type { OMXCollectorConfig } from './omx/index.js';
+
+export { OpenCodeCollector } from './opencode/index.js';
+export type { OpenCodeCollectorConfig } from './opencode/index.js';
+
 export { ClaudeCodeAdapter, OpenClawAdapter, OpenCodeAdapter } from './adapters.js';
 
 export type { Collector, CollectorConfig } from './base.js';

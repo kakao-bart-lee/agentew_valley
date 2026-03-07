@@ -5,6 +5,7 @@ import {
     RECENT_ACTIVITY_WINDOW_MS,
     isAgentLive,
     isAgentRecent,
+    matchesAgentActivityScope,
     summarizeAgentActivity,
 } from '../utils/agentActivity';
 
@@ -79,5 +80,18 @@ describe('agentActivity', () => {
 
         expect(isAgentLive(liveEdge, now)).toBe(true);
         expect(isAgentRecent(recentEdge, now)).toBe(true);
+    });
+
+    it('matches live, recent, and all scopes as expected', () => {
+        const now = Date.parse('2026-03-07T09:00:00.000Z');
+        const liveAgent = makeAgent('live', new Date(now - (5 * 60 * 1000)).toISOString());
+        const recentAgent = makeAgent('recent', new Date(now - (6 * 60 * 60 * 1000)).toISOString());
+        const staleAgent = makeAgent('stale', new Date(now - (3 * 24 * 60 * 60 * 1000)).toISOString());
+
+        expect(matchesAgentActivityScope(liveAgent, 'live', now)).toBe(true);
+        expect(matchesAgentActivityScope(recentAgent, 'live', now)).toBe(false);
+        expect(matchesAgentActivityScope(recentAgent, 'recent', now)).toBe(true);
+        expect(matchesAgentActivityScope(staleAgent, 'recent', now)).toBe(false);
+        expect(matchesAgentActivityScope(staleAgent, 'all', now)).toBe(true);
     });
 });

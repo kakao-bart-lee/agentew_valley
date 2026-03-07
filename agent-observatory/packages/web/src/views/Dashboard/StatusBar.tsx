@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardSummaryResponse } from '@agent-observatory/shared';
-import { useAgentStore, type TopLevelView } from '../../stores/agentStore';
+import { useAgentStore } from '../../stores/agentStore';
 import { useMetricsStore } from '../../stores/metricsStore';
-import { useMissionControlStore } from '../../stores/missionControlStore';
-import { useSocket } from '../../hooks/useSocket';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
 import {
@@ -16,22 +14,10 @@ import { Card } from '../../components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { getModelBadgeColor, getModelShortName } from '../../utils/colors';
 
-type DomainNavItem = {
-    id: TopLevelView;
-    label: string;
-    description: string;
-    socketView: 'dashboard' | 'pixel' | 'timeline';
-    badge?: number;
-};
-
-const CONTROL_TABS = ['approvals', 'activity', 'adapters', 'notifications'] as const;
-
 export function StatusBar() {
-    const { connected, reconnecting, activeView, setView: setStoreView } = useAgentStore();
+    const { connected, reconnecting } = useAgentStore();
     const agents = useAgentStore((state) => state.agents);
     const { snapshot } = useMetricsStore();
-    const { setView: setSocketView } = useSocket();
-    const setMissionControlTab = useMissionControlStore((state) => state.setActiveTab);
     const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
     const [activityNow, setActivityNow] = useState(() => Date.now());
 
@@ -54,15 +40,6 @@ export function StatusBar() {
     const cacheHitRate = snapshot?.cache_hit_rate ?? 0;
     const showCache = cacheHitRate > 0 || (snapshot?.cache_read_tokens ?? 0) > 0;
     const pendingAlerts = summary?.pending_alerts ?? 0;
-    const pendingApprovals = summary?.pending_approvals ?? 0;
-
-    const navItems: DomainNavItem[] = [
-        { id: 'overview', label: 'Overview', description: 'Cross-domain summary', socketView: 'dashboard' },
-        { id: 'observe', label: 'Observe', description: 'Live agents, sessions, replay, pixel', socketView: 'dashboard' },
-        { id: 'work', label: 'Work', description: 'Tasks, goals, coordination', socketView: 'dashboard' },
-        { id: 'control', label: 'Control', description: 'Approvals, audit, adapters, notifications', socketView: 'dashboard', badge: pendingApprovals },
-        { id: 'admin', label: 'Admin', description: 'Migration and debug surfaces', socketView: 'dashboard' },
-    ];
 
     useEffect(() => {
         const intervalId = window.setInterval(() => {
@@ -103,60 +80,13 @@ export function StatusBar() {
         };
     }, []);
 
-    const handleDomainClick = (item: DomainNavItem) => {
-        setStoreView(item.id);
-        setSocketView(item.socketView);
-
-        if (item.id === 'work') {
-            setMissionControlTab('tasks');
-            return;
-        }
-
-        if (item.id === 'control') {
-            const currentTab = useMissionControlStore.getState().activeTab;
-            if (!CONTROL_TABS.includes(currentTab as typeof CONTROL_TABS[number])) {
-                setMissionControlTab('approvals');
-            }
-            return;
-        }
-
-        if (item.id === 'admin') {
-            setMissionControlTab('migration');
-        }
-    };
-
     return (
         <TooltipProvider delayDuration={250}>
             <Card className="flex flex-row items-center justify-between p-3 mx-4 mt-4 bg-slate-800 border-slate-700 text-slate-50">
                 <div className="flex gap-6 items-center flex-wrap">
                 <div className="flex flex-col gap-1 mr-2">
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">Agent Observatory</div>
-                    <div className="text-xs text-slate-400">One product, five surfaces: Overview · Observe · Work · Control · Admin</div>
-                </div>
-
-                <div className="flex bg-slate-900 rounded-lg p-1 mr-2">
-                    {navItems.map((item) => (
-                        <Tooltip key={item.id}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    onClick={() => handleDomainClick(item)}
-                                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${activeView === item.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <span>{item.label}</span>
-                                        {item.badge && item.badge > 0 ? (
-                                            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
-                                                {item.badge}
-                                            </span>
-                                        ) : null}
-                                    </span>
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>{item.description}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    ))}
+                    <div className="text-xs text-slate-400">Observe-first console for Claude Code · OpenClaw · Codex/OMX · OpenCode</div>
                 </div>
 
                 <div className="flex items-center gap-2">

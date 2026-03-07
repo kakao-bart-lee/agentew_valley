@@ -16,24 +16,23 @@ type ObserveTab = typeof OBSERVE_TABS[number]['id'];
 export function ObserveView() {
   const [activeTab, setActiveTab] = useState<ObserveTab>('live');
   const { setView: setSocketView } = useSocket();
-  const activeView = useAgentStore((state) => state.activeView);
   const connected = useAgentStore((state) => state.connected);
 
   useEffect(() => {
-    if (!connected || activeView !== 'observe') {
+    if (!connected) {
       return;
     }
     setSocketView(activeTab === 'pixel' ? 'pixel' : 'dashboard');
-  }, [activeTab, activeView, connected, setSocketView]);
+  }, [activeTab, connected, setSocketView]);
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <div className="mx-auto flex w-full max-w-[1700px] shrink-0 flex-col gap-4">
         <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-slate-100">Observe</h2>
-              <p className="text-sm text-slate-400">Live telemetry, replay, and specialized visualizations in one unified observability surface.</p>
+              <p className="text-sm text-slate-400">Live runs first: watch runtime activity now, then drill into replay, evidence, and specialized visualizations.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {OBSERVE_TABS.map((tab) => (
@@ -53,9 +52,9 @@ export function ObserveView() {
       </div>
 
       <div className="flex-1 min-h-0">
-        <div className={activeTab === 'live' ? 'flex flex-col flex-1' : 'hidden'}><DashboardView mode="observe" /></div>
-        <div className={activeTab === 'sessions' ? 'flex flex-col flex-1' : 'hidden'}><SessionsView /></div>
-        <div className={activeTab === 'pixel' ? 'flex flex-col flex-1' : 'hidden'}><PixelCanvasView /></div>
+        <div className={activeTab === 'live' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><DashboardView /></div>
+        <div className={activeTab === 'sessions' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><SessionsView /></div>
+        <div className={activeTab === 'pixel' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><PixelCanvasView /></div>
       </div>
     </div>
   );

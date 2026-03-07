@@ -48,6 +48,9 @@ importers:
       '@agent-observatory/shared':
         specifier: file:../shared
         version: link:../shared
+      better-sqlite3:
+        specifier: ^12.6.2
+        version: 12.6.2
       chokidar:
         specifier: ^4.0.0
         version: 4.0.3
@@ -55,6 +58,9 @@ importers:
         specifier: ^5.2.1
         version: 5.2.1
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

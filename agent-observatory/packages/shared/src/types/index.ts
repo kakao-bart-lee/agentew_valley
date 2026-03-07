@@ -4,13 +4,24 @@
 
 export type {
   AgentSourceType,
+  AgentRuntimeFamily,
+  AgentOrchestratorType,
+  AgentClientType,
+  EventIngestionKind,
+  RuntimeDescriptor,
   UAEPEventType,
   WorkContextRef,
+  TaskContextRef,
+  EventProvenance,
   UAEPEvent,
 } from './uaep.js';
 
 export {
   AGENT_SOURCE_TYPES,
+  AGENT_RUNTIME_FAMILIES,
+  AGENT_ORCHESTRATOR_TYPES,
+  AGENT_CLIENT_TYPES,
+  EVENT_INGESTION_KINDS,
   UAEP_EVENT_TYPES,
 } from './uaep.js';
 
@@ -19,7 +30,6 @@ export type {
   ToolCategory,
   AgentLiveState,
   AgentHealthStatus,
-  AgentHierarchyNode,
 } from './agent.js';
 
 export {
@@ -62,7 +72,6 @@ export type {
   AgentsListResponse,
   AgentDetailResponse,
   AgentEventsResponse,
-  AgentHierarchyResponse,
   AgentsByTeamResponse,
   EventSearchResponse,
   SessionsListResponse,
@@ -73,6 +82,8 @@ export type {
   ReplayEvent,
   SessionReplaySummary,
   SessionReplayResponse,
+  TaskContextSnapshot,
+  TaskContextResponse,
   CostAnalyticsResponse,
   AgentCostEntry,
   CostByAgentResponse,
@@ -85,26 +96,8 @@ export type {
   ModelCostEntry,
   CostByModelResponse,
   BudgetAlertEntry,
-  StaleTaskEntry,
   DashboardSummaryResponse,
-  ApprovalsResponse,
-  ApprovalResponse,
-  ApprovalCreateRequest,
-  ApprovalUpdateRequest,
-  ActivitiesResponse,
-  AdaptersResponse,
-  AdapterTestResponse,
   TokenAnalyticsResponse,
-  GoalsResponse,
-  TaskCommentsResponse,
-  TaskCommentCreateRequest,
-  TaskCheckoutResponse,
-  TasksResponse,
-  TaskResponse,
-  RealtimeTaskPayload,
-  RealtimeActivityPayload,
-  RealtimeApprovalPayload,
-  RealtimeCostAlertPayload,
   RealtimeAgentStatusPayload,
   WSInitPayload,
   WSAgentStatePayload,

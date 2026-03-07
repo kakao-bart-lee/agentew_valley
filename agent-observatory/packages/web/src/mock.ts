@@ -152,6 +152,8 @@ export function generateMockMetrics(): MetricsSnapshot {
             claude_code: 1,
             openclaw: 1,
             omx: 0,
+            codex: 0,
+            opencode: 0,
             agent_sdk: 1,
             langchain: 0,
             crewai: 0,

@@ -1,7 +1,9 @@
 import { useAgentStore } from '../../stores/agentStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useEffect, useState } from 'react';
-import { UAEPEvent } from '../../types/uaep';
+import type { TaskContextSnapshot } from '@agent-observatory/shared';
+import type { AgentLiveState } from '../../types/agent';
+import type { UAEPEvent } from '../../types/uaep';
 import { formatRelativeTime, formatLargeNumber, formatCurrency } from '../../utils/formatters';
 import { X, Activity, TerminalSquare, AlertCircle, Server, Layers } from 'lucide-react';
 import { STATUS_COLORS, SOURCE_COLORS } from '../../utils/colors';
@@ -12,10 +14,21 @@ interface AgentDetailPanelProps {
     onClose: () => void;
 }
 
+function formatRuntime(agent: AgentLiveState): string {
+    const family = agent.runtime?.family ?? agent.source;
+    const orchestrator = agent.runtime?.orchestrator;
+    const client = agent.runtime?.client;
+
+    return [family, orchestrator ? `via ${orchestrator}` : null, client ? `(${client})` : null]
+        .filter(Boolean)
+        .join(' ');
+}
+
 export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     const { agents } = useAgentStore();
     const { socket } = useSocket();
     const [events, setEvents] = useState<UAEPEvent[]>([]);
+    const [taskContext, setTaskContext] = useState<TaskContextSnapshot | null>(null);
     const [loading, setLoading] = useState(false);
 
     const agent = agentId ? agents.get(agentId) : null;
@@ -37,6 +50,34 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
             .finally(() => setLoading(false));
 
     }, [agentId]);
+
+    useEffect(() => {
+        if (!agent?.session_id || import.meta.env?.VITE_MOCK === 'true') {
+            setTaskContext(null);
+            return;
+        }
+
+        let cancelled = false;
+        const apiBase = getApiBase();
+
+        fetch(`${apiBase}/api/v1/sessions/${agent.session_id}/context`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (!cancelled) {
+                    setTaskContext(data.task_context ?? null);
+                }
+            })
+            .catch((err) => {
+                console.error('Failed to fetch task context:', err);
+                if (!cancelled) {
+                    setTaskContext(null);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [agent?.session_id]);
 
     // Subscribe to real-time events for this specific agent
     useEffect(() => {
@@ -128,6 +169,55 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
                     <div className="mt-4 pt-3 border-t border-slate-700/50 text-xs text-slate-500 flex justify-between">
                         <span>Started {formatRelativeTime(agent.session_start)}</span>
                         <span>Last seen {formatRelativeTime(agent.last_activity)}</span>
+                    </div>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
+                    <div className="mb-3">
+                        <h3 className="text-sm font-semibold text-slate-200">Runtime & task context</h3>
+                        <p className="mt-1 text-xs text-slate-500">P0 groundwork for runtime taxonomy and future Paperclip overlays.</p>
+                    </div>
+
+                    <div className="space-y-3 text-sm">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Runtime</div>
+                            <div className="mt-1 text-slate-200">{formatRuntime(agent)}</div>
+                        </div>
+
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Task context</div>
+                            {taskContext ? (
+                                <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                                            {taskContext.provider}
+                                        </span>
+                                        {taskContext.task?.status ? (
+                                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                                                {taskContext.task.status}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    <div className="mt-2 space-y-1">
+                                        <div className="text-sm text-slate-100">
+                                            {taskContext.task?.title ?? taskContext.title ?? 'Linked task context'}
+                                        </div>
+                                        <div className="text-slate-400">
+                                            {[
+                                                taskContext.project_id && `project ${taskContext.project_id}`,
+                                                taskContext.task_id && `task ${taskContext.task_id}`,
+                                                taskContext.goal_id && `goal ${taskContext.goal_id}`,
+                                                taskContext.issue_identifier && `issue ${taskContext.issue_identifier}`,
+                                            ].filter(Boolean).join(' · ')}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mt-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-3 text-xs text-slate-500">
+                                    No linked task context resolved yet.
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

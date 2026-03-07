@@ -2,6 +2,14 @@ import { useAgentStore } from '../../stores/agentStore';
 import { Button } from '../../components/ui/button';
 import type { AgentSourceType, AgentStatus } from '../../types/agent';
 
+const SOURCE_OPTIONS: Array<{ source: AgentSourceType; label: string }> = [
+    { source: 'claude_code', label: 'Claude Code' },
+    { source: 'openclaw', label: 'OpenClaw' },
+    { source: 'omx', label: 'Codex/OMX' },
+    { source: 'codex', label: 'Codex' },
+    { source: 'opencode', label: 'OpenCode' },
+];
+
 export function AgentCardFilters() {
     const { sourceFilter, statusFilter, setFilters } = useAgentStore();
 
@@ -26,8 +34,17 @@ export function AgentCardFilters() {
                     onClick={() => setFilters({ sourceFilter: [] })}>
                     All Sources
                 </Button>
-                <Button variant="ghost" size="sm" className={`h-7 px-2 text-xs ${sourceFilter.includes('claude_code') ? 'bg-slate-700 text-slate-200' : 'text-slate-400'}`} onClick={() => toggleSource('claude_code')}>Claude Code</Button>
-                <Button variant="ghost" size="sm" className={`h-7 px-2 text-xs ${sourceFilter.includes('openclaw') ? 'bg-slate-700 text-slate-200' : 'text-slate-400'}`} onClick={() => toggleSource('openclaw')}>OpenClaw</Button>
+                {SOURCE_OPTIONS.map(({ source, label }) => (
+                    <Button
+                        key={source}
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 px-2 text-xs whitespace-nowrap ${sourceFilter.includes(source) ? 'bg-slate-700 text-slate-200' : 'text-slate-400'}`}
+                        onClick={() => toggleSource(source)}
+                    >
+                        {label}
+                    </Button>
+                ))}
             </div>
 
             <div className="flex bg-slate-900/50 p-1 rounded-md border border-slate-700/50 px-1 overflow-x-auto">

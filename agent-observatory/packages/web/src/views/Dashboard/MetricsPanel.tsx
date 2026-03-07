@@ -12,6 +12,7 @@ import { TokensAnalyticsChart } from './charts/TokensAnalyticsChart';
 import { ModelDistributionChart } from './charts/ModelDistributionChart';
 import { CacheEfficiencyChart } from './charts/CacheEfficiencyChart';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
+import { buildMetricsTimeseries } from '../../utils/metrics';
 import type {
     CostByAgentResponse,
     CostByTeamResponse,
@@ -59,15 +60,7 @@ export function MetricsPanel() {
         return <div className="flex h-full items-center justify-center text-slate-500">Waiting for metrics...</div>;
     }
 
-    // Formatting timeseries for Recharts (only needed for live tab)
-    const timeseriesData = snapshot?.timeseries.timestamps.map((ts, i) => ({
-        time: new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        tokens: snapshot.timeseries.tokens_per_minute[i],
-        cost: snapshot.timeseries.cost_per_minute[i] * 60,
-        active: snapshot.timeseries.active_agents[i],
-        cacheRate: snapshot.timeseries.cache_hit_rate?.[i] ?? 0,
-        llmResponses: snapshot.timeseries.llm_responses_per_minute?.[i] ?? 0,
-    })) ?? [];
+    const timeseriesData = buildMetricsTimeseries(snapshot);
 
     const modelDistribution = snapshot?.model_distribution ?? {};
 

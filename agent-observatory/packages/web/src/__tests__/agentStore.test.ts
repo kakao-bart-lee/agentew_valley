@@ -34,7 +34,6 @@ describe('agentStore', () => {
         useAgentStore.setState({
             agents: new Map(),
             selectedAgentId: null,
-            activeView: 'overview',
             connected: false,
             reconnecting: false,
             sourceFilter: [],
@@ -44,6 +43,11 @@ describe('agentStore', () => {
     });
 
     describe('setAgent', () => {
+        it('기본 selectedAgentId는 null', () => {
+            useAgentStore.setState(useAgentStore.getInitialState());
+            expect(useAgentStore.getState().selectedAgentId).toBeNull();
+        });
+
         it('새 에이전트를 Map에 추가', () => {
             const agent = makeAgent('a1');
             useAgentStore.getState().setAgent(agent);
@@ -139,13 +143,6 @@ describe('agentStore', () => {
             useAgentStore.getState().selectAgent('a1');
             useAgentStore.getState().selectAgent(null);
             expect(useAgentStore.getState().selectedAgentId).toBeNull();
-        });
-    });
-
-    describe('setView', () => {
-        it('top-level domain view를 전환한다', () => {
-            useAgentStore.getState().setView('control');
-            expect(useAgentStore.getState().activeView).toBe('control');
         });
     });
 

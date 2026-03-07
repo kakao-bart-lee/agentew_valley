@@ -31,6 +31,21 @@ describe('StateManager', () => {
     expect(agent!.child_agent_ids).toEqual([]);
   });
 
+  it('should refresh agent_name from later richer events', () => {
+    const sm = new StateManager();
+    sm.handleEvent(makeSessionStart('agent-1', 'sess-1', { agent_name: 'OpenCode' }));
+
+    sm.handleEvent(makeEvent({
+      type: 'agent.status',
+      agent_id: 'agent-1',
+      session_id: 'sess-1',
+      agent_name: 'Atlas (Plan Executor)',
+      data: { status: 'thinking' },
+    }));
+
+    expect(sm.getAgent('agent-1')?.agent_name).toBe('Atlas (Plan Executor)');
+  });
+
   it('should set status to acting and current_tool on tool.start', () => {
     const sm = new StateManager();
     sm.handleEvent(makeSessionStart());
@@ -180,123 +195,6 @@ describe('StateManager', () => {
 
     expect(sm.getAgentsByTeam('team-x')).toHaveLength(2);
     expect(sm.getAgentsByTeam('team-y')).toHaveLength(1);
-  });
-
-  describe('getHierarchy()', () => {
-    it('should return empty array when no agents exist', () => {
-      const sm = new StateManager();
-      expect(sm.getHierarchy()).toEqual([]);
-    });
-
-    it('should return single root agent with no children', () => {
-      const sm = new StateManager();
-      sm.handleEvent(makeSessionStart('root-1', 'sess-1'));
-
-      const hierarchy = sm.getHierarchy();
-      expect(hierarchy).toHaveLength(1);
-      expect(hierarchy[0].agent.agent_id).toBe('root-1');
-      expect(hierarchy[0].children).toEqual([]);
-    });
-
-    it('should return nested tree for parent-child relationship', () => {
-      const sm = new StateManager();
-      // Create parent agent
-      sm.handleEvent(makeSessionStart('parent-1', 'sess-p1'));
-      // Parent spawns a child
-      sm.handleEvent(
-        makeEvent({
-          type: 'subagent.spawn',
-          agent_id: 'parent-1',
-          data: { child_agent_id: 'child-1' },
-        }),
-      );
-      // Create child agent with parent_agent_id
-      sm.handleEvent(
-        makeSessionStart('child-1', 'sess-c1', {
-          data: { parent_agent_id: 'parent-1' },
-        }),
-      );
-
-      const hierarchy = sm.getHierarchy();
-      expect(hierarchy).toHaveLength(1);
-      expect(hierarchy[0].agent.agent_id).toBe('parent-1');
-      expect(hierarchy[0].children).toHaveLength(1);
-      expect(hierarchy[0].children[0].agent.agent_id).toBe('child-1');
-      expect(hierarchy[0].children[0].children).toEqual([]);
-    });
-
-    it('should return correct tree for multi-level hierarchy (grandchild)', () => {
-      const sm = new StateManager();
-      // Create root
-      sm.handleEvent(makeSessionStart('root', 'sess-r'));
-      // Root spawns child
-      sm.handleEvent(
-        makeEvent({
-          type: 'subagent.spawn',
-          agent_id: 'root',
-          data: { child_agent_id: 'child' },
-        }),
-      );
-      // Create child with parent
-      sm.handleEvent(
-        makeSessionStart('child', 'sess-c', {
-          data: { parent_agent_id: 'root' },
-        }),
-      );
-      // Child spawns grandchild
-      sm.handleEvent(
-        makeEvent({
-          type: 'subagent.spawn',
-          agent_id: 'child',
-          data: { child_agent_id: 'grandchild' },
-        }),
-      );
-      // Create grandchild with parent
-      sm.handleEvent(
-        makeSessionStart('grandchild', 'sess-gc', {
-          data: { parent_agent_id: 'child' },
-        }),
-      );
-
-      const hierarchy = sm.getHierarchy();
-      expect(hierarchy).toHaveLength(1);
-      expect(hierarchy[0].agent.agent_id).toBe('root');
-      expect(hierarchy[0].children).toHaveLength(1);
-      expect(hierarchy[0].children[0].agent.agent_id).toBe('child');
-      expect(hierarchy[0].children[0].children).toHaveLength(1);
-      expect(hierarchy[0].children[0].children[0].agent.agent_id).toBe('grandchild');
-      expect(hierarchy[0].children[0].children[0].children).toEqual([]);
-    });
-  });
-
-  describe('getSubtree()', () => {
-    it('should return subtree for an existing agent', () => {
-      const sm = new StateManager();
-      sm.handleEvent(makeSessionStart('parent', 'sess-p'));
-      sm.handleEvent(
-        makeEvent({
-          type: 'subagent.spawn',
-          agent_id: 'parent',
-          data: { child_agent_id: 'child' },
-        }),
-      );
-      sm.handleEvent(
-        makeSessionStart('child', 'sess-c', {
-          data: { parent_agent_id: 'parent' },
-        }),
-      );
-
-      const subtree = sm.getSubtree('parent');
-      expect(subtree).toBeDefined();
-      expect(subtree!.agent.agent_id).toBe('parent');
-      expect(subtree!.children).toHaveLength(1);
-      expect(subtree!.children[0].agent.agent_id).toBe('child');
-    });
-
-    it('should return undefined for non-existing agent', () => {
-      const sm = new StateManager();
-      expect(sm.getSubtree('non-existent')).toBeUndefined();
-    });
   });
 
   describe('getTeams()', () => {

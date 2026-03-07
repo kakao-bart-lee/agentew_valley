@@ -1,9 +1,18 @@
 import Database from 'better-sqlite3';
 import type {
+  EventProvenance,
   Goal,
   GoalProgress,
+  RuntimeDescriptor,
+  TaskContextRef,
   TaskComment,
   UAEPEvent,
+} from '@agent-observatory/shared';
+import {
+  coerceTaskContext,
+  createEventFingerprint,
+  enrichProvenance,
+  inferRuntimeDescriptor,
 } from '@agent-observatory/shared';
 
 function makeRelationId(type: string, taskId: string, relatedTaskId: string): string {
@@ -20,23 +29,55 @@ type StoredWorkContext = {
   goal_id: string | null;
 };
 
+type StoredRuntime = {
+  runtime_family: string | null;
+  runtime_orchestrator: string | null;
+  runtime_client: string | null;
+};
+
 function getOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 function extractWorkContext(event: UAEPEvent): StoredWorkContext {
+  const taskContext = coerceTaskContext(event);
   return {
-    project_id: getOptionalString(event.project_id ?? event.data?.['project_id']),
-    task_id: getOptionalString(event.task_id ?? event.data?.['task_id']),
-    goal_id: getOptionalString(event.goal_id ?? event.data?.['goal_id']),
+    project_id: getOptionalString(taskContext?.project_id ?? event.project_id ?? event.data?.['project_id']),
+    task_id: getOptionalString(taskContext?.task_id ?? event.task_id ?? event.data?.['task_id']),
+    goal_id: getOptionalString(taskContext?.goal_id ?? event.goal_id ?? event.data?.['goal_id']),
   };
+}
+
+function extractTaskContext(event: UAEPEvent): TaskContextRef | null {
+  return coerceTaskContext(event) ?? null;
+}
+
+function extractRuntime(event: UAEPEvent): StoredRuntime {
+  const runtime = inferRuntimeDescriptor(event.source, event.runtime);
+  return {
+    runtime_family: getOptionalString(runtime.family),
+    runtime_orchestrator: getOptionalString(runtime.orchestrator),
+    runtime_client: getOptionalString(runtime.client),
+  };
+}
+
+function stringifyJson(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return JSON.stringify(value);
+}
+
+function parseJson<T>(value: string | null | undefined): T | undefined {
+  if (!value) return undefined;
+  return JSON.parse(value) as T;
 }
 
 export class HistoryStore {
   private db: Database.Database;
 
   constructor(dbPath?: string) {
-    this.db = new Database(dbPath ?? process.env.OBSERVATORY_DB_PATH ?? ':memory:');
+    const isTestEnv = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+    const resolvedPath = dbPath ?? (!isTestEnv ? process.env.OBSERVATORY_DB_PATH : undefined) ?? ':memory:';
+    this.db = new Database(resolvedPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.initSchema();
@@ -55,9 +96,18 @@ export class HistoryStore {
         span_id TEXT,
         parent_span_id TEXT,
         team_id TEXT,
+        runtime_family TEXT,
+        runtime_orchestrator TEXT,
+        runtime_client TEXT,
         project_id TEXT,
         task_id TEXT,
         goal_id TEXT,
+        task_context TEXT,
+        provenance TEXT,
+        event_fingerprint TEXT,
+        source_event_id TEXT,
+        source_event_fingerprint TEXT,
+        ingestion_kind TEXT,
         data TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_events_agent ON events(agent_id, ts);
@@ -70,10 +120,14 @@ export class HistoryStore {
         agent_id TEXT NOT NULL,
         agent_name TEXT NOT NULL,
         source TEXT NOT NULL,
+        runtime_family TEXT,
+        runtime_orchestrator TEXT,
+        runtime_client TEXT,
         team_id TEXT,
         project_id TEXT,
         task_id TEXT,
         goal_id TEXT,
+        task_context TEXT,
         model_id TEXT,
         start_time TEXT NOT NULL,
         end_time TEXT,
@@ -233,8 +287,30 @@ export class HistoryStore {
 
   private ensureSchemaCompatibility(): void {
     for (const [table, columns] of Object.entries({
-      events: ['project_id TEXT', 'task_id TEXT', 'goal_id TEXT'],
-      sessions: ['project_id TEXT', 'task_id TEXT', 'goal_id TEXT', 'model_id TEXT'],
+      events: [
+        'runtime_family TEXT',
+        'runtime_orchestrator TEXT',
+        'runtime_client TEXT',
+        'project_id TEXT',
+        'task_id TEXT',
+        'goal_id TEXT',
+        'task_context TEXT',
+        'provenance TEXT',
+        'event_fingerprint TEXT',
+        'source_event_id TEXT',
+        'source_event_fingerprint TEXT',
+        'ingestion_kind TEXT',
+      ],
+      sessions: [
+        'runtime_family TEXT',
+        'runtime_orchestrator TEXT',
+        'runtime_client TEXT',
+        'project_id TEXT',
+        'task_id TEXT',
+        'goal_id TEXT',
+        'task_context TEXT',
+        'model_id TEXT',
+      ],
       tasks: [
         'project TEXT',
         'goal_id TEXT',
@@ -258,9 +334,13 @@ export class HistoryStore {
       CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, ts);
       CREATE INDEX IF NOT EXISTS idx_events_task ON events(task_id, ts);
       CREATE INDEX IF NOT EXISTS idx_events_goal ON events(goal_id, ts);
+      CREATE INDEX IF NOT EXISTS idx_events_runtime_family ON events(runtime_family, ts);
+      CREATE INDEX IF NOT EXISTS idx_events_fingerprint ON events(event_fingerprint);
+      CREATE INDEX IF NOT EXISTS idx_events_source_fingerprint ON events(source_event_fingerprint);
       CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_task ON sessions(task_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_goal ON sessions(goal_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_runtime_family ON sessions(runtime_family);
       CREATE INDEX IF NOT EXISTS idx_sessions_model ON sessions(model_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
       CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id);
@@ -316,13 +396,24 @@ export class HistoryStore {
   append(event: UAEPEvent): void {
     const dataStr = event.data ? JSON.stringify(event.data) : null;
     const workContext = extractWorkContext(event);
+    const taskContext = extractTaskContext(event);
+    const runtime = extractRuntime(event);
+    const provenance = enrichProvenance(event);
+    const eventFingerprint = createEventFingerprint({
+      ...event,
+      runtime: inferRuntimeDescriptor(event.source, event.runtime),
+      task_context: taskContext ?? undefined,
+      provenance,
+    });
 
     this.db.prepare(`
       INSERT OR IGNORE INTO events (
         event_id, ts, type, source, agent_id, session_id, span_id, parent_span_id, team_id,
-        project_id, task_id, goal_id, data
+        runtime_family, runtime_orchestrator, runtime_client,
+        project_id, task_id, goal_id, task_context, provenance, event_fingerprint,
+        source_event_id, source_event_fingerprint, ingestion_kind, data
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.event_id,
       event.ts,
@@ -333,9 +424,18 @@ export class HistoryStore {
       event.span_id ?? null,
       event.parent_span_id ?? null,
       event.team_id ?? null,
+      runtime.runtime_family,
+      runtime.runtime_orchestrator,
+      runtime.runtime_client,
       workContext.project_id,
       workContext.task_id,
       workContext.goal_id,
+      stringifyJson(taskContext),
+      stringifyJson(provenance),
+      eventFingerprint,
+      provenance.source_event_id ?? null,
+      provenance.source_event_fingerprint ?? null,
+      provenance.ingestion_kind ?? null,
       dataStr,
     );
 
@@ -345,7 +445,11 @@ export class HistoryStore {
 
   private updateSession(event: UAEPEvent): void {
     const workContext = extractWorkContext(event);
+    const taskContext = extractTaskContext(event);
+    const runtime = extractRuntime(event);
     const modelId = getOptionalString(event.model_id ?? event.data?.['model_id']);
+    const agentName = getOptionalString(event.agent_name);
+    const teamId = getOptionalString(event.team_id);
 
     if (event.type === 'session.start') {
       const budgetMonthlyCents = typeof event.data?.['budget_monthly_cents'] === 'number'
@@ -354,19 +458,24 @@ export class HistoryStore {
 
       this.db.prepare(`
         INSERT OR IGNORE INTO sessions (
-          session_id, agent_id, agent_name, source, team_id, project_id, task_id, goal_id, model_id,
+          session_id, agent_id, agent_name, source, runtime_family, runtime_orchestrator, runtime_client,
+          team_id, project_id, task_id, goal_id, task_context, model_id,
           start_time, total_events, total_tokens, total_cost_usd
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
       `).run(
         event.session_id,
         event.agent_id,
         event.agent_name ?? event.agent_id,
         event.source,
+        runtime.runtime_family,
+        runtime.runtime_orchestrator,
+        runtime.runtime_client,
         event.team_id ?? null,
         workContext.project_id,
         workContext.task_id,
         workContext.goal_id,
+        stringifyJson(taskContext),
         modelId,
         event.ts,
       );
@@ -389,21 +498,52 @@ export class HistoryStore {
       UPDATE sessions SET total_events = total_events + 1 WHERE session_id = ?
     `).run(event.session_id);
 
-    if (workContext.project_id || workContext.task_id || workContext.goal_id || modelId) {
+    if (
+      agentName
+      || teamId
+      ||
+      runtime.runtime_family
+      || runtime.runtime_orchestrator
+      || runtime.runtime_client
+      || workContext.project_id
+      || workContext.task_id
+      || workContext.goal_id
+      || taskContext
+      || modelId
+    ) {
       this.db.prepare(`
         UPDATE sessions
-        SET project_id = COALESCE(project_id, ?),
+        SET agent_name = COALESCE(?, agent_name),
+            team_id = COALESCE(team_id, ?),
+            runtime_family = COALESCE(runtime_family, ?),
+            runtime_orchestrator = COALESCE(runtime_orchestrator, ?),
+            runtime_client = COALESCE(runtime_client, ?),
+            project_id = COALESCE(project_id, ?),
             task_id = COALESCE(task_id, ?),
             goal_id = COALESCE(goal_id, ?),
+            task_context = COALESCE(task_context, ?),
             model_id = COALESCE(model_id, ?)
         WHERE session_id = ?
       `).run(
+        agentName,
+        teamId,
+        runtime.runtime_family,
+        runtime.runtime_orchestrator,
+        runtime.runtime_client,
         workContext.project_id,
         workContext.task_id,
         workContext.goal_id,
+        stringifyJson(taskContext),
         modelId,
         event.session_id,
       );
+    }
+
+    if (agentName) {
+      this.upsertAgentProfile({
+        agent_id: event.agent_id,
+        agent_name: agentName,
+      });
     }
 
     // Update token/cost from metrics.usage events
@@ -1569,20 +1709,53 @@ export class HistoryStore {
   }
 
   private rowToEvent(row: EventRow): UAEPEvent {
+    const runtime: RuntimeDescriptor | undefined = row.runtime_family
+      ? {
+          family: row.runtime_family as RuntimeDescriptor['family'],
+          orchestrator: row.runtime_orchestrator as RuntimeDescriptor['orchestrator'] | undefined,
+          client: row.runtime_client as RuntimeDescriptor['client'] | undefined,
+        }
+      : undefined;
+    const taskContext = parseJson<TaskContextRef>(row.task_context)
+      ?? coerceTaskContext({
+        project_id: row.project_id ?? undefined,
+        task_id: row.task_id ?? undefined,
+        goal_id: row.goal_id ?? undefined,
+      } as Pick<UAEPEvent, 'project_id' | 'task_id' | 'goal_id' | 'task_context'>);
+    const provenance = parseJson<EventProvenance>(row.provenance);
+
     return {
       ts: row.ts,
       event_id: row.event_id,
       source: row.source as UAEPEvent['source'],
       agent_id: row.agent_id,
       session_id: row.session_id,
+      runtime,
       span_id: row.span_id ?? undefined,
       parent_span_id: row.parent_span_id ?? undefined,
       team_id: row.team_id ?? undefined,
       project_id: row.project_id ?? undefined,
       task_id: row.task_id ?? undefined,
       goal_id: row.goal_id ?? undefined,
+      task_context: taskContext,
       type: row.type as UAEPEvent['type'],
       data: row.data ? JSON.parse(row.data) as Record<string, unknown> : undefined,
+      provenance: provenance
+        ? {
+            ...provenance,
+            source_event_id: provenance.source_event_id ?? row.source_event_id ?? undefined,
+            source_event_fingerprint: provenance.source_event_fingerprint ?? row.source_event_fingerprint ?? undefined,
+            ingestion_kind: provenance.ingestion_kind ?? row.ingestion_kind as EventProvenance['ingestion_kind'] | undefined,
+            dedupe_key: provenance.dedupe_key ?? row.event_fingerprint ?? undefined,
+          }
+        : row.event_fingerprint || row.source_event_id || row.source_event_fingerprint || row.ingestion_kind
+          ? {
+              source_event_id: row.source_event_id ?? undefined,
+              source_event_fingerprint: row.source_event_fingerprint ?? undefined,
+              ingestion_kind: row.ingestion_kind as EventProvenance['ingestion_kind'] | undefined,
+              dedupe_key: row.event_fingerprint ?? undefined,
+            }
+          : undefined,
     };
   }
 }
@@ -1598,9 +1771,18 @@ interface EventRow {
   span_id: string | null;
   parent_span_id: string | null;
   team_id: string | null;
+  runtime_family: string | null;
+  runtime_orchestrator: string | null;
+  runtime_client: string | null;
   project_id: string | null;
   task_id: string | null;
   goal_id: string | null;
+  task_context: string | null;
+  provenance: string | null;
+  event_fingerprint: string | null;
+  source_event_id: string | null;
+  source_event_fingerprint: string | null;
+  ingestion_kind: string | null;
   data: string | null;
 }
 
@@ -1609,10 +1791,14 @@ interface SessionRow {
   agent_id: string;
   agent_name: string;
   source: string;
+  runtime_family: string | null;
+  runtime_orchestrator: string | null;
+  runtime_client: string | null;
   team_id: string | null;
   project_id: string | null;
   task_id: string | null;
   goal_id: string | null;
+  task_context: string | null;
   model_id: string | null;
   start_time: string;
   end_time: string | null;

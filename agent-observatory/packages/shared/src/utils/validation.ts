@@ -6,6 +6,12 @@
  */
 
 import { AGENT_SOURCE_TYPES, UAEP_EVENT_TYPES } from '../types/uaep.js';
+import {
+  AGENT_CLIENT_TYPES,
+  AGENT_ORCHESTRATOR_TYPES,
+  AGENT_RUNTIME_FAMILIES,
+  EVENT_INGESTION_KINDS,
+} from '../types/uaep.js';
 import type { UAEPEvent, AgentSourceType, UAEPEventType } from '../types/uaep.js';
 
 /** 검증 결과 */
@@ -21,12 +27,24 @@ const SOURCE_TYPE_SET = new Set<string>(AGENT_SOURCE_TYPES);
 
 /** UAEPEventType 유효성 확인용 Set */
 const EVENT_TYPE_SET = new Set<string>(UAEP_EVENT_TYPES);
+const RUNTIME_FAMILY_SET = new Set<string>(AGENT_RUNTIME_FAMILIES);
+const ORCHESTRATOR_SET = new Set<string>(AGENT_ORCHESTRATOR_TYPES);
+const CLIENT_SET = new Set<string>(AGENT_CLIENT_TYPES);
+const INGESTION_SET = new Set<string>(EVENT_INGESTION_KINDS);
 
 /**
  * 값이 비어있지 않은 문자열인지 확인한다.
  */
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -128,11 +146,86 @@ export function validateUAEPEvent(event: unknown): ValidationResult {
     errors.push('goal_id: must be a string if provided');
   }
 
-  if (e.data !== undefined && (typeof e.data !== 'object' || e.data === null || Array.isArray(e.data))) {
+  if (e.runtime !== undefined) {
+    if (!isPlainObject(e.runtime)) {
+      errors.push('runtime: must be a plain object if provided');
+    } else {
+      if (!isNonEmptyString(e.runtime['family']) || !RUNTIME_FAMILY_SET.has(e.runtime['family'])) {
+        errors.push(`runtime.family: must be one of ${AGENT_RUNTIME_FAMILIES.join(', ')}`);
+      }
+      if (e.runtime['orchestrator'] !== undefined
+        && (typeof e.runtime['orchestrator'] !== 'string' || !ORCHESTRATOR_SET.has(e.runtime['orchestrator'])))
+      {
+        errors.push(`runtime.orchestrator: must be one of ${AGENT_ORCHESTRATOR_TYPES.join(', ')}`);
+      }
+      if (e.runtime['client'] !== undefined
+        && (typeof e.runtime['client'] !== 'string' || !CLIENT_SET.has(e.runtime['client'])))
+      {
+        errors.push(`runtime.client: must be one of ${AGENT_CLIENT_TYPES.join(', ')}`);
+      }
+    }
+  }
+
+  if (e.task_context !== undefined) {
+    if (!isPlainObject(e.task_context)) {
+      errors.push('task_context: must be a plain object if provided');
+    } else {
+      const provider = e.task_context['provider'];
+      if (provider !== undefined && typeof provider !== 'string') {
+        errors.push('task_context.provider: must be a string if provided');
+      }
+      for (const key of [
+        'project_id',
+        'task_id',
+        'goal_id',
+        'issue_id',
+        'issue_identifier',
+        'execution_run_id',
+        'checkout_run_id',
+        'title',
+        'status',
+      ]) {
+        if (!isOptionalString(e.task_context[key])) {
+          errors.push(`task_context.${key}: must be a string if provided`);
+        }
+      }
+    }
+  }
+
+  if (e.provenance !== undefined) {
+    if (!isPlainObject(e.provenance)) {
+      errors.push('provenance: must be a plain object if provided');
+    } else {
+      for (const key of [
+        'collector',
+        'source_event_id',
+        'source_event_fingerprint',
+        'source_path',
+        'raw_event_type',
+        'received_at',
+        'dedupe_key',
+        'transport',
+      ]) {
+        if (!isOptionalString(e.provenance[key])) {
+          errors.push(`provenance.${key}: must be a string if provided`);
+        }
+      }
+      if (e.provenance['source_offset'] !== undefined && typeof e.provenance['source_offset'] !== 'number') {
+        errors.push('provenance.source_offset: must be a number if provided');
+      }
+      if (e.provenance['ingestion_kind'] !== undefined
+        && (typeof e.provenance['ingestion_kind'] !== 'string' || !INGESTION_SET.has(e.provenance['ingestion_kind'])))
+      {
+        errors.push(`provenance.ingestion_kind: must be one of ${EVENT_INGESTION_KINDS.join(', ')}`);
+      }
+    }
+  }
+
+  if (e.data !== undefined && !isPlainObject(e.data)) {
     errors.push('data: must be a plain object if provided');
   }
 
-  if (e.metadata !== undefined && (typeof e.metadata !== 'object' || e.metadata === null || Array.isArray(e.metadata))) {
+  if (e.metadata !== undefined && !isPlainObject(e.metadata)) {
     errors.push('metadata: must be a plain object if provided');
   }
 

@@ -24,6 +24,8 @@ describe('isValidSourceType', () => {
     expect(isValidSourceType('claude_code')).toBe(true);
     expect(isValidSourceType('openclaw')).toBe(true);
     expect(isValidSourceType('omx')).toBe(true);
+    expect(isValidSourceType('codex')).toBe(true);
+    expect(isValidSourceType('opencode')).toBe(true);
     expect(isValidSourceType('agent_sdk')).toBe(true);
     expect(isValidSourceType('langchain')).toBe(true);
     expect(isValidSourceType('crewai')).toBe(true);
@@ -83,8 +85,24 @@ describe('validateUAEPEvent', () => {
       project_id: 'moonlit',
       task_id: 'task-42',
       goal_id: 'goal-7',
+      runtime: {
+        family: 'codex',
+        orchestrator: 'omx',
+        client: 'omx',
+      },
+      task_context: {
+        provider: 'paperclip',
+        project_id: 'moonlit',
+        task_id: 'task-42',
+        issue_identifier: 'ISSUE-42',
+      },
       data: { tool_name: 'Read' },
       metadata: { raw_type: 'assistant' },
+      provenance: {
+        ingestion_kind: 'hook',
+        source_event_id: 'source-evt-1',
+        dedupe_key: 'fp_1234',
+      },
     }));
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
@@ -142,6 +160,17 @@ describe('validateUAEPEvent', () => {
       project_id: 789 as unknown as string,
       task_id: true as unknown as string,
       goal_id: ['goal-1'] as unknown as string,
+      runtime: {
+        family: 'bad-runtime',
+        orchestrator: 42,
+      } as unknown as UAEPEvent['runtime'],
+      task_context: {
+        project_id: 123,
+      } as unknown as UAEPEvent['task_context'],
+      provenance: {
+        ingestion_kind: 'wrong',
+        source_offset: 'NaN',
+      } as unknown as UAEPEvent['provenance'],
       data: 'not-an-object' as unknown as Record<string, unknown>,
       metadata: [1, 2, 3] as unknown as Record<string, unknown>,
     });
@@ -152,6 +181,11 @@ describe('validateUAEPEvent', () => {
     expect(result.errors).toContain('project_id: must be a string if provided');
     expect(result.errors).toContain('task_id: must be a string if provided');
     expect(result.errors).toContain('goal_id: must be a string if provided');
+    expect(result.errors.some((error) => error.startsWith('runtime.family:'))).toBe(true);
+    expect(result.errors.some((error) => error.startsWith('runtime.orchestrator:'))).toBe(true);
+    expect(result.errors).toContain('task_context.project_id: must be a string if provided');
+    expect(result.errors.some((error) => error.startsWith('provenance.ingestion_kind:'))).toBe(true);
+    expect(result.errors).toContain('provenance.source_offset: must be a number if provided');
     expect(result.errors).toContain('data: must be a plain object if provided');
     expect(result.errors).toContain('metadata: must be a plain object if provided');
   });

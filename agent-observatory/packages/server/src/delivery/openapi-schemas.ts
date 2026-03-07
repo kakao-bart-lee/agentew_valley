@@ -4,24 +4,81 @@
  */
 
 export const schemas = {
+  RuntimeDescriptor: {
+    type: 'object',
+    properties: {
+      family: { type: 'string', enum: ['claude_code', 'openclaw', 'codex', 'opencode', 'agent_sdk', 'langchain', 'crewai', 'custom', 'mission_control'] },
+      orchestrator: { type: 'string', enum: ['none', 'omx', 'paperclip', 'mission_control', 'custom'] },
+      client: { type: 'string', enum: ['native', 'jsonl', 'hooks', 'sqlite', 'http', 'sdk', 'omx', 'custom'] },
+    },
+    required: ['family'],
+  },
+
+  TaskContextSnapshot: {
+    type: 'object',
+    properties: {
+      provider: { type: 'string', enum: ['history_store', 'paperclip', 'mission_control', 'runtime', 'unknown'] },
+      session_id: { type: 'string' },
+      agent_id: { type: 'string' },
+      resolved_from: { type: 'string', enum: ['session', 'agent', 'event', 'task'] },
+      project_id: { type: 'string' },
+      task_id: { type: 'string' },
+      goal_id: { type: 'string' },
+      issue_id: { type: 'string' },
+      issue_identifier: { type: 'string' },
+      execution_run_id: { type: 'string' },
+      checkout_run_id: { type: 'string' },
+      title: { type: 'string' },
+      status: { type: 'string' },
+      task: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          status: { type: 'string' },
+          project: { type: 'string' },
+        },
+      },
+      goal: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          status: { type: 'string' },
+        },
+      },
+    },
+    required: ['provider', 'resolved_from'],
+  },
+
+  TaskContextResponse: {
+    type: 'object',
+    properties: {
+      task_context: { $ref: '#/components/schemas/TaskContextSnapshot' },
+    },
+  },
+
   UAEPEvent: {
     type: 'object',
     properties: {
       ts: { type: 'string', format: 'date-time' },
       event_id: { type: 'string' },
-      source: { type: 'string', enum: ['claude_code', 'openclaw', 'omx', 'agent_sdk', 'langchain', 'crewai', 'custom', 'mission_control'] },
+      source: { type: 'string', enum: ['claude_code', 'openclaw', 'omx', 'codex', 'opencode', 'agent_sdk', 'langchain', 'crewai', 'custom', 'mission_control'] },
       agent_id: { type: 'string' },
       agent_name: { type: 'string' },
       session_id: { type: 'string' },
+      runtime: { $ref: '#/components/schemas/RuntimeDescriptor' },
       span_id: { type: 'string' },
       parent_span_id: { type: 'string' },
       team_id: { type: 'string' },
       project_id: { type: 'string' },
       task_id: { type: 'string' },
       goal_id: { type: 'string' },
+      task_context: { $ref: '#/components/schemas/TaskContextSnapshot' },
       type: { type: 'string' },
       data: { type: 'object', additionalProperties: true },
       metadata: { type: 'object', additionalProperties: true },
+      provenance: { type: 'object', additionalProperties: true },
     },
     required: ['ts', 'event_id', 'source', 'agent_id', 'session_id', 'type'],
   },
@@ -32,10 +89,12 @@ export const schemas = {
       agent_id: { type: 'string' },
       agent_name: { type: 'string' },
       source: { type: 'string' },
+      runtime: { $ref: '#/components/schemas/RuntimeDescriptor' },
       team_id: { type: 'string' },
       project_id: { type: 'string' },
       task_id: { type: 'string' },
       goal_id: { type: 'string' },
+      task_context: { $ref: '#/components/schemas/TaskContextSnapshot' },
       status: { type: 'string', enum: ['idle', 'thinking', 'acting', 'waiting_input', 'waiting_permission', 'error'] },
       current_tool: { type: 'string' },
       current_tool_category: { type: 'string' },
@@ -88,10 +147,12 @@ export const schemas = {
       agent_id: { type: 'string' },
       agent_name: { type: 'string' },
       source: { type: 'string' },
+      runtime: { $ref: '#/components/schemas/RuntimeDescriptor' },
       team_id: { type: 'string' },
       project_id: { type: 'string' },
       task_id: { type: 'string' },
       goal_id: { type: 'string' },
+      task_context: { $ref: '#/components/schemas/TaskContextSnapshot' },
       start_time: { type: 'string', format: 'date-time' },
       end_time: { type: 'string', format: 'date-time' },
       total_events: { type: 'number' },
@@ -115,10 +176,12 @@ export const schemas = {
       agent_id: { type: 'string' },
       agent_name: { type: 'string' },
       source: { type: 'string' },
+      runtime: { $ref: '#/components/schemas/RuntimeDescriptor' },
       team_id: { type: 'string' },
       project_id: { type: 'string' },
       task_id: { type: 'string' },
       goal_id: { type: 'string' },
+      task_context: { $ref: '#/components/schemas/TaskContextSnapshot' },
       start_time: { type: 'string', format: 'date-time' },
       end_time: { type: 'string', format: 'date-time' },
       duration_ms: { type: 'number' },
@@ -247,6 +310,81 @@ export const schemas = {
     },
   },
 
+  DashboardSummaryResponse: {
+    type: 'object',
+    properties: {
+      time_range: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
+      cost_summary: {
+        type: 'object',
+        properties: {
+          total_cost_usd: { type: 'number' },
+          total_tokens: { type: 'number' },
+          total_sessions: { type: 'number' },
+        },
+      },
+      top_projects: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string' },
+            total_cost_usd: { type: 'number' },
+            total_tokens: { type: 'number' },
+            session_count: { type: 'number' },
+            agent_count: { type: 'number' },
+            cost_percentage: { type: 'number' },
+          },
+        },
+      },
+      top_agents: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            agent_id: { type: 'string' },
+            agent_name: { type: 'string' },
+            source: { type: 'string' },
+            total_cost_usd: { type: 'number' },
+            total_tokens: { type: 'number' },
+            session_count: { type: 'number' },
+            cost_percentage: { type: 'number' },
+          },
+        },
+      },
+      top_models: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            model_id: { type: 'string' },
+            total_cost_usd: { type: 'number' },
+            total_tokens: { type: 'number' },
+            session_count: { type: 'number' },
+            agent_count: { type: 'number' },
+            cost_percentage: { type: 'number' },
+          },
+        },
+      },
+      budget_alerts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            agent_id: { type: 'string' },
+            agent_name: { type: 'string' },
+            budget_monthly_cents: { type: 'number' },
+            spent_monthly_cents: { type: 'number' },
+            spent_monthly_usd: { type: 'number' },
+            utilization_ratio: { type: 'number' },
+            severity: { type: 'string', enum: ['warning', 'critical'] },
+          },
+        },
+      },
+      pending_alerts: { type: 'number' },
+      alert_severity: { type: 'string', enum: ['ok', 'warning', 'critical'] },
+    },
+  },
+
   ObservatoryConfig: {
     type: 'object',
     properties: {
@@ -254,29 +392,6 @@ export const schemas = {
       metrics_interval_ms: { type: 'number' },
       timeseries_retention_minutes: { type: 'number' },
     },
-  },
-
-  ShadowReportTopDiff: {
-    type: 'object',
-    properties: {
-      entity: { type: 'string' },
-      path: { type: 'string' },
-      count: { type: 'number' },
-    },
-    required: ['entity', 'path', 'count'],
-  },
-
-  ShadowReportResponse: {
-    type: 'object',
-    properties: {
-      pass_count: { type: 'number' },
-      fail_count: { type: 'number' },
-      top_diffs: {
-        type: 'array',
-        items: { $ref: '#/components/schemas/ShadowReportTopDiff' },
-      },
-    },
-    required: ['pass_count', 'fail_count', 'top_diffs'],
   },
 
   ErrorResponse: {

@@ -12,6 +12,15 @@ export {
   extractTimestamp,
 } from './event-id.js';
 
+export {
+  inferRuntimeDescriptor,
+  coerceTaskContext,
+  createDeterministicFingerprint,
+  createProvenanceFingerprint,
+  createEventFingerprint,
+  enrichProvenance,
+} from './provenance.js';
+
 export type {
   ValidationResult,
 } from './validation.js';

@@ -4,39 +4,21 @@
  * Server -> Web(FE) 연결 지점의 계약(contract) 정의.
  */
 
-import type { UAEPEvent } from './uaep.js';
-import type { AgentLiveState, AgentHierarchyNode } from './agent.js';
+import type { RuntimeDescriptor, TaskContextRef, UAEPEvent } from './uaep.js';
+import type { AgentLiveState } from './agent.js';
 import type { MetricsSnapshot } from './metrics.js';
-import type {
-  GoalProgress,
-  MissionControlTask,
-  TaskComment,
-} from './mission-control.js';
-import type {
-  ActivityActorType,
-  ActivityEntityType,
-  ActivityEntry,
-  AdapterConnectionResult,
-  AdapterSummary,
-  Approval,
-  ApprovalStatus,
-  ApprovalType,
-} from './governance.js';
 
 // ─── REST API 응답 타입 ───
 
-/** GET /api/v1/agents 응답 */
 export interface AgentsListResponse {
   agents: AgentLiveState[];
   total: number;
 }
 
-/** GET /api/v1/agents/:id 응답 */
 export interface AgentDetailResponse {
   agent: AgentLiveState;
 }
 
-/** GET /api/v1/agents/:id/events 응답 (페이지네이션) */
 export interface AgentEventsResponse {
   events: UAEPEvent[];
   total: number;
@@ -44,22 +26,22 @@ export interface AgentEventsResponse {
   limit: number;
 }
 
-/** GET /api/v1/sessions 응답 */
 export interface SessionsListResponse {
   sessions: SessionSummary[];
   total: number;
 }
 
-/** 세션 요약 정보 */
 export interface SessionSummary {
   session_id: string;
   agent_id: string;
   agent_name: string;
   source: string;
+  runtime?: RuntimeDescriptor;
   team_id?: string;
   project_id?: string;
   task_id?: string;
   goal_id?: string;
+  task_context?: TaskContextRef;
   model_id?: string;
   start_time: string;
   end_time?: string;
@@ -68,65 +50,48 @@ export interface SessionSummary {
   total_cost_usd: number;
 }
 
-/** GET /api/v1/metrics/summary 응답 */
 export interface MetricsSummaryResponse {
   metrics: MetricsSnapshot;
 }
 
-/** GET /api/v1/agents/hierarchy 응답 */
-export interface AgentHierarchyResponse {
-  hierarchy: AgentHierarchyNode[];
-}
-
-/** GET /api/v1/agents/by-team 응답 */
 export interface AgentsByTeamResponse {
   teams: { team_id: string; agents: AgentLiveState[] }[];
 }
 
-/** GET /api/v1/events/search 응답 */
 export interface EventSearchResponse {
   query: string;
   events: UAEPEvent[];
   total: number;
 }
 
-/** GET /api/v1/config 응답 */
 export interface ConfigResponse {
   config: ObservatoryConfig;
 }
 
-/** 서비스 설정 */
 export interface ObservatoryConfig {
-  /** JSONL 감시 경로 목록 */
   watch_paths: string[];
-  /** WebSocket 메트릭 전송 간격 (ms) */
   metrics_interval_ms: number;
-  /** 인메모리 시계열 보존 기간 (분) */
   timeseries_retention_minutes: number;
-  /** stale task 경고 임계값 (시간) */
-  stale_threshold_hours?: number;
 }
 
 // ─── Session Replay ───
 
-/** 재생용 이벤트 (gap/offset 포함) */
 export interface ReplayEvent {
   event: UAEPEvent;
-  /** 이전 이벤트와의 간격 (ms) */
   gap_ms: number;
-  /** 세션 시작으로부터 경과 (ms) */
   offset_ms: number;
 }
 
-/** 세션 재생 요약 정보 */
 export interface SessionReplaySummary {
   agent_id: string;
   agent_name: string;
   source: string;
+  runtime?: RuntimeDescriptor;
   team_id?: string;
   project_id?: string;
   task_id?: string;
   goal_id?: string;
+  task_context?: TaskContextRef;
   model_id?: string;
   start_time: string;
   end_time?: string;
@@ -138,7 +103,6 @@ export interface SessionReplaySummary {
   event_type_counts: Record<string, number>;
 }
 
-/** GET /api/v1/sessions/:id/replay 응답 */
 export interface SessionReplayResponse {
   session_id: string;
   summary: SessionReplaySummary;
@@ -147,9 +111,30 @@ export interface SessionReplayResponse {
   time_range?: { from: string; to: string };
 }
 
+export interface TaskContextSnapshot extends TaskContextRef {
+  provider: NonNullable<TaskContextRef['provider']>;
+  session_id?: string;
+  agent_id?: string;
+  resolved_from: 'session' | 'agent' | 'event' | 'task';
+  task?: {
+    id: string;
+    title?: string;
+    status?: string;
+    project?: string;
+  };
+  goal?: {
+    id: string;
+    title?: string;
+    status?: string;
+  };
+}
+
+export interface TaskContextResponse {
+  task_context?: TaskContextSnapshot;
+}
+
 // ─── Cost/Token Analytics ───
 
-/** GET /api/v1/analytics/cost 응답 */
 export interface CostAnalyticsResponse {
   time_range: { from: string; to: string };
   total_cost_usd: number;
@@ -158,7 +143,6 @@ export interface CostAnalyticsResponse {
   cost_timeseries: { ts: string; cost: number; tokens: number }[];
 }
 
-/** 에이전트별 비용 항목 */
 export interface AgentCostEntry {
   agent_id: string;
   agent_name: string;
@@ -169,7 +153,6 @@ export interface AgentCostEntry {
   cost_percentage: number;
 }
 
-/** GET /api/v1/analytics/cost/by-agent 응답 */
 export interface CostByAgentResponse {
   time_range: { from: string; to: string };
   agents: AgentCostEntry[];
@@ -177,7 +160,6 @@ export interface CostByAgentResponse {
   total_tokens: number;
 }
 
-/** 프로젝트별 비용 항목 */
 export interface ProjectCostEntry {
   project_id: string;
   total_cost_usd: number;
@@ -187,7 +169,6 @@ export interface ProjectCostEntry {
   cost_percentage: number;
 }
 
-/** GET /api/v1/analytics/cost/by-project 응답 */
 export interface CostByProjectResponse {
   time_range: { from: string; to: string };
   projects: ProjectCostEntry[];
@@ -195,7 +176,6 @@ export interface CostByProjectResponse {
   total_tokens: number;
 }
 
-/** 팀별 비용 항목 */
 export interface TeamCostEntry {
   team_id: string;
   total_cost_usd: number;
@@ -205,7 +185,6 @@ export interface TeamCostEntry {
   cost_percentage: number;
 }
 
-/** GET /api/v1/analytics/cost/by-team 응답 */
 export interface CostByTeamResponse {
   time_range: { from: string; to: string };
   teams: TeamCostEntry[];
@@ -213,7 +192,6 @@ export interface CostByTeamResponse {
   total_tokens: number;
 }
 
-/** 모델별 비용 항목 */
 export interface ModelCostEntry {
   model_id: string;
   total_cost_usd: number;
@@ -223,7 +201,6 @@ export interface ModelCostEntry {
   cost_percentage: number;
 }
 
-/** GET /api/v1/analytics/cost/by-model 응답 */
 export interface CostByModelResponse {
   time_range: { from: string; to: string };
   models: ModelCostEntry[];
@@ -231,7 +208,6 @@ export interface CostByModelResponse {
   total_tokens: number;
 }
 
-/** 도구별 비용 항목 */
 export interface ToolCostEntry {
   tool_category: string;
   call_count: number;
@@ -239,14 +215,12 @@ export interface ToolCostEntry {
   cost_percentage: number;
 }
 
-/** GET /api/v1/analytics/cost/by-tool 응답 */
 export interface CostByToolResponse {
   time_range: { from: string; to: string };
   tools: ToolCostEntry[];
   total_cost_usd: number;
 }
 
-/** GET /api/v1/analytics/tokens 응답 */
 export interface TokenAnalyticsResponse {
   time_range: { from: string; to: string };
   total_tokens: number;
@@ -264,17 +238,6 @@ export interface BudgetAlertEntry {
   severity: 'warning' | 'critical';
 }
 
-export interface StaleTaskEntry {
-  id: string;
-  title: string;
-  project?: string;
-  assigned_to?: string;
-  checkout_agent_id?: string;
-  started_at?: number;
-  updated_at: number;
-  stale_for_seconds: number;
-}
-
 export interface DashboardSummaryResponse {
   time_range: { from: string; to: string };
   cost_summary: {
@@ -286,185 +249,44 @@ export interface DashboardSummaryResponse {
   top_agents: AgentCostEntry[];
   top_models: ModelCostEntry[];
   budget_alerts: BudgetAlertEntry[];
-  stale_tasks: StaleTaskEntry[];
-  goal_progress: GoalProgress[];
   pending_alerts: number;
-  pending_approvals: number;
   alert_severity: 'ok' | 'warning' | 'critical';
-  mc_db_connected: boolean;
-}
-
-export interface ApprovalsResponse {
-  domain: 'approvals';
-  version: 'v2';
-  approvals: Approval[];
-  total: number;
-  offset?: number;
-  limit?: number;
-  pending: number;
-  mc_db_connected: boolean;
-}
-
-export interface ApprovalResponse {
-  domain: 'approvals';
-  version: 'v2';
-  approval: Approval | null;
-  mc_db_connected?: boolean;
-}
-
-export interface ApprovalCreateRequest {
-  type: ApprovalType;
-  requested_by: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface ApprovalUpdateRequest {
-  status: Exclude<ApprovalStatus, 'pending'>;
-  decision_note?: string;
-  decided_by?: string;
-}
-
-export interface ActivitiesResponse {
-  domain?: 'activities';
-  version?: 'v2';
-  activities: ActivityEntry[];
-  total: number;
-  offset?: number;
-  limit?: number;
-  mc_db_connected: boolean;
-  code?: string;
-  error?: string;
-}
-
-export interface TasksResponse {
-  domain: 'tasks';
-  version: 'v2';
-  tasks: MissionControlTask[];
-  total: number;
-  flag_enabled?: boolean;
-  mc_db_connected: boolean;
-}
-
-export interface TaskResponse {
-  domain: 'tasks';
-  version: 'v2';
-  task: MissionControlTask | null;
-}
-
-export interface TaskCheckoutResponse extends TaskResponse {
-  status: 'checked_out' | 'released';
-}
-
-export interface GoalsResponse {
-  domain: 'goals';
-  version: 'v2';
-  goals: GoalProgress[];
-  total: number;
-  mc_db_connected: boolean;
-}
-
-export interface TaskCommentsResponse {
-  domain: 'tasks';
-  version: 'v2';
-  comments: TaskComment[];
-  total: number;
-  mc_db_connected: boolean;
-}
-
-export interface TaskCommentCreateRequest {
-  author_agent_id: string;
-  body: string;
-}
-
-export interface RealtimeTaskPayload {
-  task_id: string;
-  task?: MissionControlTask | null;
-}
-
-export interface RealtimeActivityPayload {
-  id: string;
-  type: string;
-  actor?: string;
-  actor_type: ActivityActorType;
-  entity_type: ActivityEntityType;
-  entity_id?: string;
-  description?: string;
-  created_at: number;
-}
-
-export interface RealtimeApprovalPayload {
-  approval: Approval;
-}
-
-export interface RealtimeCostAlertPayload {
-  agent_id: string;
-  severity: 'warning' | 'critical';
-  utilization_ratio?: number;
-  budget_monthly_cents?: number;
-  spent_monthly_cents?: number;
 }
 
 export interface RealtimeAgentStatusPayload {
   agent: AgentLiveState;
 }
 
-export interface AdaptersResponse {
-  domain: 'adapters';
-  version: 'v2';
-  adapters: AdapterSummary[];
-  total: number;
-}
-
-export interface AdapterTestResponse {
-  domain: 'adapters';
-  version: 'v2';
-  adapter: AdapterSummary;
-  result: AdapterConnectionResult;
-}
-
 // ─── WebSocket 이벤트 페이로드 타입 ───
 
-/** WebSocket 초기 연결 시 전달되는 상태 (socket.emit('init')) */
 export interface WSInitPayload {
   agents: AgentLiveState[];
   metrics: MetricsSnapshot;
 }
 
-/** socket.emit('agent:state') 페이로드 */
 export type WSAgentStatePayload = AgentLiveState;
 
-/** socket.emit('agent:remove') 페이로드 */
 export interface WSAgentRemovePayload {
   agent_id: string;
 }
 
-/** socket.emit('event') 페이로드 */
 export type WSEventPayload = UAEPEvent;
 
-/** socket.emit('metrics:snapshot') 페이로드 */
 export type WSMetricsSnapshotPayload = MetricsSnapshot;
 
 // ─── WebSocket 이벤트 맵 (타입 안전한 Socket.IO 사용) ───
 
-/** Server -> Client 이벤트 맵 */
 export interface ServerToClientEvents {
   'init': (payload: WSInitPayload) => void;
   'agent:state': (payload: WSAgentStatePayload) => void;
   'agent:remove': (payload: WSAgentRemovePayload) => void;
   'event': (payload: WSEventPayload) => void;
   'metrics:snapshot': (payload: WSMetricsSnapshotPayload) => void;
-  'task.updated': (payload: RealtimeTaskPayload) => void;
-  'task.checkout': (payload: RealtimeTaskPayload) => void;
   'agent.status': (payload: RealtimeAgentStatusPayload) => void;
-  'cost.alert': (payload: RealtimeCostAlertPayload) => void;
-  'activity.logged': (payload: RealtimeActivityPayload) => void;
-  'approval.created': (payload: RealtimeApprovalPayload) => void;
-  'approval.updated': (payload: RealtimeApprovalPayload) => void;
 }
 
-/** Client -> Server 이벤트 맵 */
 export interface ClientToServerEvents {
   'subscribe': (agentId: string) => void;
   'unsubscribe': (agentId: string) => void;
-  'set_view': (viewType: 'dashboard' | 'pixel' | 'timeline') => void;
+  'set_view': (viewType: 'dashboard' | 'pixel') => void;
 }

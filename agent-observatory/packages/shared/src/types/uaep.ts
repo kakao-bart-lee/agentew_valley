@@ -6,16 +6,72 @@
  * 이벤트를 통일된 포맷으로 정규화한다.
  */
 
-/** 에이전트 원본 소스 종류 */
+/** 에이전트 원본 소스 종류 (ingestion source) */
 export type AgentSourceType =
   | 'claude_code'
   | 'openclaw'
   | 'omx'
+  | 'codex'
+  | 'opencode'
   | 'agent_sdk'
   | 'langchain'
   | 'crewai'
   | 'custom'
   | 'mission_control';
+
+/** 관측 대상 런타임 제품군 */
+export type AgentRuntimeFamily =
+  | 'claude_code'
+  | 'openclaw'
+  | 'codex'
+  | 'opencode'
+  | 'agent_sdk'
+  | 'langchain'
+  | 'crewai'
+  | 'custom'
+  | 'mission_control';
+
+/** 런타임을 감싸는 상위 오케스트레이터 */
+export type AgentOrchestratorType =
+  | 'none'
+  | 'omx'
+  | 'paperclip'
+  | 'mission_control'
+  | 'custom';
+
+/** 실제 수집/전달 경로를 설명하는 클라이언트 타입 */
+export type AgentClientType =
+  | 'native'
+  | 'jsonl'
+  | 'hooks'
+  | 'sqlite'
+  | 'http'
+  | 'sdk'
+  | 'omx'
+  | 'custom';
+
+/** 이벤트가 유입된 transport / ingestion 종류 */
+export type EventIngestionKind =
+  | 'jsonl'
+  | 'hook'
+  | 'sqlite'
+  | 'state'
+  | 'http'
+  | 'collector_ws'
+  | 'manual'
+  | 'unknown';
+
+/** source와 분리된 canonical runtime 분류 */
+export interface RuntimeDescriptor {
+  /** 실제 런타임 제품군 */
+  family: AgentRuntimeFamily;
+
+  /** 런타임 위에 있는 orchestration/control plane */
+  orchestrator?: AgentOrchestratorType;
+
+  /** 현재 이벤트/세션을 보낸 client or ingestion persona */
+  client?: AgentClientType;
+}
 
 /** UAEP 이벤트 타입 (Phase 1 최소 세트) */
 export type UAEPEventType =
@@ -51,6 +107,59 @@ export interface WorkContextRef {
   goal_id?: string;
 }
 
+/** WorkContext를 확장한 task overlay 참조. 미래 Paperclip 연동 seam. */
+export interface TaskContextRef extends WorkContextRef {
+  /** 현재 문맥을 해석한 provider */
+  provider?: 'history_store' | 'paperclip' | 'mission_control' | 'runtime' | 'unknown';
+
+  /** 외부 이슈 식별자 (예: Paperclip issue id) */
+  issue_id?: string;
+
+  /** 사람이 보는 issue key / identifier */
+  issue_identifier?: string;
+
+  /** 실행/체크아웃 런 링크 */
+  execution_run_id?: string;
+  checkout_run_id?: string;
+
+  /** 보강된 요약 정보 */
+  title?: string;
+  status?: string;
+}
+
+/** dedupe / provenance scaffolding */
+export interface EventProvenance {
+  /** 수집기 식별자 */
+  collector?: string;
+
+  /** 이벤트가 유입된 transport */
+  ingestion_kind?: EventIngestionKind;
+
+  /** 원본 시스템이 가진 event/message id */
+  source_event_id?: string;
+
+  /** 원본 이벤트 수준 fingerprint */
+  source_event_fingerprint?: string;
+
+  /** 파일/DB/logical path */
+  source_path?: string;
+
+  /** 원본 오프셋 (jsonl line, sqlite rowid 등) */
+  source_offset?: number;
+
+  /** 원본 타입 이름 */
+  raw_event_type?: string;
+
+  /** Observatory가 수신한 시각 */
+  received_at?: string;
+
+  /** canonical dedupe key */
+  dedupe_key?: string;
+
+  /** 수송 계층 / trigger */
+  transport?: string;
+}
+
 /**
  * UAEP-min 이벤트 Envelope.
  *
@@ -82,6 +191,9 @@ export interface UAEPEvent {
   /** 사용 중인 LLM 모델 ID (예: "claude-sonnet-4-6") */
   model_id?: string;
 
+  /** canonical runtime taxonomy */
+  runtime?: RuntimeDescriptor;
+
   /** 작업 단위 span (tool/llm call) */
   span_id?: string;
 
@@ -96,6 +208,9 @@ export interface UAEPEvent {
   task_id?: WorkContextRef['task_id'];
   goal_id?: WorkContextRef['goal_id'];
 
+  /** richer task/work overlay */
+  task_context?: TaskContextRef;
+
   /** 이벤트 종류 */
   type: UAEPEventType;
 
@@ -104,6 +219,9 @@ export interface UAEPEvent {
 
   /** 원본 보존 메타데이터 */
   metadata?: Record<string, unknown>;
+
+  /** provenance / dedupe scaffolding */
+  provenance?: EventProvenance;
 }
 
 /** 지원하는 모든 AgentSourceType 값 목록 */
@@ -111,11 +229,59 @@ export const AGENT_SOURCE_TYPES: readonly AgentSourceType[] = [
   'claude_code',
   'openclaw',
   'omx',
+  'codex',
+  'opencode',
   'agent_sdk',
   'langchain',
   'crewai',
   'custom',
   'mission_control',
+] as const;
+
+/** 지원하는 모든 AgentRuntimeFamily 값 목록 */
+export const AGENT_RUNTIME_FAMILIES: readonly AgentRuntimeFamily[] = [
+  'claude_code',
+  'openclaw',
+  'codex',
+  'opencode',
+  'agent_sdk',
+  'langchain',
+  'crewai',
+  'custom',
+  'mission_control',
+] as const;
+
+/** 지원하는 모든 AgentOrchestratorType 값 목록 */
+export const AGENT_ORCHESTRATOR_TYPES: readonly AgentOrchestratorType[] = [
+  'none',
+  'omx',
+  'paperclip',
+  'mission_control',
+  'custom',
+] as const;
+
+/** 지원하는 모든 AgentClientType 값 목록 */
+export const AGENT_CLIENT_TYPES: readonly AgentClientType[] = [
+  'native',
+  'jsonl',
+  'hooks',
+  'sqlite',
+  'http',
+  'sdk',
+  'omx',
+  'custom',
+] as const;
+
+/** 지원하는 모든 EventIngestionKind 값 목록 */
+export const EVENT_INGESTION_KINDS: readonly EventIngestionKind[] = [
+  'jsonl',
+  'hook',
+  'sqlite',
+  'state',
+  'http',
+  'collector_ws',
+  'manual',
+  'unknown',
 ] as const;
 
 /** 지원하는 모든 UAEPEventType 값 목록 */

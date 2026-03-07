@@ -19,8 +19,20 @@ describe('HistoryStore', () => {
 
     const events = hs.getByAgent('agent-1');
     expect(events).toHaveLength(2);
-    expect(events[0]).toEqual(e1);
-    expect(events[1]).toEqual(e2);
+    expect(events[0]).toMatchObject(e1);
+    expect(events[0].runtime).toEqual({
+      family: 'claude_code',
+      orchestrator: null,
+      client: 'native',
+    });
+    expect(events[0].provenance?.dedupe_key).toMatch(/^fp_/);
+    expect(events[1]).toMatchObject(e2);
+    expect(events[1].runtime).toEqual({
+      family: 'claude_code',
+      orchestrator: null,
+      client: 'native',
+    });
+    expect(events[1].provenance?.dedupe_key).toMatch(/^fp_/);
   });
 
   it('should store and retrieve events by session', () => {
@@ -51,6 +63,34 @@ describe('HistoryStore', () => {
     expect(stored.project_id).toBe('moonlit');
     expect(stored.task_id).toBe('task-42');
     expect(stored.goal_id).toBe('goal-7');
+  });
+
+  it('should persist runtime taxonomy and provenance scaffolding on events', () => {
+    hs = new HistoryStore();
+
+    const event = makeToolStart('Read', 'agent-1', undefined, {
+      session_id: 'sess-runtime',
+      source: 'omx',
+      runtime: {
+        family: 'codex',
+        orchestrator: 'omx',
+        client: 'omx',
+      },
+      provenance: {
+        ingestion_kind: 'hook',
+        source_event_id: 'source-evt-1',
+      },
+    });
+    hs.append(event);
+
+    const [stored] = hs.getBySession('sess-runtime');
+    expect(stored.runtime).toEqual({
+      family: 'codex',
+      orchestrator: 'omx',
+      client: 'omx',
+    });
+    expect(stored.provenance?.source_event_id).toBe('source-evt-1');
+    expect(stored.provenance?.dedupe_key).toMatch(/^fp_/);
   });
 
   it('should return empty array for unknown agent', () => {
@@ -197,6 +237,42 @@ describe('HistoryStore', () => {
       expect(summaries[0].project_id).toBe('moonlit');
       expect(summaries[0].task_id).toBe('task-42');
       expect(summaries[0].goal_id).toBe('goal-7');
+    });
+
+    it('should carry runtime/task-context scaffolding onto the session rollup', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1', {
+        source: 'omx',
+        runtime: {
+          family: 'codex',
+          orchestrator: 'omx',
+          client: 'omx',
+        },
+        task_context: {
+          provider: 'paperclip',
+          issue_identifier: 'ISSUE-42',
+        },
+      }));
+
+      const summaries = hs.getSessionSummaries();
+      expect(summaries[0].runtime_family).toBe('codex');
+      expect(summaries[0].runtime_orchestrator).toBe('omx');
+      expect(summaries[0].task_context).toContain('ISSUE-42');
+    });
+
+    it('should update agent_name when later events provide a richer label', () => {
+      hs = new HistoryStore();
+      hs.append(makeSessionStart('agent-1', 'sess-1', { agent_name: 'OpenCode' }));
+      hs.append(makeEvent({
+        type: 'llm.end',
+        source: 'opencode',
+        agent_id: 'agent-1',
+        session_id: 'sess-1',
+        agent_name: 'Atlas (Plan Executor)',
+      }));
+
+      const session = hs.getSession('sess-1');
+      expect(session?.agent_name).toBe('Atlas (Plan Executor)');
     });
   });
 
