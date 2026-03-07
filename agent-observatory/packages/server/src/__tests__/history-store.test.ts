@@ -182,7 +182,7 @@ describe('HistoryStore', () => {
       const e = makeSessionStart('agent-1', 'sess-1');
       hs.append(e);
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       expect(summaries).toHaveLength(1);
       expect(summaries[0].session_id).toBe('sess-1');
       expect(summaries[0].agent_id).toBe('agent-1');
@@ -194,7 +194,7 @@ describe('HistoryStore', () => {
       hs.append(makeSessionStart('agent-1', 'sess-1'));
       hs.append(makeEvent({ type: 'session.end', agent_id: 'agent-1', session_id: 'sess-1' }));
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       expect(summaries[0].end_time).toBeTruthy();
     });
 
@@ -204,7 +204,7 @@ describe('HistoryStore', () => {
       hs.append(makeToolStart('Read', 'agent-1', undefined, { session_id: 'sess-1' }));
       hs.append(makeToolStart('Bash', 'agent-1', undefined, { session_id: 'sess-1' }));
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       // session.start + 2 tool.starts = 3 events
       expect(summaries[0].total_events).toBe(3);
     });
@@ -215,7 +215,7 @@ describe('HistoryStore', () => {
       hs.append(makeMetricsUsage(100, 0.05, 'agent-1', { session_id: 'sess-1' }));
       hs.append(makeMetricsUsage(200, 0.10, 'agent-1', { session_id: 'sess-1' }));
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       expect(summaries[0].total_tokens).toBe(300);
       expect(summaries[0].total_cost_usd).toBeCloseTo(0.15);
     });
@@ -233,7 +233,7 @@ describe('HistoryStore', () => {
         goal_id: 'goal-7',
       }));
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       expect(summaries[0].project_id).toBe('moonlit');
       expect(summaries[0].task_id).toBe('task-42');
       expect(summaries[0].goal_id).toBe('goal-7');
@@ -254,7 +254,7 @@ describe('HistoryStore', () => {
         },
       }));
 
-      const summaries = hs.getSessionSummaries();
+      const { rows: summaries } = hs.getSessionSummaries();
       expect(summaries[0].runtime_family).toBe('codex');
       expect(summaries[0].runtime_orchestrator).toBe('omx');
       expect(summaries[0].task_context).toContain('ISSUE-42');
@@ -353,7 +353,7 @@ describe('HistoryStore', () => {
       // Read back
       const hs2 = new HistoryStore(path);
       expect(hs2.getAgentEventCount('agent-1')).toBe(2);
-      const summaries = hs2.getSessionSummaries();
+      const { rows: summaries } = hs2.getSessionSummaries();
       expect(summaries).toHaveLength(1);
       hs2.close();
 

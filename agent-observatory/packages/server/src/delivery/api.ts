@@ -77,7 +77,7 @@ export function createApiRouter(
     res.json({ teams });
   });
 
-  router.get('/api/v1/agents/health', (req, res) => {
+  router.get('/api/v1/agents/health', (_req, res) => {
     void (async () => {
       const agents = stateManager.getAllAgents();
 
@@ -178,8 +178,12 @@ export function createApiRouter(
     })();
   });
 
-  router.get('/api/v1/sessions', (_req, res) => {
-    const rows = historyStore.getSessionSummaries();
+  router.get('/api/v1/sessions', (req, res) => {
+    const { date, from, to, source, limit: limitStr, offset: offsetStr } = req.query as Record<string, string | undefined>;
+    const limit = limitStr ? Math.min(parseInt(limitStr, 10), 1000) : 200;
+    const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
+
+    const { rows, total } = historyStore.getSessionSummaries({ date, from, to, source, limit, offset });
     const sessions = rows.map((row) => ({
       session_id: row.session_id,
       agent_id: row.agent_id,
@@ -199,7 +203,7 @@ export function createApiRouter(
       total_cost_usd: row.total_cost_usd,
     }));
 
-    res.json({ sessions, total: sessions.length });
+    res.json({ sessions, total, limit, offset });
   });
 
   router.get('/api/v1/sessions/:id', (req, res) => {

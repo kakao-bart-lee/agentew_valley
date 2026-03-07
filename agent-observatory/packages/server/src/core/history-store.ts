@@ -1237,10 +1237,46 @@ export class HistoryStore {
   }
 
   /** Get session summaries from the sessions table */
-  getSessionSummaries(): SessionRow[] {
-    return this.db.prepare(`
-      SELECT * FROM sessions ORDER BY start_time DESC
-    `).all() as SessionRow[];
+  getSessionSummaries(opts?: {
+    date?: string;   // YYYY-MM-DD — exact date filter
+    from?: string;   // YYYY-MM-DD — range start (inclusive)
+    to?: string;     // YYYY-MM-DD — range end (inclusive)
+    source?: string;
+    limit?: number;
+    offset?: number;
+  }): { rows: SessionRow[]; total: number } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (opts?.date) {
+      conditions.push('date(start_time) = date(?)');
+      params.push(opts.date);
+    } else {
+      if (opts?.from) {
+        conditions.push('date(start_time) >= date(?)');
+        params.push(opts.from);
+      }
+      if (opts?.to) {
+        conditions.push('date(start_time) <= date(?)');
+        params.push(opts.to);
+      }
+    }
+    if (opts?.source) {
+      conditions.push('source = ?');
+      params.push(opts.source);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countRow = this.db.prepare(`SELECT COUNT(*) as cnt FROM sessions ${where}`).get(...params) as { cnt: number };
+    const total = countRow.cnt;
+
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    const rows = this.db.prepare(
+      `SELECT * FROM sessions ${where} ORDER BY start_time DESC LIMIT ? OFFSET ?`,
+    ).all(...params, limit, offset) as SessionRow[];
+
+    return { rows, total };
   }
 
   /** Get a single session by ID */
