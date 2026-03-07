@@ -81,6 +81,9 @@ export class StateManager {
   }
 
   handleEvent(event: UAEPEvent): void {
+    // PM2 프로세스는 인프라 서비스 — 에이전트 목록에서 제외
+    if (event.source === 'pm2') return;
+
     switch (event.type) {
       case 'session.start':
         this.handleSessionStart(event);
