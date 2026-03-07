@@ -188,7 +188,8 @@ async function main(): Promise<void> {
   if (resumeConfig) {
     cleanupResumePush = registerResumePushHook(eventBus, resumeConfig);
     const intervalMin = Math.round((resumeConfig.intervalMs ?? 300_000) / 60_000);
-    console.log(`[server] Resume push hook active → ${resumeConfig.resumeUrl} (every ${intervalMin}m)`);
+    const targetLabels = resumeConfig.targets.map((t) => `${t.label ?? t.url} (${t.url})`).join(', ');
+    console.log(`[server] Resume push hook active → ${targetLabels} (every ${intervalMin}m)`);
   } else {
     console.log('[server] Resume push hook disabled (set OBSERVATORY_RESUME_URL to enable)');
   }

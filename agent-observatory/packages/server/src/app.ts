@@ -160,7 +160,8 @@ export function createApp(config?: AppConfig): AppInstance {
       db: historyStore.getDb(),
     });
     resumePushHook.start(eventBus);
-    console.info(`[server] Resume push enabled → ${resumePushConfig.resumeUrl} (${resumePushConfig.intervalMs ?? 300_000}ms interval)`);
+    const targetUrls = resumePushConfig.targets.map((t) => t.label ?? t.url).join(", ");
+    console.info(`[server] Resume push enabled → ${targetUrls} (${resumePushConfig.intervalMs ?? 300_000}ms interval)`);
 
     // POST /api/v1/resume/sync — 수동 full sync 트리거
     app.post('/api/v1/resume/sync', (_req, res) => {

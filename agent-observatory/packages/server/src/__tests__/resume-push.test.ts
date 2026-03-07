@@ -40,7 +40,7 @@ describe('registerResumePushHook', () => {
 
     it('buffers metrics.usage events and pushes on interval', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -69,7 +69,7 @@ describe('registerResumePushHook', () => {
 
     it('aggregates multiple events with same provider/model/source', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -99,7 +99,7 @@ describe('registerResumePushHook', () => {
 
     it('deduplicates session_ids across events with same model', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -122,7 +122,7 @@ describe('registerResumePushHook', () => {
 
     it('sends separate requests for different models', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -147,7 +147,7 @@ describe('registerResumePushHook', () => {
 
     it('skips events with zero tokens', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -162,7 +162,7 @@ describe('registerResumePushHook', () => {
 
     it('does not push when buffer is empty', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -175,8 +175,7 @@ describe('registerResumePushHook', () => {
 
     it('includes Authorization header when apiKey is set', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
-            apiKey: 'secret-token',
+            targets: [{ url: 'https://resume.example.com/api/tokens', apiKey: 'secret-token', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -192,7 +191,7 @@ describe('registerResumePushHook', () => {
 
     it('only processes metrics.usage events (ignores others)', async () => {
         const cleanup = registerResumePushHook(eventBus, {
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
 
@@ -229,7 +228,7 @@ describe('ResumePushHook — fullSync', () => {
 
     it('fullSync sends DELETE then PUT with accumulated data', async () => {
         const hook = new ResumePushHook({
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 60_000,
         });
         hook.start(eventBus);
@@ -280,7 +279,7 @@ describe('ResumePushHook — fullSync', () => {
 
     it('fullSync skips when running total is empty and no db', async () => {
         const hook = new ResumePushHook({
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 60_000,
         });
         hook.start(eventBus);
@@ -295,7 +294,7 @@ describe('ResumePushHook — fullSync', () => {
 
     it('fullSync includes daily history', async () => {
         const hook = new ResumePushHook({
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 60_000,
         });
         hook.start(eventBus);
@@ -325,7 +324,7 @@ describe('ResumePushHook — fullSync', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         const hook = new ResumePushHook({
-            resumeUrl: 'https://resume.example.com/api/tokens',
+            targets: [{ url: 'https://resume.example.com/api/tokens', label: 'test' }],
             intervalMs: 1000,
         });
         hook.start(eventBus);
@@ -369,7 +368,7 @@ describe('ResumePushHook — snapshot restore', () => {
         const db = makeInMemoryDb();
 
         // 1차 실행: 이벤트 누적 후 stop (스냅샷 저장)
-        const hook1 = new ResumePushHook({ resumeUrl: 'https://example.com', intervalMs: 60_000, db });
+        const hook1 = new ResumePushHook({ targets: [{ url: 'https://example.com', label: 'test' }], intervalMs: 60_000, db });
         hook1.start(eventBus);
         eventBus.publish(makeMetricsEvent({
             model_id: 'claude-sonnet-4-6',
@@ -381,7 +380,7 @@ describe('ResumePushHook — snapshot restore', () => {
         expect(hook1.status().lastSnapshotAt).not.toBeNull();
 
         // 2차 실행: DB에서 복원
-        const hook2 = new ResumePushHook({ resumeUrl: 'https://example.com', intervalMs: 60_000, db });
+        const hook2 = new ResumePushHook({ targets: [{ url: 'https://example.com', label: 'test' }], intervalMs: 60_000, db });
         hook2.start(new InMemoryEventBus()); // 새 버스 (이벤트 없음)
 
         expect(hook2.status().runningTotalEntries).toBe(1);
@@ -392,7 +391,7 @@ describe('ResumePushHook — snapshot restore', () => {
         const db = makeInMemoryDb();
 
         // 1차: 이벤트 누적 + stop
-        const hook1 = new ResumePushHook({ resumeUrl: 'https://example.com', intervalMs: 60_000, db });
+        const hook1 = new ResumePushHook({ targets: [{ url: 'https://example.com', label: 'test' }], intervalMs: 60_000, db });
         hook1.start(eventBus);
         eventBus.publish(makeMetricsEvent({
             model_id: 'claude-sonnet-4-6',
@@ -402,7 +401,7 @@ describe('ResumePushHook — snapshot restore', () => {
         hook1.stop();
 
         // 2차: 복원 후 fullSync
-        const hook2 = new ResumePushHook({ resumeUrl: 'https://example.com', intervalMs: 60_000, db });
+        const hook2 = new ResumePushHook({ targets: [{ url: 'https://example.com', label: 'test' }], intervalMs: 60_000, db });
         hook2.start(new InMemoryEventBus());
         const result = await hook2.fullSync();
 
@@ -450,8 +449,8 @@ describe('readResumePushConfigFromEnv', () => {
 
         const config = readResumePushConfigFromEnv();
         expect(config).not.toBeNull();
-        expect(config!.resumeUrl).toBe('https://example.com/api/tokens');
-        expect(config!.apiKey).toBe('my-key');
+        expect(config!.targets[0]!.url).toBe('https://example.com/api/tokens');
+        expect(config!.targets[0]!.apiKey).toBe('my-key');
         expect(config!.intervalMs).toBe(60000);
         expect(config!.fullSyncOnStart).toBe(true);
 

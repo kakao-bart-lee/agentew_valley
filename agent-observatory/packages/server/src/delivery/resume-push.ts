@@ -107,11 +107,18 @@ interface TokenSnapshotBody {
     last_updated: string;
 }
 
-export interface ResumePushConfig {
+export interface ResumeTarget {
     /** POST 대상 URL. 예: https://resume.example.com/api/tokens */
-    resumeUrl: string;
+    url: string;
     /** Bearer 토큰 (선택) */
     apiKey?: string;
+    /** 로그용 레이블 (예: 'dev', 'prod') */
+    label?: string;
+}
+
+export interface ResumePushConfig {
+    /** push 대상 목록. 여러 개 설정 시 모든 대상에 동시 push. */
+    targets: ResumeTarget[];
     /** 증분 push 주기 ms (기본 300_000 = 5분) */
     intervalMs?: number;
     /** 시작 시 full sync 여부 (기본 false) */
@@ -562,7 +569,7 @@ export class ResumePushHook {
     }
 
     /**
-     * Full sync: Resume site를 DELETE 후 전체 누적 데이터를 PUT.
+     * Full sync: 모든 대상 사이트를 DELETE 후 전체 누적 데이터를 PUT.
      * runningTotal이 비어 있고 db가 있으면 SQLite에서 재구성.
      */
     async fullSync(): Promise<ResumeSyncResult> {
@@ -581,14 +588,27 @@ export class ResumePushHook {
 
             const body = buildSnapshotBody(this.runningTotal);
 
-            await httpRequest(this.config.resumeUrl, 'DELETE', undefined, this.config.apiKey);
-            await httpRequest(this.config.resumeUrl, 'PUT', body, this.config.apiKey);
+            let syncSuccess = false;
+            for (const target of this.config.targets) {
+                const tag = target.label ?? target.url;
+                try {
+                    await httpRequest(target.url, 'DELETE', undefined, target.apiKey);
+                    await httpRequest(target.url, 'PUT', body, target.apiKey);
+                    console.log(`[resume-push] Full sync → ${tag} OK`);
+                    syncSuccess = true;
+                } catch (err) {
+                    console.error(`[resume-push] Full sync → ${tag} failed: ${String(err)}`);
+                }
+            }
 
-            this.lastFullSyncAt = new Date().toISOString();
-            this.consecutiveFailures = 0;
             const entries = Object.values(body.providers).reduce(
                 (n, p) => n + Object.keys(p.models).length, 0,
             );
+            if (!syncSuccess) {
+                return { ok: false, error: 'All targets failed' };
+            }
+            this.lastFullSyncAt = new Date().toISOString();
+            this.consecutiveFailures = 0;
             console.log(`[resume-push] Full sync complete (${entries} model entries, ${body.total.sessions} sessions)`);
             return { ok: true, entries };
         } catch (err) {
@@ -676,31 +696,38 @@ export class ResumePushHook {
         const entries = aggregateBuffer(snapshot);
         if (entries.length === 0) return;
 
-        let sent = 0;
-        for (const entry of entries) {
-            try {
-                await httpRequest(this.config.resumeUrl, 'POST', {
-                    provider: entry.provider,
-                    model: entry.model,
-                    source: entry.source,
-                    input_tokens: entry.input_tokens,
-                    output_tokens: entry.output_tokens,
-                    session_ids: entry.session_ids,
-                }, this.config.apiKey);
-                sent++;
-            } catch (err) {
-                console.warn(
-                    `[resume-push] Failed to push ${entry.source}/${entry.provider}/${entry.model}: ${String(err)}`,
-                );
+        let anySuccess = false;
+        for (const target of this.config.targets) {
+            const tag = target.label ?? target.url;
+            let sent = 0;
+            for (const entry of entries) {
+                try {
+                    await httpRequest(target.url, 'POST', {
+                        provider: entry.provider,
+                        model: entry.model,
+                        source: entry.source,
+                        input_tokens: entry.input_tokens,
+                        output_tokens: entry.output_tokens,
+                        session_ids: entry.session_ids,
+                    }, target.apiKey);
+                    sent++;
+                } catch (err) {
+                    console.warn(
+                        `[resume-push] [${tag}] Failed to push ${entry.source}/${entry.provider}/${entry.model}: ${String(err)}`,
+                    );
+                }
+            }
+            if (sent > 0) {
+                anySuccess = true;
+                console.log(`[resume-push] [${tag}] Pushed ${sent}/${entries.length} entries`);
             }
         }
 
-        if (sent > 0) {
+        if (anySuccess) {
             this.consecutiveFailures = 0;
-            console.log(`[resume-push] Pushed ${sent}/${entries.length} entries to ${this.config.resumeUrl}`);
         } else if (entries.length > 0) {
             this.consecutiveFailures++;
-            console.warn(`[resume-push] All ${entries.length} entries failed (consecutive: ${this.consecutiveFailures})`);
+            console.warn(`[resume-push] All targets failed (consecutive: ${this.consecutiveFailures})`);
             if (this.consecutiveFailures >= 3) {
                 console.warn('[resume-push] 3 consecutive failures — attempting full sync fallback');
                 void this.fullSync();
@@ -712,12 +739,32 @@ export class ResumePushHook {
 // ─── 환경변수 / 편의 함수 ──────────────────────────────────────────────────────
 
 export function readResumePushConfigFromEnv(): ResumePushConfig | null {
-    const resumeUrl = process.env['OBSERVATORY_RESUME_URL'];
-    if (!resumeUrl) return null;
+    const targets: ResumeTarget[] = [];
+
+    // 개발용(기본) 대상
+    const devUrl = process.env['OBSERVATORY_RESUME_URL'];
+    if (devUrl) {
+        targets.push({
+            url: devUrl,
+            apiKey: process.env['OBSERVATORY_RESUME_API_KEY'] || undefined,
+            label: 'dev',
+        });
+    }
+
+    // 프로덕션 대상 (외부 배포 resume 사이트)
+    const prodUrl = process.env['OBSERVATORY_RESUME_URL_PROD'];
+    if (prodUrl) {
+        targets.push({
+            url: prodUrl,
+            apiKey: process.env['OBSERVATORY_RESUME_API_KEY_PROD'] || undefined,
+            label: 'prod',
+        });
+    }
+
+    if (targets.length === 0) return null;
 
     return {
-        resumeUrl,
-        apiKey: process.env['OBSERVATORY_RESUME_API_KEY'] || undefined,
+        targets,
         intervalMs: process.env['OBSERVATORY_RESUME_INTERVAL_MS']
             ? parseInt(process.env['OBSERVATORY_RESUME_INTERVAL_MS'], 10)
             : undefined,
