@@ -4,9 +4,39 @@ import type {
   AgentCostEntry,
   ModelCostEntry,
   BudgetAlertEntry,
+  UntrackedSummary,
 } from '@agent-observatory/shared';
 import { fetchJsonWithAuth, getApiBase } from '../../lib/api';
 import { formatCurrency, formatLargeNumber } from '../../utils/formatters';
+
+function UntrackedSummaryRow({ untracked }: { untracked: UntrackedSummary }) {
+  return (
+    <div className="rounded-lg border border-slate-600/60 bg-slate-900/40 p-3">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Untracked Sessions
+        </h3>
+        <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] text-slate-400">
+          no Paperclip context
+        </span>
+      </div>
+      <div className="flex gap-4 text-sm">
+        <div>
+          <span className="text-slate-500 text-xs">Sessions: </span>
+          <span className="text-slate-300 font-medium">{untracked.session_count}</span>
+        </div>
+        <div>
+          <span className="text-slate-500 text-xs">Cost: </span>
+          <span className="text-slate-300 font-medium">{formatCurrency(untracked.total_cost_usd)}</span>
+        </div>
+        <div>
+          <span className="text-slate-500 text-xs">Tokens: </span>
+          <span className="text-slate-300 font-medium">{formatLargeNumber(untracked.total_tokens)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function formatProjectLabel(projectId: string): string {
   if (projectId.startsWith('/')) {
@@ -114,6 +144,11 @@ export function CostSummaryCard() {
               </div>
             </div>
           </div>
+
+          {/* R-004: Untracked sessions — Paperclip 컨텍스트 없이 실행된 세션 */}
+          {summary.untracked_summary && summary.untracked_summary.session_count > 0 && (
+            <UntrackedSummaryRow untracked={summary.untracked_summary} />
+          )}
 
           <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
             <div className="grid gap-4 md:grid-cols-3">

@@ -13,6 +13,7 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
         current_tool, last_activity, session_start, model_id,
         cache_read_tokens, total_input_tokens, health_status, context_window_usage,
         tool_call_success_rate, last_error, last_run_status,
+        task_id, project_id,
     } = agent;
 
     const cacheRate = useMemo(() => {
@@ -218,6 +219,22 @@ export const AgentCard = memo(function AgentCard({ agent, isSelected, onClick }:
                             </div>
                         </TooltipContent>
                     </Tooltip>
+                )}
+
+                {/* R-006: task/project context — Paperclip 연결 시 이름 표시, 없으면 ID */}
+                {(task_id || project_id) && (
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1 text-[10px]">
+                        {project_id && (
+                            <span className="rounded bg-indigo-950/60 px-1.5 py-0.5 text-indigo-300 truncate max-w-[120px]" title={project_id}>
+                                {project_id.startsWith('/') ? (project_id.split('/').filter(Boolean).pop() ?? project_id) : project_id}
+                            </span>
+                        )}
+                        {task_id && (
+                            <span className="rounded bg-violet-950/60 px-1.5 py-0.5 text-violet-300 truncate max-w-[120px]" title={task_id}>
+                                {task_id}
+                            </span>
+                        )}
+                    </div>
                 )}
 
                 <div className="flex items-center gap-1 text-[10px] text-slate-600 border-t border-slate-700/40 pt-1.5">
