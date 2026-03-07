@@ -30,6 +30,9 @@ export type { CodexCollectorConfig } from './codex/index.js';
 export { AISWorktreeCollector } from './ais-worktree/index.js';
 export type { AISWorktreeCollectorConfig } from './ais-worktree/index.js';
 
+export { Pm2Collector } from './pm2/index.js';
+export type { Pm2CollectorConfig } from './pm2/index.js';
+
 export { ClaudeCodeAdapter, OpenClawAdapter, OpenCodeAdapter } from './adapters.js';
 
 export type { Collector, CollectorConfig, CollectorContext } from './base.js';
