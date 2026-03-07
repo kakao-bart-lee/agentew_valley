@@ -6,3 +6,4 @@
 
 export { WebSocketTransport } from './transport.js';
 export type { TransportOptions } from './transport.js';
+export { persistEvent, readPersistedEvents } from './persistence.js';
