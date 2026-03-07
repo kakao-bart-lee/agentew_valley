@@ -420,6 +420,52 @@ export function createApiRouter(
     });
   });
 
+  // ─── AIS Worktree ──────────────────────────────────────────────────────────
+
+  /** AIS 워크트리 에이전트 목록 (agent_id가 ais- 로 시작) */
+  router.get('/api/v1/ais/sessions', (_req, res) => {
+    const agents = stateManager.getAllAgents().filter((a) => a.agent_id.startsWith('ais-'));
+    res.json({ sessions: agents, total: agents.length });
+  });
+
+  /** AIS agent.log tail (최근 100줄) */
+  router.get('/api/v1/ais/sessions/:agentId/log', async (req, res) => {
+    const { agentId } = req.params;
+
+    // 최신 agent.status 이벤트에서 worktree_path 추출 (DESC 정렬 위해 offset trick)
+    const events = historyStore.getByAgent(agentId, { type: 'agent.status', limit: 100 });
+    const latest = events.at(-1);
+    const worktreePath = latest?.data?.['worktree_path'] as string | undefined;
+
+    if (!worktreePath) {
+      res.status(404).json({ error: 'No worktree path recorded for this agent', code: 'NO_WORKTREE_PATH' });
+      return;
+    }
+
+    const logPath = `${worktreePath}/agent.log`;
+    try {
+      const { readFile, stat } = await import('node:fs/promises');
+      const [content, fileStat] = await Promise.all([readFile(logPath, 'utf8'), stat(logPath)]);
+
+      // ANSI strip (簡易)
+      const clean = content.replace(/[\u001B\u009B][[\]()#;?]*(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007|(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~])/g, '');
+      const allLines = clean.split('\n').filter((l) => l.trim().length > 0);
+      const MAX_LINES = 100;
+      const tail = allLines.slice(-MAX_LINES);
+
+      res.json({
+        agent_id: agentId,
+        worktree_path: worktreePath,
+        lines: tail,
+        total_lines: allLines.length,
+        truncated: allLines.length > MAX_LINES,
+        updated_at: fileStat.mtime.toISOString(),
+      });
+    } catch {
+      res.status(404).json({ error: 'agent.log not found or unreadable', code: 'LOG_NOT_FOUND' });
+    }
+  });
+
   router.post('/api/v1/events', (req, res) => {
     const event = req.body as UAEPEvent;
     if (!event || !event.event_id || !event.type) {

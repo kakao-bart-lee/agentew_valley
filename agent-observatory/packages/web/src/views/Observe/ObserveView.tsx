@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { DashboardView } from '../Dashboard/DashboardView';
 import { SessionsView } from '../Sessions/SessionsView';
 import { PixelCanvasView } from '../Pixel/PixelCanvasView';
+import { AISWorktreeView } from '../AIS/AISWorktreeView';
 import { useSocket } from '../../hooks/useSocket';
 import { useAgentStore } from '../../stores/agentStore';
 
 const OBSERVE_TABS = [
   { id: 'live', label: 'Live', description: 'Real-time agent state, metrics, and raw activity.' },
+  { id: 'worktrees', label: 'Worktrees', description: 'AIS orchestrator worktree sessions and live logs.' },
   { id: 'sessions', label: 'Sessions', description: 'Replay and analyze recorded runs.' },
   { id: 'pixel', label: 'Pixel', description: 'Specialized live visualization for the same system.' },
 ] as const;
@@ -53,6 +55,7 @@ export function ObserveView() {
 
       <div className="flex-1 min-h-0">
         <div className={activeTab === 'live' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><DashboardView /></div>
+        <div className={activeTab === 'worktrees' ? 'block' : 'hidden'}><AISWorktreeView /></div>
         <div className={activeTab === 'sessions' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><SessionsView /></div>
         <div className={activeTab === 'pixel' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><PixelCanvasView /></div>
       </div>
