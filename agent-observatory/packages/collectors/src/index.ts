@@ -24,6 +24,9 @@ export type { OMXCollectorConfig } from './omx/index.js';
 export { OpenCodeCollector } from './opencode/index.js';
 export type { OpenCodeCollectorConfig } from './opencode/index.js';
 
+export { CodexCollector } from './codex/index.js';
+export type { CodexCollectorConfig } from './codex/index.js';
+
 export { ClaudeCodeAdapter, OpenClawAdapter, OpenCodeAdapter } from './adapters.js';
 
 export type { Collector, CollectorConfig, CollectorContext } from './base.js';

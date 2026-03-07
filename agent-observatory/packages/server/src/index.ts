@@ -17,6 +17,7 @@ import type { Collector } from '@agent-observatory/collectors';
 import {
   AgentSDKCollector,
   ClaudeCodeCollector,
+  CodexCollector,
   HTTPCollector,
   OMXCollector,
   OpenClawCollector,
@@ -101,6 +102,17 @@ async function main(): Promise<void> {
       console.log(`[server] OpenCode collector started (paths: ${opencodePaths.join(', ')})`);
     } catch (err) {
       console.warn('[server] OpenCode collector failed to start:', err);
+    }
+
+    try {
+      const codexPaths = (process.env.CODEX_WATCH_PATHS ?? '~/.codex/sessions').split(',');
+      const codex = new CodexCollector({ watchPaths: codexPaths, tailOnly });
+      codex.onEvent(publish);
+      await codex.start();
+      activeCollectors.push(codex);
+      console.log(`[server] Codex collector started (paths: ${codexPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] Codex collector failed to start:', err);
     }
 
     const sdkCollector = new AgentSDKCollector();
