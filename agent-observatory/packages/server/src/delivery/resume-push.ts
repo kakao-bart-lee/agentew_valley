@@ -243,12 +243,14 @@ function deriveProvider(source: AgentSourceType, modelId?: string): string {
         if (m.includes('gemini')) return 'google';
         if (m.includes('mistral')) return 'mistral';
         if (m.includes('llama')) return 'meta';
+        if (m === 'big-pickle' || m.includes('glm')) return 'zhipuai';
+        if (m.includes('minimax')) return 'minimax';
     }
     switch (source) {
-        case 'claude_code':
-        case 'openclaw': return 'anthropic';
+        case 'claude_code': return 'anthropic';
         case 'codex': return 'openai';
-        case 'opencode': return 'openai';
+        case 'openclaw':
+        case 'opencode': return 'unknown';
         default: return 'unknown';
     }
 }

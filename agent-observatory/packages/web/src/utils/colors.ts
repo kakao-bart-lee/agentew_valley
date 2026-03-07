@@ -74,17 +74,25 @@ export function getModelBadgeColor(modelId: string | undefined): string {
     // Google 계열 — 파랑 계열 (#4285F4 중심)
     if (id.includes('flash'))  return '#5B9EF4'; // Gemini Flash — 밝은 파랑
     if (id.includes('gemini')) return id.includes('pro') ? '#1A73E8' : '#4285F4';
+    // ZhipuAI (Z.ai) 계열 — 보라 계열
+    if (id === 'big-pickle')   return '#7C5CFC'; // OpenCode Zen 코드명 (GLM 4.6)
+    if (id.includes('glm'))    return '#7C5CFC'; // GLM 시리즈
+    // MiniMax 계열 — 하늘색 계열
+    if (id.includes('minimax')) return '#0284C7';
     return '#6b7280';
 }
 
-/** model_id에서 `4-6` 또는 `4.6` 형태의 버전을 추출해 `4.6` 문자열로 반환 */
+/** model_id에서 버전을 추출해 문자열로 반환 */
 function extractVersion(id: string): string | null {
-    // dot-separated: 4.6, 5.3
+    // dot-separated: 4.6, 5.3, 2.5
     const dotM = id.match(/(\d{1,2}\.\d{1,3})/);
     if (dotM) return dotM[1];
     // hyphen-separated short nums (not 8-digit date): 4-6, 4-5
     const hypM = id.match(/(\d{1,2})-(\d{1,2})(?![\d])/);
     if (hypM) return `${hypM[1]}.${hypM[2]}`;
+    // gemini-style integer generation: gemini-3-flash, gemini-3-pro
+    const genM = id.match(/gemini-(\d+)-/);
+    if (genM) return genM[1];
     return null;
 }
 
@@ -117,6 +125,12 @@ export function getModelShortName(modelId: string | undefined): string {
         const variant = id.includes('flash') ? ' Flash' : id.includes('pro') ? ' Pro' : '';
         return ver ? `Gemini ${ver}${variant}` : 'Gemini';
     }
+
+    // ZhipuAI (Z.ai) 계열
+    if (id === 'big-pickle') return 'GLM (Zen)';
+    if (id.includes('glm')) return ver ? `GLM-${ver}` : 'GLM';
+    // MiniMax 계열
+    if (id.includes('minimax')) return ver ? `MiniMax-${ver}` : 'MiniMax';
 
     // fallback: 처음 두 세그먼트
     const parts = modelId.split('-').filter(Boolean);
