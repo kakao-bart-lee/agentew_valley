@@ -67,7 +67,7 @@ export interface OCAssistantMessage {
   timestamp?: string;
 }
 
-/** 토큰 사용량 데이터 */
+/** 토큰 사용량 데이터 (내부 정규화 포맷) */
 export interface OCTokenUsage {
   input_tokens: number;
   output_tokens: number;
@@ -75,6 +75,23 @@ export interface OCTokenUsage {
   cache_creation_input_tokens?: number;
   /** 캐시에서 읽은 입력 토큰 */
   cache_read_input_tokens?: number;
+  /**
+   * provider가 직접 제공한 비용 (USD).
+   * OpenClaw는 cost.total 필드로 제공.
+   * 있는 경우 estimateCostUsd() 계산보다 우선 사용.
+   */
+  cost_usd?: number;
+}
+
+/**
+ * OpenClaw 모델 변경 이벤트.
+ * 세션 중 모델이 바뀔 때 발행된다.
+ */
+export interface OCModelChange {
+  kind: 'model_change';
+  modelId: string;
+  provider?: string;
+  timestamp?: string;
 }
 
 /** 파서가 반환하는 모든 레코드 타입의 합집합 */
@@ -83,7 +100,8 @@ export type OCParsedRecord =
   | OCToolCall
   | OCToolResult
   | OCUserInput
-  | OCAssistantMessage;
+  | OCAssistantMessage
+  | OCModelChange;
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -157,25 +175,60 @@ function extractTextLength(contents: unknown[]): number {
 
 /**
  * usage 객체에서 OCTokenUsage를 파싱한다.
+ *
+ * 두 가지 포맷을 모두 지원한다:
+ *   Format A (Claude Code / Anthropic API 표준):
+ *     { input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens }
+ *   Format B (OpenClaw):
+ *     { input, output, cacheRead, cacheWrite, cost: { total } }
  */
 function parseUsage(raw: unknown): OCTokenUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const u = raw as Record<string, unknown>;
 
-  const inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : undefined;
-  const outputTokens = typeof u.output_tokens === 'number' ? u.output_tokens : undefined;
+  // Format A: standard input_tokens / output_tokens
+  let inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : undefined;
+  let outputTokens = typeof u.output_tokens === 'number' ? u.output_tokens : undefined;
+
+  // Format B: OpenClaw input / output
+  if (inputTokens === undefined && typeof u.input === 'number') inputTokens = u.input;
+  if (outputTokens === undefined && typeof u.output === 'number') outputTokens = u.output;
 
   if (inputTokens === undefined && outputTokens === undefined) return undefined;
+
+  // cache tokens: Format A
+  const cacheCreate =
+    typeof u.cache_creation_input_tokens === 'number'
+      ? u.cache_creation_input_tokens
+      : undefined;
+  const cacheRead =
+    typeof u.cache_read_input_tokens === 'number'
+      ? u.cache_read_input_tokens
+      // Format B: cacheRead (OpenClaw)
+      : typeof u.cacheRead === 'number' && u.cacheRead > 0
+        ? u.cacheRead
+        : undefined;
+  const cacheWrite =
+    cacheCreate !== undefined
+      ? cacheCreate
+      // Format B: cacheWrite (OpenClaw)
+      : typeof u.cacheWrite === 'number' && u.cacheWrite > 0
+        ? u.cacheWrite
+        : undefined;
+
+  // cost: Format B (OpenClaw) provides cost.total directly
+  let cost_usd: number | undefined;
+  if (typeof u.cost === 'object' && u.cost !== null) {
+    const c = u.cost as Record<string, unknown>;
+    if (typeof c.total === 'number' && c.total > 0) cost_usd = c.total;
+  }
 
   return {
     input_tokens: inputTokens ?? 0,
     output_tokens: outputTokens ?? 0,
-    ...(typeof u.cache_creation_input_tokens === 'number'
-      ? { cache_creation_input_tokens: u.cache_creation_input_tokens }
-      : {}),
-    ...(typeof u.cache_read_input_tokens === 'number'
-      ? { cache_read_input_tokens: u.cache_read_input_tokens }
-      : {}),
+    ...(cacheWrite !== undefined ? { cache_creation_input_tokens: cacheWrite } : {}),
+    ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
+    ...(cost_usd !== undefined ? { cost_usd } : {}),
   };
 }
 
@@ -322,7 +375,23 @@ export function parseLine(line: string): OCParsedRecord[] {
     return [];
   }
 
-  // compaction, branch_summary, custom → 무시
+  // ── model_change ───────────────────────────────────────────────────────────
+  if (type === 'model_change') {
+    const modelId = typeof record.modelId === 'string' ? record.modelId : '';
+    if (modelId) {
+      return [
+        {
+          kind: 'model_change',
+          modelId,
+          provider: typeof record.provider === 'string' ? record.provider : undefined,
+          timestamp,
+        },
+      ];
+    }
+    return [];
+  }
+
+  // compaction, branch_summary, custom, thinking_level_change 등 → 무시
   return [];
 }
 

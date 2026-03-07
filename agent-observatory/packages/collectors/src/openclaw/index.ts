@@ -189,5 +189,5 @@ export type {
   OCAssistantMessage,
   OCTokenUsage,
 } from './parser.js';
-export { normalize, normalizeAll, createContext, buildAgentId } from './normalizer.js';
+export { normalize, normalizeAll, createContext, buildAgentId, updateContextFromModelChange } from './normalizer.js';
 export type { OCNormalizerContext } from './normalizer.js';

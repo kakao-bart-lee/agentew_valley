@@ -12,7 +12,7 @@
 
 import type { UAEPEvent } from '@agent-observatory/shared';
 import { generateEventId, getToolCategory } from '@agent-observatory/shared';
-import type { OCParsedRecord, OCSessionHeader } from './parser.js';
+import type { OCParsedRecord, OCSessionHeader, OCModelChange } from './parser.js';
 
 /** 노멀라이저가 관리하는 세션 컨텍스트 */
 export interface OCNormalizerContext {
@@ -53,6 +53,16 @@ export function createContext(
     seq: 0,
     activeToolTimestamps: new Map(),
   };
+}
+
+/**
+ * model_change 레코드에서 컨텍스트를 업데이트한다.
+ */
+export function updateContextFromModelChange(
+  ctx: OCNormalizerContext,
+  change: OCModelChange,
+): void {
+  ctx.modelId = change.modelId;
 }
 
 /**
@@ -193,6 +203,12 @@ export function normalize(
       ];
     }
 
+    case 'model_change': {
+      // 세션 시작 직후 모델 정보를 컨텍스트에 반영 (이후 이벤트에 model_id 전파)
+      updateContextFromModelChange(ctx, record);
+      return [];
+    }
+
     case 'assistant_message': {
       const events: UAEPEvent[] = [];
 
@@ -215,8 +231,13 @@ export function normalize(
 
       // 토큰 사용량이 있으면 metrics.usage 이벤트 발행
       if (record.usage) {
-        const { input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens } =
-          record.usage;
+        const {
+          input_tokens,
+          output_tokens,
+          cache_creation_input_tokens,
+          cache_read_input_tokens,
+          cost_usd,  // OpenClaw가 직접 제공하는 비용
+        } = record.usage;
         const totalTokens = input_tokens + output_tokens;
 
         events.push(
@@ -231,6 +252,8 @@ export function normalize(
               ...(cache_read_input_tokens !== undefined
                 ? { cache_read_input_tokens }
                 : {}),
+              // cost_usd가 있으면 모델 가격표 계산 없이 직접 사용
+              ...(cost_usd !== undefined ? { cost_usd } : {}),
               model_id: record.model ?? ctx.modelId,
             },
           }),
