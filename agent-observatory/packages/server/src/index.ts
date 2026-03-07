@@ -16,6 +16,7 @@ import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import {
   AgentSDKCollector,
+  AISWorktreeCollector,
   ClaudeCodeCollector,
   CodexCollector,
   HTTPCollector,
@@ -113,6 +114,17 @@ async function main(): Promise<void> {
       console.log(`[server] Codex collector started (paths: ${codexPaths.join(', ')})`);
     } catch (err) {
       console.warn('[server] Codex collector failed to start:', err);
+    }
+
+    try {
+      const aisPaths = (process.env.AIS_WORKSPACE_PATHS ?? '/tmp/ais_workspaces').split(',');
+      const ais = new AISWorktreeCollector({ watchPaths: aisPaths, tailOnly });
+      ais.onEvent(publish);
+      await ais.start();
+      activeCollectors.push(ais);
+      console.log(`[server] AIS Worktree collector started (paths: ${aisPaths.join(', ')})`);
+    } catch (err) {
+      console.warn('[server] AIS Worktree collector failed to start:', err);
     }
 
     const sdkCollector = new AgentSDKCollector();
