@@ -12,10 +12,10 @@ export function CostChart({ data }: CostChartProps) {
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={data}>
                     <XAxis dataKey="time" stroke="#64748b" fontSize={11} tickLine={false} minTickGap={30} />
-                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={40} tickFormatter={(value) => `$${value.toFixed(2)}`} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={36} tickFormatter={(value) => `$${Math.round(value)}`} />
                     <Tooltip
                         contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc' }}
-                        formatter={(value: any) => [`$${(value || 0).toFixed(4)}`, 'Cost/hr']}
+                        formatter={(value: any) => [`$${Math.round(value || 0)}`, 'Cost/hr']}
                     />
                     <Line type="monotone" dataKey="cost" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>
