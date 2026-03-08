@@ -12,6 +12,28 @@ export { createWebSocketServer } from './delivery/websocket.js';
 export { createCollectorGateway } from './delivery/collector-gateway.js';
 export type { CollectorGateway } from './delivery/collector-gateway.js';
 
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// .env 파일 로드 (pm2 등 외부 실행 환경 대응)
+try {
+  const __dir = dirname(fileURLToPath(import.meta.url));
+  const envPath = resolve(__dir, '../.env');
+  const lines = readFileSync(envPath, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (key && !(key in process.env)) process.env[key] = val;
+  }
+} catch {
+  // .env 없으면 무시 (환경변수로 직접 주입된 경우)
+}
+
 import type { UAEPEvent } from '@agent-observatory/shared';
 import type { Collector } from '@agent-observatory/collectors';
 import {
@@ -28,7 +50,6 @@ import {
   readContextFromEnv,
 } from '@agent-observatory/collectors';
 import { createApp } from './app.js';
-import { registerResumePushHook, readResumePushConfigFromEnv } from './delivery/resume-push.js';
 
 type ObservatoryMode = 'local' | 'remote';
 
@@ -182,18 +203,6 @@ async function main(): Promise<void> {
     console.log(`[server] DB auto-backup → ${dbBackupDir} (every ${intervalHr}h, max ${maxBackups} files)`);
   }
 
-  // Resume Push Hook — collect-tokens.py 대체
-  let cleanupResumePush: (() => void) | null = null;
-  const resumeConfig = readResumePushConfigFromEnv();
-  if (resumeConfig) {
-    cleanupResumePush = registerResumePushHook(eventBus, resumeConfig);
-    const intervalMin = Math.round((resumeConfig.intervalMs ?? 300_000) / 60_000);
-    const targetLabels = resumeConfig.targets.map((t) => `${t.label ?? t.url} (${t.url})`).join(', ');
-    console.log(`[server] Resume push hook active → ${targetLabels} (every ${intervalMin}m)`);
-  } else {
-    console.log('[server] Resume push hook disabled (set OBSERVATORY_RESUME_URL to enable)');
-  }
-
   server.listen(port, () => {
     console.log(`[server] Agent Observatory server listening on port ${port}`);
     console.log(`[server] Mode: ${mode}`);
@@ -216,7 +225,6 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     console.log('[server] Shutting down...');
     cleanupDbBackup?.();
-    cleanupResumePush?.();
     for (const collector of activeCollectors) {
       try {
         await collector.stop();

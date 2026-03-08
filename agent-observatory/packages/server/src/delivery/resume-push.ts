@@ -496,6 +496,7 @@ export class ResumePushHook {
 
     private pushTimer?: ReturnType<typeof setInterval>;
     private snapshotTimer?: ReturnType<typeof setInterval>;
+    private fullSyncStartTimer?: ReturnType<typeof setTimeout>;
     private unsubscribe?: () => void;
 
     constructor(private readonly config: ResumePushConfig) {}
@@ -530,7 +531,8 @@ export class ResumePushHook {
 
         if (this.config.fullSyncOnStart) {
             const delay = this.config.fullSyncDelayMs ?? 10_000;
-            setTimeout(() => {
+            this.fullSyncStartTimer = setTimeout(() => {
+                this.fullSyncStartTimer = undefined;
                 console.log('[resume-push] Starting full sync after initial delay...');
                 void this.fullSync().then((result) => {
                     if (result.ok) {
@@ -547,6 +549,7 @@ export class ResumePushHook {
     stop(): void {
         if (this.pushTimer !== undefined) clearInterval(this.pushTimer);
         if (this.snapshotTimer !== undefined) clearInterval(this.snapshotTimer);
+        if (this.fullSyncStartTimer !== undefined) clearTimeout(this.fullSyncStartTimer);
         this.unsubscribe?.();
         // graceful shutdown 시 스냅샷 저장
         if (this.config.db && this.runningTotal.size > 0) {
